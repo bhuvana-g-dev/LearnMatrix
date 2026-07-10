@@ -8,7 +8,7 @@ Mirrors the boundary utils/question_bank_reader.py already draws for Excel:
 this module knows how to turn a raw file into row-shaped dicts, and nothing
 else. It never touches Firestore — routes/admin_question_routes.py returns
 the extracted rows straight to the Admin Panel so a human can review/edit
-QuestionID, Role, Difficulty, etc. before anything is saved via the normal
+QuestionID, Skill, Difficulty, etc. before anything is saved via the normal
 POST /api/admin/questions endpoint.
 
 Extraction approach
@@ -72,7 +72,7 @@ def extract_questions_from_pdf(file_stream) -> list[dict]:
             "CorrectAnswer": str,   # "A" | "B" | "C" | "D" | ""
         }
     Fields the PDF didn't clearly contain are left as "" — QuestionID,
-    Role, Skill, Difficulty, QuestionType, and Status are NEVER guessed
+    Skill, Difficulty, QuestionType, and Status are NEVER guessed
     here; the Admin Panel form collects those from the human reviewer.
     """
     lines = _read_pdf_lines(file_stream)

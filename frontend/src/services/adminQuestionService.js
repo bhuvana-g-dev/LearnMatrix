@@ -10,7 +10,6 @@ import { ENDPOINTS } from "../api/endpoints";
 export async function fetchQuestions(filters = {}) {
   const params = {};
   if (filters.skill) params.skill = filters.skill;
-  if (filters.role) params.role = filters.role;
   if (filters.difficulty) params.difficulty = filters.difficulty;
   if (filters.status) params.status = filters.status;
   if (filters.search) params.search = filters.search;

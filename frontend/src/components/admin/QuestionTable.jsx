@@ -43,7 +43,7 @@ export default function QuestionTable({
           <input
             value={filters.search}
             onChange={(e) => onFilterChange("search", e.target.value)}
-            placeholder="Search by ID, question, skill, role..."
+            placeholder="Search by ID, question, skill..."
             style={{ ...inputStyle, width: "100%", paddingLeft: 34 }}
           />
         </div>
@@ -53,12 +53,6 @@ export default function QuestionTable({
           onChange={(e) => onFilterChange("skill", e.target.value)}
           placeholder="Filter skill"
           style={{ ...inputStyle, width: 130 }}
-        />
-        <input
-          value={filters.role}
-          onChange={(e) => onFilterChange("role", e.target.value)}
-          placeholder="Filter role"
-          style={{ ...inputStyle, width: 150 }}
         />
         <select value={filters.difficulty} onChange={(e) => onFilterChange("difficulty", e.target.value)} style={inputStyle}>
           <option value="">All difficulties</option>
@@ -93,7 +87,7 @@ export default function QuestionTable({
           <table className="w-full text-sm" style={{ borderCollapse: "collapse" }}>
             <thead>
               <tr style={{ borderBottom: `1px solid ${COLORS.border}` }}>
-                {["ID", "Role", "Skill", "Difficulty", "Type", "Question", "Status", "Actions"].map((h) => (
+                {["ID", "Skill", "Difficulty", "Type", "Question", "Status", "Actions"].map((h) => (
                   <th key={h} className="text-left py-2 px-3 text-xs font-bold" style={{ color: COLORS.textMid }}>
                     {h}
                   </th>
@@ -109,7 +103,6 @@ export default function QuestionTable({
                   style={{ borderBottom: `1px solid rgba(217,196,245,0.5)` }}
                 >
                   <td className="py-2.5 px-3 font-semibold" style={{ color: COLORS.textDark }}>{q.QuestionID}</td>
-                  <td className="py-2.5 px-3" style={{ color: COLORS.textMid }}>{q.Role || "—"}</td>
                   <td className="py-2.5 px-3" style={{ color: COLORS.textMid }}>{q.Skill}</td>
                   <td className="py-2.5 px-3" style={{ color: COLORS.textMid }}>{q.Difficulty}</td>
                   <td className="py-2.5 px-3" style={{ color: COLORS.textMid }}>{q.QuestionType}</td>

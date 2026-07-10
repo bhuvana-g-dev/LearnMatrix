@@ -44,7 +44,7 @@ export default function QuestionBankScreen({ onAddQuestion, onEditQuestion, onPr
           </motion.button>
 
           <motion.button
-            onClick={onAddQuestion}
+            onClick={() => onAddQuestion()}
             whileHover={{ y: -2 }}
             className="flex items-center gap-2 text-sm font-semibold"
             style={{

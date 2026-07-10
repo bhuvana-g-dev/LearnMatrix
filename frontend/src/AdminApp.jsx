@@ -29,9 +29,20 @@ export default function AdminApp() {
     return <AdminLoginScreen auth={auth} onSuccess={() => setActiveKey("admin-dashboard")} />;
   }
 
+  // Guards against a mis-wired onClick handing this an Event instead of a
+  // real PDF-extracted candidate row (that bug once caused "Converting
+  // circular structure to JSON" on submit, since an Event object holds a
+  // circular reference back to `window`). Only a plain object survives.
+  const isPlainCandidate = (value) =>
+    !!value &&
+    typeof value === "object" &&
+    !("nativeEvent" in value) &&
+    !("target" in value) &&
+    typeof value.Question === "string";
+
   const goToAddQuestion = (candidate) => {
     setEditingQuestion(null);
-    setPrefillValues(candidate || null);
+    setPrefillValues(isPlainCandidate(candidate) ? candidate : null);
     setActiveKey("question-upload");
   };
 

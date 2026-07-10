@@ -6,7 +6,7 @@ import {
   setQuestionStatus,
 } from "../services/adminQuestionService";
 
-const EMPTY_FILTERS = { skill: "", role: "", difficulty: "", status: "", search: "" };
+const EMPTY_FILTERS = { skill: "", difficulty: "", status: "", search: "" };
 
 /**
  * useQuestionBank — owns everything the Question Bank screen needs:

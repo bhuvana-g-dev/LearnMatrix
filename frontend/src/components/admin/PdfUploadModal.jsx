@@ -119,7 +119,7 @@ export default function PdfUploadModal({ onClose, onReview }) {
           <>
             <p className="text-xs mb-4" style={{ color: COLORS.textMid }}>
               Found {candidates.length} candidate question{candidates.length === 1 ? "" : "s"}. Pick one to
-              review and complete its QuestionID, Role, Skill, Difficulty and Status before saving.
+              review and complete its QuestionID, Skill, Difficulty and Status before saving.
             </p>
             <div className="flex flex-col gap-2.5">
               {candidates.map((c, idx) => (

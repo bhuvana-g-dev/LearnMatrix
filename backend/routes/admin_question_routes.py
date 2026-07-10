@@ -38,7 +38,6 @@ def list_questions_route():
     try:
         questions = get_questions_for_admin(
             skill=request.args.get("skill"),
-            role=request.args.get("role"),
             difficulty=request.args.get("difficulty"),
             status=request.args.get("status"),
             search=request.args.get("search"),
@@ -100,7 +99,7 @@ def extract_pdf_route():
     """
     Accepts a multipart/form-data upload with a single file field named
     'file'. Returns candidate question rows for the admin to review and
-    complete (QuestionID, Role, Skill, Difficulty, QuestionType, Status)
+    complete (QuestionID, Skill, Difficulty, QuestionType, Status)
     before saving each one via POST /api/admin/questions. Nothing is
     written to Firestore by this route.
     """

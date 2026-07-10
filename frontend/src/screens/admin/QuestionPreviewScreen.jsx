@@ -28,7 +28,6 @@ export default function QuestionPreviewScreen({ question, onBack }) {
 
       <div className="flex flex-wrap items-center gap-2 mb-4">
         <span style={badgeStyle}>{question.QuestionID}</span>
-        <span style={badgeStyle}>{question.Role || "—"}</span>
         <span style={badgeStyle}>{question.Skill}</span>
         <span style={badgeStyle}>{question.Difficulty}</span>
         <span style={badgeStyle}>{question.QuestionType}</span>

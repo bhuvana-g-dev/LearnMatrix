@@ -67,7 +67,6 @@ def list_distinct_skills(db) -> list[str]:
 def list_all_questions(
     db,
     skill: str | None = None,
-    role: str | None = None,
     difficulty: str | None = None,
     status: str | None = None,
 ) -> list[dict]:
@@ -81,8 +80,6 @@ def list_all_questions(
     query = _collection(db)
     if skill:
         query = query.where("Skill", "==", skill)
-    if role:
-        query = query.where("Role", "==", role)
     if difficulty:
         query = query.where("Difficulty", "==", difficulty)
     if status:

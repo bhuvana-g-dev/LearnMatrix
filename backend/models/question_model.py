@@ -38,11 +38,6 @@ class Question:
     Explanation: str
     Status: str = settings.STATUS_ACTIVE
 
-    # Added for the Admin Panel. Excel rows never carried a Role, only
-    # Skill, so this defaults to "" for anything imported from .xlsx and is
-    # populated going forward for questions created/edited via the admin form.
-    Role: str = ""
-
     # Server-managed. None until services/question_repository.py sets them.
     CreatedAt: Optional[object] = field(default=None)
     UpdatedAt: Optional[object] = field(default=None)
@@ -88,7 +83,6 @@ class Question:
 
         return Question(
             QuestionID=str(payload.get("QuestionID")).strip(),
-            Role=payload.get("Role", ""),
             Skill=payload.get("Skill"),
             Topic=payload.get("Topic", ""),
             Difficulty=payload.get("Difficulty"),
@@ -107,10 +101,19 @@ class Question:
         """
         Fields sourced from Excel, WITHOUT CreatedAt/UpdatedAt — the
         repository layer adds those depending on insert-vs-update.
+
+        Topic/Explanation are dropped entirely when blank rather than
+        written as "" — the Admin Panel form never collects them, so an
+        admin-created question simply won't have those keys in Firestore.
+        Excel-imported questions are unaffected since their rows always
+        supply real values for both.
         """
         data = asdict(self)
         data.pop("CreatedAt", None)
         data.pop("UpdatedAt", None)
+        for optional_field in ("Topic", "Explanation"):
+            if not data.get(optional_field):
+                data.pop(optional_field, None)
         return data
 
     def to_dict(self) -> dict:

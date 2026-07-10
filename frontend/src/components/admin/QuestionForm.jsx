@@ -1,14 +1,12 @@
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { COLORS, GRADIENTS, GLASS_CARD } from "../../constants/theme";
-import { ROLES } from "../../constants/roles";
 import { DIFFICULTIES, STATUSES, QUESTION_TYPES } from "../../constants/adminQuestionOptions";
 
 const OPTION_LETTERS = ["A", "B", "C", "D"];
 
 const EMPTY_QUESTION = {
   QuestionID: "",
-  Role: "",
   Skill: "",
   Difficulty: "Easy",
   QuestionType: "MCQ",
@@ -63,7 +61,7 @@ export default function QuestionForm({ initialValues, isEditing = false, onSubmi
 
   const handleSubmit = async () => {
     setFormError("");
-    const required = ["QuestionID", "Role", "Skill", "Difficulty", "QuestionType", "Question", "OptionA", "OptionB", "OptionC", "OptionD", "CorrectAnswer"];
+    const required = ["QuestionID", "Skill", "Difficulty", "QuestionType", "Question", "OptionA", "OptionB", "OptionC", "OptionD", "CorrectAnswer"];
     const missing = required.filter((key) => !String(values[key] || "").trim());
     if (missing.length) {
       setFormError(`Please fill in: ${missing.join(", ")}`);
@@ -98,15 +96,6 @@ export default function QuestionForm({ initialValues, isEditing = false, onSubmi
             onBlur={() => setFocused("")}
             style={{ ...fieldStyle(focused === "QuestionID"), opacity: isEditing ? 0.6 : 1 }}
           />
-        </Field>
-
-        <Field label="Role">
-          <select value={values.Role} onChange={set("Role")} style={fieldStyle(focused === "Role")} onFocus={() => setFocused("Role")} onBlur={() => setFocused("")}>
-            <option value="">Select role</option>
-            {ROLES.map((r) => (
-              <option key={r.id} value={r.title}>{r.title}</option>
-            ))}
-          </select>
         </Field>
 
         <Field label="Skill">

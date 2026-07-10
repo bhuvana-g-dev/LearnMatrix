@@ -44,7 +44,6 @@ def _validate_required_fields(payload: dict) -> None:
 
 def get_questions_for_admin(
     skill: str | None = None,
-    role: str | None = None,
     difficulty: str | None = None,
     status: str | None = None,
     search: str | None = None,
@@ -52,13 +51,11 @@ def get_questions_for_admin(
     """
     Every question (any Status) matching the given equality filters, then
     narrowed further by a case-insensitive substring match of `search`
-    against QuestionID/Question/Skill/Role — done in Python since Firestore
+    against QuestionID/Question/Skill — done in Python since Firestore
     cannot do substring queries.
     """
     db = get_firestore_client()
-    questions = list_all_questions(
-        db, skill=skill, role=role, difficulty=difficulty, status=status
-    )
+    questions = list_all_questions(db, skill=skill, difficulty=difficulty, status=status)
 
     if search:
         needle = search.strip().lower()
@@ -68,7 +65,6 @@ def get_questions_for_admin(
             if needle in str(q.get("QuestionID", "")).lower()
             or needle in str(q.get("Question", "")).lower()
             or needle in str(q.get("Skill", "")).lower()
-            or needle in str(q.get("Role", "")).lower()
         ]
 
     questions.sort(key=lambda q: str(q.get("QuestionID", "")))

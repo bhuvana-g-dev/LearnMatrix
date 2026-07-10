@@ -69,12 +69,8 @@ class Settings:
 
     # --- Admin Question Form (routes/admin_question_routes.py) ---
     # Fields required on every create/update coming from the Admin Panel.
-    # Kept separate from REQUIRED_QUESTION_COLUMNS (the Excel import schema)
-    # since the admin form is the newer, human-entry surface and adds
-    # "Role" (Excel rows never carried Role, only Skill).
     ADMIN_REQUIRED_QUESTION_FIELDS: list[str] = [
         "QuestionID",
-        "Role",
         "Skill",
         "Difficulty",
         "QuestionType",

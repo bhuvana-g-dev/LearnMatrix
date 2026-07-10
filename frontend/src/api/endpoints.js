@@ -1,0 +1,41 @@
+/**
+ * Central place for backend route strings.
+ * Keeps service modules free of magic strings and makes the eventual
+ * Flask integration a one-file change.
+ */
+export const ENDPOINTS = {
+  AUTH: {
+    LOGIN: "/auth/login",
+    GOOGLE: "/auth/google",
+    GITHUB: "/auth/github",
+    LOGOUT: "/auth/logout",
+  },
+  ROLES: {
+    LIST: "/roles",
+  },
+  SKILLS: {
+    BY_ROLE: (roleId) => `/roles/${roleId}/skills`,
+    SUBMIT: "/skills/selection",
+  },
+  ASSESSMENT: {
+    // Placeholder for the future Gemini-powered skill assessment endpoint.
+    GEMINI_ANALYZE: "/assessment/analyze",
+  },
+  RECOMMENDATION: {
+    // Placeholder for the future Scikit-Learn recommendation endpoint.
+    ROADMAP: "/recommendation/roadmap",
+  },
+  // ---- Admin Panel (new) ----
+  // Backend: routes/admin_question_routes.py, registered under /api like
+  // every other blueprint in app.py.
+  ADMIN: {
+    LOGIN: "/auth/login", // reuses the same dummy auth endpoint as the student side for now
+    QUESTIONS: {
+      LIST: "/admin/questions", // GET, supports ?skill=&role=&difficulty=&status=&search=
+      CREATE: "/admin/questions", // POST
+      UPDATE: (questionId) => `/admin/questions/${questionId}`, // PUT
+      SET_STATUS: (questionId) => `/admin/questions/${questionId}/status`, // PATCH
+      EXTRACT_PDF: "/admin/questions/extract-pdf", // POST multipart/form-data
+    },
+  },
+};

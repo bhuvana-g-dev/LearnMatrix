@@ -1,22 +1,14 @@
-# Frontend
-frontend/node_modules
-frontend/dist
-
-# Backend
-backend/__pycache__
-backend/.venv
-backend/venv
-
-# Firebase
-backend/firebase/serviceAccountKey.json
-
 # Environment
-backend/.env
-frontend/.env
+.env
+
+# Firebase secrets — NEVER commit this
+firebase/serviceAccountKey.json
 
 # Python
+__pycache__/
 *.pyc
+.venv/
+venv/
 
 # OS
 .DS_Store
-Thumbs.db

@@ -1,0 +1,22 @@
+# Frontend
+frontend/node_modules
+frontend/dist
+
+# Backend
+backend/__pycache__
+backend/.venv
+backend/venv
+
+# Firebase
+backend/firebase/serviceAccountKey.json
+
+# Environment
+backend/.env
+frontend/.env
+
+# Python
+*.pyc
+
+# OS
+.DS_Store
+Thumbs.db

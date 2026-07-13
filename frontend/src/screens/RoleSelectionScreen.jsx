@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { Check, ArrowRight } from "lucide-react";
+import { Check } from "lucide-react";
 import { COLORS, GRADIENTS } from "../constants/theme";
 
 /**
@@ -8,6 +8,14 @@ import { COLORS, GRADIENTS } from "../constants/theme";
  * so this file never needs to change when roleService starts calling Flask.
  */
 export default function RoleSelectionScreen({ roles, rolesLoading, selectedRole, onSelectRole, onContinue }) {
+  // Selecting a role now immediately advances to Skill Selection.
+  // onSelectRole still updates the selected role in useCareerPath state
+  // first, so the role is preserved by the time SkillSelectionScreen mounts.
+  const handleSelectAndContinue = (roleId) => {
+    onSelectRole(roleId);
+    onContinue();
+  };
+
   return (
     <div className="px-4 sm:px-8 py-10 pb-20">
       <div className="max-w-6xl mx-auto">
@@ -40,7 +48,7 @@ export default function RoleSelectionScreen({ roles, rolesLoading, selectedRole,
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.4, delay: i * 0.05 }}
                   whileHover={{ y: -4 }}
-                  onClick={() => onSelectRole(role.id)}
+                  onClick={() => handleSelectAndContinue(role.id)}
                   className="relative cursor-pointer p-5"
                   style={{
                     borderRadius: 30,
@@ -91,7 +99,7 @@ export default function RoleSelectionScreen({ roles, rolesLoading, selectedRole,
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      onSelectRole(role.id);
+                      handleSelectAndContinue(role.id);
                     }}
                     className="mt-4 w-full py-2 text-xs font-semibold"
                     style={{
@@ -110,28 +118,6 @@ export default function RoleSelectionScreen({ roles, rolesLoading, selectedRole,
             })}
           </div>
         )}
-
-        <div className="flex justify-center mt-12">
-          <motion.button
-            disabled={!selectedRole}
-            onClick={onContinue}
-            whileHover={selectedRole ? { y: -2, boxShadow: "0 12px 28px rgba(192,132,252,0.55)" } : {}}
-            whileTap={selectedRole ? { scale: 0.98 } : {}}
-            className="flex items-center gap-2 font-semibold"
-            style={{
-              padding: "14px 34px",
-              borderRadius: 9999,
-              color: "#fff",
-              border: "none",
-              background: selectedRole ? GRADIENTS.purpleSky : "#C9C4D6",
-              opacity: selectedRole ? 1 : 0.7,
-              cursor: selectedRole ? "pointer" : "not-allowed",
-              boxShadow: selectedRole ? "0 8px 20px rgba(192,132,252,0.4)" : "none",
-            }}
-          >
-            Continue <ArrowRight size={16} />
-          </motion.button>
-        </div>
       </div>
     </div>
   );

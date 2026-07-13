@@ -30,24 +30,23 @@ export default function App() {
   }, [auth.isAuthenticated, activeKey]);
 
   if (!auth.isAuthenticated) {
+    if (showSignup) {
+      return (
+        <SignUpScreen
+          auth={auth}
+          onLogin={() => setShowSignup(false)}
+        />
+      );
+    }
 
-  if (showSignup) {
     return (
-      <SignUpScreen
+      <LoginScreen
         auth={auth}
-        onLogin={() => setShowSignup(false)}
+        onSuccess={() => setActiveKey("role")}
+        onSignup={() => setShowSignup(true)}
       />
     );
   }
-
-  return (
-    <LoginScreen
-      auth={auth}
-      onSuccess={() => setActiveKey("role")}
-      onSignup={() => setShowSignup(true)}
-    />
-  );
-}
 
   let content;
   if (activeKey === "role") {

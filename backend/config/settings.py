@@ -82,5 +82,23 @@ class Settings:
         "CorrectAnswer",
     ]
 
+    # --- AI Agents (agents/) ---
+    # Never hardcode the key/model anywhere else — same rule as every other
+    # setting in this file. GEMINI_API_KEY is required only once an agent
+    # actually runs; importing agents/ code never touches os.getenv itself.
+    GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
+    GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
+
+    # Question Generation Agent defaults/guardrails. These are also the
+    # values the Admin Panel's future "AI Settings" screen will edit.
+    AI_MAX_QUESTIONS_PER_REQUEST: int = int(
+        os.getenv("AI_MAX_QUESTIONS_PER_REQUEST", 20)
+    )
+    AI_GENERATION_MAX_RETRIES: int = int(
+        os.getenv("AI_GENERATION_MAX_RETRIES", 1)
+    )
+    VALID_DIFFICULTIES: list[str] = ["Easy", "Medium", "Hard"]
+    VALID_QUESTION_TYPES: list[str] = ["MCQ"]
+
 
 settings = Settings()

@@ -5,6 +5,7 @@ import LoginScreen from "./screens/LoginScreen";
 import SignUpScreen from "./screens/SignUpScreen";
 import RoleSelectionScreen from "./screens/RoleSelectionScreen";
 import SkillSelectionScreen from "./screens/SkillSelectionScreen";
+import AssessmentScreen from "./screens/AssessmentScreen";
 import ComingSoonScreen from "./screens/ComingSoonScreen";
 import { useAuth } from "./hooks/useAuth";
 import { useCareerPath } from "./hooks/useCareerPath";
@@ -67,12 +68,19 @@ export default function App() {
         selectedSkills={careerPath.selectedSkills}
         onToggleSkill={careerPath.toggleSkill}
         onFinish={async () => {
-          const result = await careerPath.finishSkillSelection();
-          alert(`Ready! ${careerPath.selectedSkills.length} skills selected.`);
-          return result;
+          await careerPath.finishSkillSelection();
+          setActiveKey("initial-assessment");
         }}
         onBack={() => setActiveKey("role")}
         selectedRole={careerPath.selectedRole}
+      />
+    );
+  } else if (activeKey === "initial-assessment") {
+    content = (
+      <AssessmentScreen
+        selectedRole={careerPath.selectedRole}
+        selectedSkills={careerPath.selectedSkills}
+        onBack={() => setActiveKey("skills")}
       />
     );
   } else {

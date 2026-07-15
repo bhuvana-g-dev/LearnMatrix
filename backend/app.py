@@ -24,6 +24,7 @@ from routes.role_routes import role_bp
 from routes.skill_routes import skill_bp
 from routes.question_routes import question_bp
 from routes.admin_question_routes import admin_question_bp
+from routes.ai_assessment_routes import ai_assessment_bp
 
 
 def create_app() -> Flask:
@@ -42,6 +43,7 @@ def create_app() -> Flask:
     app.register_blueprint(skill_bp, url_prefix="/api")
     app.register_blueprint(question_bp, url_prefix="/api")
     app.register_blueprint(admin_question_bp, url_prefix="/api")
+    app.register_blueprint(ai_assessment_bp, url_prefix="/api")
 
     return app
 

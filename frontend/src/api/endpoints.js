@@ -18,8 +18,11 @@ export const ENDPOINTS = {
     SUBMIT: "/skills/selection",
   },
   ASSESSMENT: {
-    // Placeholder for the future Gemini-powered skill assessment endpoint.
-    GEMINI_ANALYZE: "/assessment/analyze",
+    // Question Generation Agent (backend/routes/ai_assessment_routes.py).
+    // Full Assessment Planner/Builder pipeline (§9 ARCHITECTURE.md Phase 2)
+    // will get its own POST /ai/assessments here later — this screen will
+    // only need aiAssessmentService.js updated, not AssessmentScreen.jsx.
+    GENERATE_QUESTIONS: "/ai/generate-questions",
   },
   RECOMMENDATION: {
     // Placeholder for the future Scikit-Learn recommendation endpoint.

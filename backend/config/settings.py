@@ -87,7 +87,7 @@ class Settings:
     # setting in this file. GEMINI_API_KEY is required only once an agent
     # actually runs; importing agents/ code never touches os.getenv itself.
     GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
-    GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-2.5-flash-lite")
+    GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-3.5-flash")
 
     # Question Generation Agent defaults/guardrails. These are also the
     # values the Admin Panel's future "AI Settings" screen will edit.

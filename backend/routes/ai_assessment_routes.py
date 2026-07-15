@@ -4,8 +4,10 @@ routes/ai_assessment_routes.py
 AI Agent routes. Registered in app.py the same way every other blueprint
 is (url_prefix="/api"), so the full path is:
 
-    POST /api/ai/generate-questions -> proof-of-concept for the
-                                        Question Generation Agent
+    POST /api/ai/generate-questions -> Question Generation Agent, with
+                                        difficulty either passed explicitly
+                                        or decided by the Difficulty Engine
+                                        from student performance signals
 
 This is the first slice of the multi-agent architecture in
 ARCHITECTURE.md. Later agents (Assessment Planner, Quality Validation,
@@ -30,28 +32,38 @@ def generate_questions_route():
 
     skill = payload.get("skill")
     topics = payload.get("topics")
-    difficulty = payload.get("difficulty")
     count = payload.get("count")
+    difficulty = payload.get("difficulty")  # explicit override, optional
+    signals = payload.get("signals")        # Difficulty Engine input, optional
     learning_objective = payload.get("learning_objective", "")
 
-    if not skill or not topics or not difficulty or not count:
+    if not skill or not topics or not count:
         return error_response(
-            "Request body must include 'skill', 'topics' (list), "
-            "'difficulty', and 'count'.",
+            "Request body must include 'skill', 'topics' (list), and 'count'.",
+            status_code=400,
+        )
+    if not difficulty and not signals:
+        return error_response(
+            "Request body must include either 'difficulty' (explicit "
+            "override) or 'signals' (previous_score, time_taken_seconds, "
+            "expected_time_seconds, confidence, mistake_rate) so the "
+            "Difficulty Engine can decide.",
             status_code=400,
         )
 
     try:
-        questions = generate_ai_questions(
+        result = generate_ai_questions(
             skill=skill,
             topics=topics,
-            difficulty=difficulty,
             count=int(count),
+            difficulty=difficulty,
+            signals=signals,
             learning_objective=learning_objective,
         )
         return success_response(
-            data=questions,
-            message=f"Generated {len(questions)} question(s).",
+            data=result,  # {difficulty, difficulty_reasoning, questions}
+            message=f"Generated {len(result['questions'])} question(s) "
+                    f"at {result['difficulty']} difficulty.",
         )
     except AIAssessmentError as exc:
         return error_response(str(exc), status_code=422)

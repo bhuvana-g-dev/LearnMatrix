@@ -3,7 +3,7 @@ import { getUserProfile } from "../services/profileService";
 import { getLearningProgress } from "../services/learningProgressService";
 import { getUpcomingAssessments } from "../services/assessmentService";
 import { getCompletedCourses } from "../services/completedCoursesService";
-import { getRevisionSchedule, markRevisionCompleted } from "../services/revisionService";
+import { getRevisionSchedule, markRevisionCompleted, snoozeRevision as snoozeRevisionApi } from "../services/revisionService";
 import { getLearningStatistics } from "../services/statisticsService";
 import { getAIInsights } from "../services/aiInsightsService";
 
@@ -62,6 +62,27 @@ export function useProfile() {
     markRevisionCompleted(id);
   }, []);
 
+  // Postpones a "today" item to "upcoming" (Tomorrow) instead of doing it now.
+  const snoozeRevision = useCallback((id) => {
+    setRevisions((prev) =>
+      prev.map((r) => (r.id === id ? { ...r, bucket: "upcoming", date: "Tomorrow" } : r))
+    );
+    snoozeRevisionApi(id);
+  }, []);
+
+  // Bulk-completes every not-yet-done item scheduled for today.
+  const markAllTodayCompleted = useCallback(() => {
+    setRevisions((prev) => {
+      const next = prev.map((r) =>
+        r.bucket === "today" && !r.completed ? { ...r, completed: true } : r
+      );
+      next
+        .filter((r) => r.bucket === "today" && r.completed)
+        .forEach((r) => markRevisionCompleted(r.id));
+      return next;
+    });
+  }, []);
+
   return {
     profile,
     progress,
@@ -72,5 +93,7 @@ export function useProfile() {
     aiInsights,
     loading,
     toggleRevisionCompleted,
+    snoozeRevision,
+    markAllTodayCompleted,
   };
 }

@@ -8,10 +8,11 @@ import { ENDPOINTS } from "../api/endpoints";
  * Uses a longer timeout than the default apiClient (10s) because:
  *  - Render free-tier services cold-start (~15-50s) after idling
  *  - The Gemini call itself + one built-in retry can take several seconds
- * 60s covers both without the request tab timing out on a slow first hit,
- * the same class of problem Postman's Cloud Agent hit with its 30s cap.
+ * 100s covers cold start + a retried Gemini call with its 2s backoff
+ * delay, without the request timing out on a slow first hit — the same
+ * class of problem Postman's Cloud Agent hit with its 30s cap.
  */
-const GENERATION_TIMEOUT_MS = 60000;
+const GENERATION_TIMEOUT_MS = 100000;
 
 /**
  * @param {object} params

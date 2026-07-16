@@ -56,7 +56,9 @@ export default function AssessmentScreen({ selectedRole, selectedSkills, onBack 
       const result = await generateAssessmentQuestions({
         skill: roleTitle,
         topics: selectedSkills.length ? selectedSkills : [roleTitle],
-        count: 5,
+        count: 3, // kept low for demo reliability — fewer tokens = faster
+                  // generation, less exposure to Gemini overload windows.
+                  // Bump back to 5+ once things are stable.
         signals: {
           previous_score: 50,
           time_taken_seconds: 0,

@@ -14,6 +14,7 @@ export const REVISION_SCHEDULE = [
     priority: "High",
     completed: false,
     bucket: "today",
+    reason: "You studied this 3 days ago — reviewing now fights the forgetting curve while it's still fresh.",
   },
   {
     id: "r2",
@@ -24,6 +25,7 @@ export const REVISION_SCHEDULE = [
     priority: "Medium",
     completed: false,
     bucket: "upcoming",
+    reason: "Your last quiz on this topic scored below your average — an extra pass now should lock it in.",
   },
   {
     id: "r3",
@@ -34,6 +36,7 @@ export const REVISION_SCHEDULE = [
     priority: "Low",
     completed: false,
     bucket: "upcoming",
+    reason: "First review after initial learning — spaced 5 days out, the ideal gap for long-term retention.",
   },
   {
     id: "r4",
@@ -44,5 +47,6 @@ export const REVISION_SCHEDULE = [
     priority: "Medium",
     completed: true,
     bucket: "completed",
+    reason: "Reviewed on schedule — nice work staying consistent.",
   },
 ];

@@ -16,6 +16,8 @@ because a malformed API response is a generation failure, not a quality
 failure — retrying belongs here, not in the validator.
 """
 
+import time
+
 from agents.base_agent import BaseAgent, AgentError
 from config.settings import settings
 from models.generated_question_model import GeneratedQuestion
@@ -71,6 +73,15 @@ class QuestionGenerationAgent(BaseAgent):
                 ]
             except (GeminiClientError, QuestionGenerationError) as exc:
                 last_error = exc
+                is_last_attempt = attempt == settings.AI_GENERATION_MAX_RETRIES
+                if not is_last_attempt:
+                    # Transient overload (503) usually clears within a
+                    # couple seconds — retrying instantly tends to hit the
+                    # exact same busy moment again. A short fixed delay
+                    # (not exponential — we only ever retry once or twice
+                    # here, so backoff math isn't worth the complexity)
+                    # meaningfully raises the odds the retry succeeds.
+                    time.sleep(2)
                 continue
 
         raise QuestionGenerationError(

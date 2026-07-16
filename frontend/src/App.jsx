@@ -3,9 +3,13 @@ import { AnimatePresence, motion } from "framer-motion";
 import DashboardLayout from "./components/layout/DashboardLayout";
 import LoginScreen from "./screens/LoginScreen";
 import SignUpScreen from "./screens/SignUpScreen";
+import HomeScreen from "./screens/HomeScreen";
 import RoleSelectionScreen from "./screens/RoleSelectionScreen";
 import SkillSelectionScreen from "./screens/SkillSelectionScreen";
 import AssessmentScreen from "./screens/AssessmentScreen";
+import ProfileScreen from "./screens/ProfileScreen";
+import RevisionScheduleScreen from "./screens/RevisionScheduleScreen";
+import LearningInsightsScreen from "./screens/LearningInsightsScreen";
 import ComingSoonScreen from "./screens/ComingSoonScreen";
 import { useAuth } from "./hooks/useAuth";
 import { useCareerPath } from "./hooks/useCareerPath";
@@ -23,7 +27,7 @@ import { NAV_SECTIONS } from "./constants/navigation";
 export default function App() {
   const auth = useAuth();
   const careerPath = useCareerPath();
-  const [activeKey, setActiveKey] = useState("role");
+  const [activeKey, setActiveKey] = useState("home");
   const [showSignup, setShowSignup] = useState(false);
 
   useEffect(() => {
@@ -43,14 +47,16 @@ export default function App() {
     return (
       <LoginScreen
         auth={auth}
-        onSuccess={() => setActiveKey("role")}
+        onSuccess={() => setActiveKey("home")}
         onSignup={() => setShowSignup(true)}
       />
     );
   }
 
   let content;
-  if (activeKey === "role") {
+  if (activeKey === "home") {
+    content = <HomeScreen onGetStarted={() => setActiveKey("role")} />;
+  } else if (activeKey === "role") {
     content = (
       <RoleSelectionScreen
         roles={careerPath.roles}
@@ -83,9 +89,18 @@ export default function App() {
         onBack={() => setActiveKey("skills")}
       />
     );
+  } else if (activeKey === "profile") {
+    // "My Profile" > "Overview" — the main profile hub (see
+    // constants/navigation.js for the dropdown's other two entries).
+    content = <ProfileScreen onNavigate={setActiveKey} />;
+  } else if (activeKey === "revision-schedule") {
+    content = <RevisionScheduleScreen />;
+  } else if (activeKey === "learning-insights") {
+    content = <LearningInsightsScreen />;
   } else {
     const label =
-      NAV_SECTIONS.flatMap((s) => s.children).find((c) => c.key === activeKey)?.label || "Coming Soon";
+      NAV_SECTIONS.flatMap((s) => s.children || []).find((c) => c.key === activeKey)?.label ||
+      "Coming Soon";
     content = <ComingSoonScreen label={label} onBack={() => setActiveKey("role")} />;
   }
 

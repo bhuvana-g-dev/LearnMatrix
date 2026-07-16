@@ -17,3 +17,12 @@ export async function markRevisionCompleted(id) {
   // ---- CURRENT (dummy/local) ----
   return Promise.resolve({ id, completed: true });
 }
+
+export async function snoozeRevision(id) {
+  // ---- FUTURE (Flask) ----
+  // const { data } = await apiClient.post(ENDPOINTS.REVISION.SNOOZE(id));
+  // return data;
+
+  // ---- CURRENT (dummy/local) ----
+  return Promise.resolve({ id, bucket: "upcoming", date: "Tomorrow" });
+}

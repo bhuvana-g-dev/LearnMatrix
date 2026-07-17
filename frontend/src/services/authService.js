@@ -56,19 +56,12 @@ export async function signupUser(name, email, password) {
     password
   );
 
-  // Save the entered name onto the Firebase Auth user (user.displayName)
-  // so it's available everywhere via auth.currentUser.displayName.
   try {
     await updateProfile(userCredential.user, { displayName: name });
   } catch {
     // Non-fatal — account still exists even if this write fails.
   }
 
-  // Send a verification link — a mistyped or fake domain (e.g. "gmai.com"
-  // instead of "gmail.com") will never receive or click this, which is
-  // the real signal the address wasn't valid. App.jsx gates access on
-  // user.emailVerified, so signing up doesn't fully unlock the app until
-  // this link is clicked.
   try {
     await sendEmailVerification(userCredential.user);
   } catch {
@@ -100,9 +93,6 @@ export async function resendVerificationEmail() {
   };
 }
 
-// Firebase caches the user object at sign-in time, so emailVerified won't
-// flip to true just because the person clicked the link in another tab —
-// we have to explicitly reload the current user from the server to see it.
 export async function reloadCurrentUser() {
   if (!auth.currentUser) {
     throw new Error("No user is currently signed in.");

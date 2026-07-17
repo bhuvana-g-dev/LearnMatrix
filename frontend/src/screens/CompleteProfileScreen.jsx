@@ -5,7 +5,6 @@ import PageShell from "../components/layout/PageShell";
 import Logo from "../components/common/Logo";
 import { COLORS, GRADIENTS, GLASS_CARD } from "../constants/theme";
 import { saveUserProfileDoc } from "../services/userProfileService";
-
 const MOBILE_REGEX = /^[0-9]{10}$/;
 
 // Firestore documents cap out at 1MB, so we keep the base64 photo small

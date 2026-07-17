@@ -19,6 +19,5 @@ export function useProfileCompletion(user) {
     if (!user) return;
     check();
   }, [user, check]);
-
   return { status, recheck: check };
 }

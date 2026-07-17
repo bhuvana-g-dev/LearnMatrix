@@ -4,7 +4,6 @@ import { MailCheck, RefreshCw, LogOut } from "lucide-react";
 import PageShell from "../components/layout/PageShell";
 import Logo from "../components/common/Logo";
 import { COLORS, GRADIENTS, GLASS_CARD } from "../constants/theme";
-
 /**
  * VerifyEmailScreen — shown when the person is authenticated but
  * auth.user.emailVerified is still false (App.jsx gates on this). Blocks

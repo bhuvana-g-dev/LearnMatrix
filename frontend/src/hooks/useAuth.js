@@ -9,7 +9,6 @@ import {
   resendVerificationEmail,
   reloadCurrentUser,
 } from "../services/authService";
-
 /**
  * useAuth — Authentication Hook
  */

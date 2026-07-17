@@ -89,6 +89,29 @@ class Settings:
     GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
     GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-3.5-flash")
 
+    # --- LLM Provider Fallback Chain (utils/gemini_client.py) ---
+    # Comma-separated, tried in order. If the first provider fails (rate
+    # limit, overload, timeout), the next one is tried automatically —
+    # no manual env var flip / redeploy needed mid-demo. Only providers
+    # whose API key is actually set are attempted; missing keys are
+    # skipped rather than causing a hard failure.
+    AI_PROVIDER_CHAIN: list[str] = [
+        p.strip() for p in os.getenv("AI_PROVIDER_CHAIN", "gemini,groq").split(",") if p.strip()
+    ]
+
+    GROQ_API_KEY: str = os.getenv("GROQ_API_KEY", "")
+    GROQ_MODEL: str = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+
+    CEREBRAS_API_KEY: str = os.getenv("CEREBRAS_API_KEY", "")
+    CEREBRAS_MODEL: str = os.getenv("CEREBRAS_MODEL", "llama-3.3-70b")
+    CEREBRAS_BASE_URL: str = "https://api.cerebras.ai/v1"
+
+    OPENROUTER_API_KEY: str = os.getenv("OPENROUTER_API_KEY", "")
+    OPENROUTER_MODEL: str = os.getenv(
+        "OPENROUTER_MODEL", "meta-llama/llama-3.3-70b-instruct:free"
+    )
+    OPENROUTER_BASE_URL: str = "https://openrouter.ai/api/v1"
+
     # Question Generation Agent defaults/guardrails. These are also the
     # values the Admin Panel's future "AI Settings" screen will edit.
     AI_MAX_QUESTIONS_PER_REQUEST: int = int(

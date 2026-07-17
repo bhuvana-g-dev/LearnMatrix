@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
 import { getUserProfileDoc } from "../services/userProfileService";
-
 /**
  * useProfileCompletion — checks Firestore for users/{uid} and reports
  * whether the person has filled in college/department/year/mobile/pic

@@ -12,6 +12,8 @@ export default function LoginScreen({ auth, onSuccess, onSignup }) {
   const [showPw, setShowPw] = useState(false);
   const [remember, setRemember] = useState(false);
   const [focused, setFocused] = useState("");
+  const [resetStatus, setResetStatus] = useState("idle"); // idle | sending | sent | error
+  const [resetMessage, setResetMessage] = useState("");
 
   const inputStyle = (name) => ({
     width: "100%",
@@ -34,6 +36,25 @@ export default function LoginScreen({ auth, onSuccess, onSignup }) {
       await auth.login({ email, password, remember });
       onSuccess();
     } catch (e) {}
+  };
+
+  const handleForgotPassword = async () => {
+    if (!email.trim()) {
+      setResetStatus("error");
+      setResetMessage("Enter your email above first, then click Forgot Password.");
+      return;
+    }
+
+    try {
+      setResetStatus("sending");
+      setResetMessage("");
+      await auth.resetPassword(email.trim());
+      setResetStatus("sent");
+      setResetMessage(`Reset link sent to ${email.trim()} — check your inbox.`);
+    } catch {
+      setResetStatus("error");
+      setResetMessage(auth.error || "Couldn't send the reset email. Check the address and try again.");
+    }
   };
 
   return (
@@ -84,7 +105,13 @@ export default function LoginScreen({ auth, onSuccess, onSignup }) {
                 type="email"
                 placeholder="Username / Email"
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                onChange={(e) => {
+                  setEmail(e.target.value);
+                  if (resetStatus !== "idle") {
+                    setResetStatus("idle");
+                    setResetMessage("");
+                  }
+                }}
                 onFocus={() => setFocused("email")}
                 onBlur={() => setFocused("")}
                 onKeyDown={(e) =>
@@ -173,16 +200,32 @@ export default function LoginScreen({ auth, onSuccess, onSignup }) {
                 Remember Me
               </label>
 
-              <a
-                href="#"
+              <button
+                type="button"
+                onClick={handleForgotPassword}
+                disabled={resetStatus === "sending"}
                 style={{
                   color: "#8B5CF6",
                   fontWeight: 600,
+                  background: "none",
+                  border: "none",
+                  cursor: resetStatus === "sending" ? "default" : "pointer",
+                  padding: 0,
+                  font: "inherit",
                 }}
               >
-                Forgot Password?
-              </a>
+                {resetStatus === "sending" ? "Sending..." : "Forgot Password?"}
+              </button>
             </div>
+
+            {resetMessage && (
+              <p
+                className="text-xs -mt-1"
+                style={{ color: resetStatus === "sent" ? "#22C08E" : "#E4568A" }}
+              >
+                {resetMessage}
+              </p>
+            )}
 
             {/* Login Button */}
             <motion.button

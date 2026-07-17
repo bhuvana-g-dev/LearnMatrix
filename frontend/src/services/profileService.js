@@ -8,6 +8,11 @@ export async function getUserProfile() {
   // return data;
 
   // ---- CURRENT ----
+  // fullName/email come from Firebase Auth; college, department,
+  // academicYear, mobile, and avatarUrl come from the Firestore doc
+  // saved by CompleteProfileScreen (users/{uid}). USER_PROFILE only
+  // fills in anything still missing (e.g. careerPath, joinedDate) as a
+  // fallback so the rest of the page doesn't break.
   const currentUser = auth.currentUser;
   let firestoreData = {};
 

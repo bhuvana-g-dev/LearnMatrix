@@ -1,5 +1,4 @@
 import { COLORS } from "../../constants/theme";
-
 // Logo embedded directly as base64 — no separate image file needed, so
 // this works on any machine right after a git clone/pull with zero extra
 // setup (no assets folder, no missing-file risk).

@@ -16,6 +16,8 @@ import ComingSoonScreen from "./screens/ComingSoonScreen";
 import { useAuth } from "./hooks/useAuth";
 import { useCareerPath } from "./hooks/useCareerPath";
 import { useProfileCompletion } from "./hooks/useProfileCompletion";
+import { saveUserProfileDoc } from "./services/userProfileService";
+import { ROLE_TITLES } from "./constants/roles";
 import { NAV_SECTIONS } from "./constants/navigation";
 
 /**
@@ -115,6 +117,20 @@ export default function App() {
         onToggleSkill={careerPath.toggleSkill}
         onFinish={async () => {
           await careerPath.finishSkillSelection();
+
+          // Save the chosen role onto the Firestore profile doc so
+          // ProfileScreen's "Career Path" field reflects the real choice
+          // instead of the USER_PROFILE mock default.
+          if (auth.user && careerPath.selectedRole) {
+            try {
+              await saveUserProfileDoc(auth.user.uid, {
+                careerPath: ROLE_TITLES[careerPath.selectedRole] || careerPath.selectedRole,
+              });
+            } catch {
+              // Non-fatal — profile page just keeps showing the previous value.
+            }
+          }
+
           setActiveKey("initial-assessment");
         }}
         onBack={() => setActiveKey("role")}

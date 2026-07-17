@@ -13,8 +13,8 @@ function initials(name = "") {
 
 /**
  * SECTION 1 — Personal Information.
- * All fields come from the `profile` object (userProfile.js via
- * profileService.js) — nothing here is hardcoded.
+ * All fields come from the `profile` object (Firebase Auth + Firestore,
+ * via profileService.js) — nothing here is hardcoded.
  */
 export default function ProfileHeaderCard({ profile, onEditProfile }) {
   if (!profile) return null;
@@ -26,6 +26,7 @@ export default function ProfileHeaderCard({ profile, onEditProfile }) {
 
   const infoRows = [
     { label: "Email", value: profile.email },
+    { label: "Mobile", value: profile.mobile },
     { label: "College", value: profile.college },
     { label: "Department", value: profile.department },
     { label: "Academic Year", value: profile.academicYear },

@@ -21,10 +21,13 @@ share one small HTTP helper instead of pulling in another SDK each.
 """
 
 import json
+import logging
 
 import requests
 
 from config.settings import settings
+
+logger = logging.getLogger("learnmatrix.ai_provider")
 
 _gemini_client = None
 _groq_client = None
@@ -180,8 +183,11 @@ def generate_json(prompt: str, temperature: float = 0.4) -> dict | list:
             continue
         try:
             func = globals()[func_name]
-            return func(prompt, temperature)
+            result = func(prompt, temperature)
+            logger.info(f"[AI_PROVIDER] request served by: {provider_name}")
+            return result
         except Exception as exc:  # noqa: BLE001
+            logger.warning(f"[AI_PROVIDER] {provider_name} failed: {exc}")
             attempts.append(f"{provider_name}: {exc}")
             continue
 

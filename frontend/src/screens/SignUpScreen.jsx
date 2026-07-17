@@ -1,11 +1,17 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { Mail, Lock, Eye, EyeOff, User } from "lucide-react";
+import { Mail, Lock, Eye, EyeOff, User, CheckCircle2 } from "lucide-react";
 import PageShell from "../components/layout/PageShell";
 import Logo from "../components/common/Logo";
 import { COLORS, GRADIENTS, GLASS_CARD } from "../constants/theme";
 
-export default function SignUpScreen({ auth, onLogin }) {
+// Catches format mistakes (missing @, no domain, no TLD, spaces, etc).
+// It can't catch a typo'd-but-syntactically-valid domain like
+// "gmai.com" — only the verification email sent on signup (and the
+// verify-email gate in App.jsx) can catch that.
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+
+export default function SignUpScreen({ auth, onLogin, onSuccess }) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -13,6 +19,7 @@ export default function SignUpScreen({ auth, onLogin }) {
   const [showPw, setShowPw] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [successMessage, setSuccessMessage] = useState("");
 
   const inputStyle = {
     width: "100%",
@@ -26,6 +33,7 @@ export default function SignUpScreen({ auth, onLogin }) {
 
   const handleSignup = async () => {
     setError("");
+    setSuccessMessage("");
 
     if (!name.trim()) {
       setError("Please enter your name.");
@@ -34,6 +42,11 @@ export default function SignUpScreen({ auth, onLogin }) {
 
     if (!email.trim()) {
       setError("Please enter your email.");
+      return;
+    }
+
+    if (!EMAIL_REGEX.test(email.trim())) {
+      setError("Please enter a valid email address (e.g. name@example.com).");
       return;
     }
 
@@ -49,9 +62,13 @@ export default function SignUpScreen({ auth, onLogin }) {
 
     try {
       setLoading(true);
-      await auth.signup(email, password);
-      alert("Account created successfully!");
-      onLogin();
+      await auth.signup(name.trim(), email.trim(), password);
+      setSuccessMessage(
+        `Account created! We've sent a verification link to ${email.trim()} — click it to unlock the app.`
+      );
+      setTimeout(() => {
+        (onSuccess || onLogin)?.();
+      }, 1600);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -103,6 +120,7 @@ export default function SignUpScreen({ auth, onLogin }) {
                 placeholder="Full Name"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
+                disabled={loading || !!successMessage}
               />
             </div>
 
@@ -123,6 +141,7 @@ export default function SignUpScreen({ auth, onLogin }) {
                 placeholder="Email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
+                disabled={loading || !!successMessage}
               />
             </div>
 
@@ -143,6 +162,7 @@ export default function SignUpScreen({ auth, onLogin }) {
                 placeholder="Password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
+                disabled={loading || !!successMessage}
               />
 
               <button
@@ -178,6 +198,7 @@ export default function SignUpScreen({ auth, onLogin }) {
                 placeholder="Confirm Password"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
+                disabled={loading || !!successMessage}
               />
             </div>
 
@@ -190,11 +211,21 @@ export default function SignUpScreen({ auth, onLogin }) {
               </p>
             )}
 
+            {successMessage && (
+              <div
+                className="flex items-start gap-2 text-sm p-3"
+                style={{ borderRadius: 14, background: "rgba(34,192,142,0.12)", color: "#22C08E" }}
+              >
+                <CheckCircle2 size={16} className="flex-shrink-0 mt-0.5" />
+                <span>{successMessage}</span>
+              </div>
+            )}
+
             <motion.button
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.98 }}
               onClick={handleSignup}
-              disabled={loading}
+              disabled={loading || !!successMessage}
               className="w-full"
               style={{
                 padding: "14px",
@@ -203,10 +234,11 @@ export default function SignUpScreen({ auth, onLogin }) {
                 background: GRADIENTS.purplePink,
                 color: "#fff",
                 fontWeight: 700,
-                cursor: "pointer",
+                cursor: loading || successMessage ? "default" : "pointer",
+                opacity: loading || successMessage ? 0.8 : 1,
               }}
             >
-              {loading ? "Creating Account..." : "Create Account"}
+              {successMessage ? "Redirecting..." : loading ? "Creating Account..." : "Create Account"}
             </motion.button>
 
             <p

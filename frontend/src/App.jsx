@@ -3,6 +3,8 @@ import { AnimatePresence, motion } from "framer-motion";
 import DashboardLayout from "./components/layout/DashboardLayout";
 import LoginScreen from "./screens/LoginScreen";
 import SignUpScreen from "./screens/SignUpScreen";
+import VerifyEmailScreen from "./screens/VerifyEmailScreen";
+import CompleteProfileScreen from "./screens/CompleteProfileScreen";
 import HomeScreen from "./screens/HomeScreen";
 import RoleSelectionScreen from "./screens/RoleSelectionScreen";
 import SkillSelectionScreen from "./screens/SkillSelectionScreen";
@@ -13,12 +15,15 @@ import LearningInsightsScreen from "./screens/LearningInsightsScreen";
 import ComingSoonScreen from "./screens/ComingSoonScreen";
 import { useAuth } from "./hooks/useAuth";
 import { useCareerPath } from "./hooks/useCareerPath";
+import { useProfileCompletion } from "./hooks/useProfileCompletion";
 import { NAV_SECTIONS } from "./constants/navigation";
 
 /**
  * App.jsx is now a thin composition root:
- *  - useAuth()        -> auth state + login/logout (dummy today, Flask/Firebase later)
- *  - useCareerPath()  -> roles + skills state (dummy today, Flask later)
+ *  - useAuth()               -> auth state + login/logout (Firebase)
+ *  - useCareerPath()         -> roles + skills state (dummy today, Flask later)
+ *  - useProfileCompletion()  -> has this user filled in college/dept/year/
+ *                               mobile/photo yet? (Firestore, users/{uid})
  *
  * Screens receive plain props and stay 100% presentational. Swapping the
  * backend only means editing services/*.js — nothing in this file or in
@@ -27,6 +32,7 @@ import { NAV_SECTIONS } from "./constants/navigation";
 export default function App() {
   const auth = useAuth();
   const careerPath = useCareerPath();
+  const profileCompletion = useProfileCompletion(auth.user);
   const [activeKey, setActiveKey] = useState("home");
   const [showSignup, setShowSignup] = useState(false);
 
@@ -40,6 +46,10 @@ export default function App() {
         <SignUpScreen
           auth={auth}
           onLogin={() => setShowSignup(false)}
+          onSuccess={() => {
+            setShowSignup(false);
+            setActiveKey("home");
+          }}
         />
       );
     }
@@ -49,6 +59,36 @@ export default function App() {
         auth={auth}
         onSuccess={() => setActiveKey("home")}
         onSignup={() => setShowSignup(true)}
+      />
+    );
+  }
+
+  // Blocks access until the person clicks the verification link sent on
+  // signup. Google/GitHub sign-ins already come back with emailVerified
+  // true, so this only ever gates email/password accounts.
+  if (!auth.user?.emailVerified) {
+    return <VerifyEmailScreen auth={auth} />;
+  }
+
+  // Blocks access until college/department/year/mobile/photo are saved in
+  // Firestore. Runs on every login, not just right after signup — so an
+  // account that somehow skipped this step still gets caught.
+  if (profileCompletion.status === "loading") {
+    return (
+      <div className="flex items-center justify-center" style={{ minHeight: "100vh" }}>
+        <p className="text-sm text-gray-500">Loading your account...</p>
+      </div>
+    );
+  }
+
+  if (profileCompletion.status === "incomplete") {
+    return (
+      <CompleteProfileScreen
+        user={auth.user}
+        onComplete={() => {
+          profileCompletion.recheck();
+          setActiveKey("home");
+        }}
       />
     );
   }

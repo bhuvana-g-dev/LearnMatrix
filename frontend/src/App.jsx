@@ -71,7 +71,6 @@ export default function App() {
   if (!auth.user?.emailVerified) {
     return <VerifyEmailScreen auth={auth} />;
   }
-
   // Blocks access until college/department/year/mobile/photo are saved in
   // Firestore. Runs on every login, not just right after signup — so an
   // account that somehow skipped this step still gets caught.

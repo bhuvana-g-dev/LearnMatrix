@@ -1,7 +1,6 @@
 import { auth } from "../firebase";
 import { getUserProfileDoc } from "./userProfileService";
 import { USER_PROFILE } from "../constants/userProfile";
-
 export async function getUserProfile() {
   // ---- FUTURE (Flask) ----
   // const { data } = await apiClient.get(ENDPOINTS.PROFILE.ME);

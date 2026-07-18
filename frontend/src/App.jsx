@@ -19,7 +19,6 @@ import { useProfileCompletion } from "./hooks/useProfileCompletion";
 import { saveUserProfileDoc } from "./services/userProfileService";
 import { ROLE_TITLES } from "./constants/roles";
 import { NAV_SECTIONS } from "./constants/navigation";
-
 /**
  * App.jsx is now a thin composition root:
  *  - useAuth()               -> auth state + login/logout (Firebase)

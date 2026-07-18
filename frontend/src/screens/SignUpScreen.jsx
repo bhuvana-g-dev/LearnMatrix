@@ -4,7 +4,6 @@ import { Mail, Lock, Eye, EyeOff, User, CheckCircle2, ArrowLeft } from "lucide-r
 import PageShell from "../components/layout/PageShell";
 import Logo from "../components/common/Logo";
 import { COLORS, GRADIENTS, GLASS_CARD } from "../constants/theme";
-
 // Catches format mistakes (missing @, no domain, no TLD, spaces, etc).
 // It can't catch a typo'd-but-syntactically-valid domain like
 // "gmai.com" — only the verification email sent on signup (and the

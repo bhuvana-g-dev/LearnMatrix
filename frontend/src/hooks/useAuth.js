@@ -1,4 +1,6 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
+import { onAuthStateChanged } from "firebase/auth";
+import { auth as firebaseAuth } from "../firebase";
 import {
   loginUser,
   loginWithGoogle,
@@ -10,12 +12,31 @@ import {
   reloadCurrentUser,
 } from "../services/authService";
 
+/**
+ * useAuth — Authentication Hook
+ */
 export function useAuth() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  // True until Firebase tells us whether a session already exists. Firebase
+  // persists login across page refreshes in the browser by default, but
+  // isAuthenticated/user here are just React state that resets on every
+  // refresh — without this listener restoring them, refreshing ANY page
+  // would incorrectly bounce a still-logged-in person back to Login.
+  const [initializing, setInitializing] = useState(true);
 
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(firebaseAuth, (firebaseUser) => {
+      setUser(firebaseUser);
+      setIsAuthenticated(!!firebaseUser);
+      setInitializing(false);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // Email Login
   const login = useCallback(async (credentials) => {
     setLoading(true);
     setError(null);
@@ -41,6 +62,10 @@ export function useAuth() {
     }
   }, []);
 
+  // Email Signup — also signs the new user straight in (sets user +
+  // isAuthenticated). App.jsx separately gates full access behind
+  // user.emailVerified, so this lands them on the "verify your email"
+  // screen rather than bouncing back to Login.
   const signup = useCallback(async (name, email, password) => {
     setLoading(true);
     setError(null);
@@ -58,6 +83,7 @@ export function useAuth() {
     }
   }, []);
 
+  // Google Login
   const loginGoogle = useCallback(async () => {
     try {
       setLoading(true);
@@ -73,6 +99,7 @@ export function useAuth() {
     }
   }, []);
 
+  // GitHub Login
   const loginGithub = useCallback(async () => {
     try {
       setLoading(true);
@@ -88,12 +115,14 @@ export function useAuth() {
     }
   }, []);
 
+  // Logout
   const logout = useCallback(async () => {
     await logoutUser();
     setIsAuthenticated(false);
     setUser(null);
   }, []);
 
+  // Forgot Password — sends a Firebase reset-link email.
   const resetPassword = useCallback(async (email) => {
     setError(null);
     try {
@@ -111,11 +140,18 @@ export function useAuth() {
     }
   }, []);
 
+  // Resends the email-verification link (used on the "verify your email" gate).
   const resendVerification = useCallback(async () => {
     await resendVerificationEmail();
     return { success: true };
   }, []);
 
+  // Re-fetches the current user from Firebase so a just-clicked
+  // verification link is reflected in emailVerified without a full re-login.
+  // NOTE: Firebase's reload() mutates the existing user object in place and
+  // returns that same reference — passing it straight to setUser() would be
+  // a no-op in React's eyes (same object === no change === no re-render).
+  // Spreading into a new plain object forces React to actually update.
   const refreshVerificationStatus = useCallback(async () => {
     const { user: refreshedUser } = await reloadCurrentUser();
     const freshCopy = refreshedUser ? { ...refreshedUser } : refreshedUser;
@@ -127,6 +163,7 @@ export function useAuth() {
     isAuthenticated,
     user,
     loading,
+    initializing,
     error,
     login,
     signup,

@@ -12,64 +12,59 @@ import {
 import BackButton from "../components/common/BackButton";
 import { COLORS, GRADIENTS, GLASS_CARD } from "../constants/theme";
 import { ROLE_TITLES } from "../constants/roles";
-import { generateAssessmentQuestions } from "../services/aiAssessmentService";
+import {
+  generateDiagnosticAssessment,
+  evaluateDiagnosticAssessment,
+} from "../services/aiAssessmentService";
+
+const LEVEL_COLORS = {
+  Strong: "#22C55E",
+  Intermediate: "#F59E0B",
+  Weak: "#E0559C",
+  "Not Attempted": "#9CA3AF",
+};
 
 /**
- * AssessmentScreen — the real, working assessment flow described in
- * ARCHITECTURE.md's Phase 0 slice: fetches questions from the Question
- * Generation Agent (with difficulty decided by the Difficulty Engine),
- * lets the student answer them one at a time, and scores locally.
+ * AssessmentScreen — the real diagnostic assessment flow (see
+ * ARCHITECTURE.md's "core intelligence" upgrade): generates 2 Easy +
+ * 2 Medium + 2 Hard questions PER selected skill (Assessment Planner +
+ * QuestionGenerationAgent.run_mixed()), then after submission calls the
+ * Evaluation Agent for a real skill-wise Strong/Intermediate/Weak table
+ * — not just one overall percentage.
  *
  * KNOWN LIMITATION (intentional, for now): CorrectAnswer ships in the
  * initial fetch payload, so a student could technically read it from
  * DevTools' Network tab before answering. That's acceptable for a
  * proof-of-concept / development build, but NOT acceptable once this is
- * a real graded assessment — at that point, scoring needs to move
- * server-side (the Evaluation Agent, §9 Phase 3 in ARCHITECTURE.md),
- * with the frontend never receiving the answer key up front.
+ * a real graded assessment — at that point, the answer key needs to stay
+ * server-side entirely (§9 Phase 3 in ARCHITECTURE.md).
  *
  * Fetch state machine: "loading" -> "error" | "ready"
- * Quiz state machine (once "ready"): in-progress -> "submitted"
+ * Quiz state machine (once "ready"): in-progress -> "evaluating" -> "submitted"
  */
 export default function AssessmentScreen({ selectedRole, selectedSkills, onBack }) {
   const [fetchState, setFetchState] = useState("loading"); // loading | error | ready
   const [errorMessage, setErrorMessage] = useState("");
   const [questions, setQuestions] = useState([]);
-  const [difficulty, setDifficulty] = useState(null);
-  const [difficultyReasoning, setDifficultyReasoning] = useState(null);
 
   const [currentIndex, setCurrentIndex] = useState(0);
   const [answers, setAnswers] = useState({}); // { [TempID]: "OptionA" }
+  const [evaluating, setEvaluating] = useState(false);
+  const [evaluation, setEvaluation] = useState(null); // { skills: [...], overall: {...} }
   const [submitted, setSubmitted] = useState(false);
 
   const roleTitle = ROLE_TITLES[selectedRole] || "General";
+  const skillsForAssessment = selectedSkills.length ? selectedSkills : [roleTitle];
 
   const fetchQuestions = useCallback(async () => {
     setFetchState("loading");
     setErrorMessage("");
     try {
-      // First-ever assessment for this session: no prior score/time
-      // baseline yet, so the Difficulty Engine falls back to its
-      // no-baseline path (see difficulty_engine.py) using neutral
-      // mid-range defaults. Once quiz_results/learning_progress exist
-      // (§9 Phase 3+), these signals come from real history instead.
-      const result = await generateAssessmentQuestions({
-        skill: roleTitle,
-        topics: selectedSkills.length ? selectedSkills : [roleTitle],
-        count: 3, // kept low for demo reliability — fewer tokens = faster
-                  // generation, less exposure to Gemini overload windows.
-                  // Bump back to 5+ once things are stable.
-        signals: {
-          previous_score: 50,
-          time_taken_seconds: 0,
-          expected_time_seconds: 0,
-          confidence: 50,
-          mistake_rate: 0,
-        },
+      const result = await generateDiagnosticAssessment({
+        skills: skillsForAssessment,
+        role: roleTitle,
       });
       setQuestions(result.questions);
-      setDifficulty(result.difficulty);
-      setDifficultyReasoning(result.difficulty_reasoning);
       setFetchState("ready");
     } catch (err) {
       setErrorMessage(
@@ -77,6 +72,7 @@ export default function AssessmentScreen({ selectedRole, selectedSkills, onBack 
       );
       setFetchState("error");
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roleTitle, selectedSkills]);
 
   useEffect(() => {
@@ -101,23 +97,30 @@ export default function AssessmentScreen({ selectedRole, selectedSkills, onBack 
     if (currentIndex > 0) setCurrentIndex((i) => i - 1);
   };
 
-  const handleSubmit = () => setSubmitted(true);
+  const handleSubmit = async () => {
+    setEvaluating(true);
+    try {
+      const result = await evaluateDiagnosticAssessment(questions, answers);
+      setEvaluation(result);
+      setSubmitted(true);
+    } catch (err) {
+      setErrorMessage(
+        err?.response?.data?.error || err.message || "Something went wrong scoring your assessment."
+      );
+      setFetchState("error");
+    } finally {
+      setEvaluating(false);
+    }
+  };
 
   const handleRetake = () => {
     setCurrentIndex(0);
     setAnswers({});
     setSubmitted(false);
+    setEvaluation(null);
     fetchQuestions();
   };
 
-  const score = submitted
-    ? questions.filter((q) => answers[q.TempID] === q.CorrectAnswer).length
-    : 0;
-  const scorePercent = questions.length ? Math.round((score / questions.length) * 100) : 0;
-
-  // ---------------------------------------------------------------------
-  // Loading
-  // ---------------------------------------------------------------------
   if (fetchState === "loading") {
     return (
       <div className="px-4 sm:px-8 pt-10 pb-20">
@@ -133,21 +136,17 @@ export default function AssessmentScreen({ selectedRole, selectedSkills, onBack 
             <Loader2 size={40} style={{ color: COLORS.purple }} />
           </motion.div>
           <h3 className="text-lg font-bold" style={{ color: COLORS.textDark }}>
-            Generating your assessment…
+            Building your diagnostic assessment…
           </h3>
           <p className="text-sm" style={{ color: COLORS.textMid }}>
-            The Question Generation Agent is writing questions on{" "}
-            {(selectedSkills.length ? selectedSkills : [roleTitle]).join(", ")}.
-            This can take up to a minute on the first request.
+            Generating Easy, Medium, and Hard questions for {skillsForAssessment.join(", ")}.
+            This can take a little while with several skills selected.
           </p>
         </div>
       </div>
     );
   }
 
-  // ---------------------------------------------------------------------
-  // Error
-  // ---------------------------------------------------------------------
   if (fetchState === "error") {
     return (
       <div className="px-4 sm:px-8 pt-10 pb-20">
@@ -158,7 +157,7 @@ export default function AssessmentScreen({ selectedRole, selectedSkills, onBack 
         >
           <XCircle size={40} style={{ color: "#E0559C" }} />
           <h3 className="text-lg font-bold" style={{ color: COLORS.textDark }}>
-            Couldn't generate your assessment
+            Couldn't build your assessment
           </h3>
           <p className="text-sm" style={{ color: COLORS.textMid }}>{errorMessage}</p>
           <motion.button
@@ -182,70 +181,144 @@ export default function AssessmentScreen({ selectedRole, selectedSkills, onBack 
     );
   }
 
-  // ---------------------------------------------------------------------
-  // Results (submitted)
-  // ---------------------------------------------------------------------
-  if (submitted) {
+  if (submitted && evaluation) {
     return (
       <div className="px-4 sm:px-8 pt-10 pb-20">
         <BackButton onClick={onBack} label="Back" />
 
         <div
-          className="max-w-2xl mx-auto text-center py-10 px-8 mb-8"
+          className="max-w-3xl mx-auto text-center py-10 px-8 mb-8"
           style={{ ...GLASS_CARD, borderRadius: 28 }}
         >
           <p className="text-sm font-semibold mb-1" style={{ color: COLORS.textMid }}>
-            Your Score
+            Overall Score
           </p>
           <p className="text-5xl font-extrabold mb-2" style={{ color: COLORS.textDark }}>
-            {score}/{questions.length}
+            {evaluation.overall.correct}/{evaluation.overall.total}
           </p>
           <p className="text-sm" style={{ color: COLORS.textMid }}>
-            {scorePercent}% correct · {difficulty || "Medium"} difficulty
+            {evaluation.overall.scorePercent}% correct across {evaluation.skills.length} skill(s)
           </p>
         </div>
 
-        <div className="max-w-2xl mx-auto flex flex-col gap-4 mb-8">
-          {questions.map((q, i) => {
-            const chosen = answers[q.TempID];
-            const isCorrect = chosen === q.CorrectAnswer;
-            return (
-              <div
-                key={q.TempID}
-                className="p-5"
-                style={{ ...GLASS_CARD, borderRadius: 20 }}
-              >
-                <div className="flex items-start gap-3 mb-3">
-                  {isCorrect ? (
-                    <CheckCircle2 size={20} style={{ color: "#4ADE80", flexShrink: 0, marginTop: 2 }} />
-                  ) : (
-                    <XCircle size={20} style={{ color: "#E0559C", flexShrink: 0, marginTop: 2 }} />
-                  )}
-                  <p className="font-semibold" style={{ color: COLORS.textDark }}>
-                    {i + 1}. {q.Question}
-                  </p>
-                </div>
-                <div className="pl-8 text-sm space-y-1" style={{ color: COLORS.textMid }}>
-                  <p>
-                    Your answer:{" "}
-                    <span style={{ color: isCorrect ? "#22C55E" : "#E0559C", fontWeight: 600 }}>
-                      {chosen ? q[chosen] : "(skipped)"}
-                    </span>
-                  </p>
-                  {!isCorrect && (
-                    <p>
-                      Correct answer:{" "}
-                      <span style={{ color: "#22C55E", fontWeight: 600 }}>{q[q.CorrectAnswer]}</span>
-                    </p>
-                  )}
-                  {q.Explanation && <p className="italic mt-1">{q.Explanation}</p>}
-                </div>
-              </div>
-            );
-          })}
+        <div
+          className="max-w-3xl mx-auto mb-8 overflow-hidden"
+          style={{ ...GLASS_CARD, borderRadius: 24 }}
+        >
+          <div className="px-6 pt-5 pb-1">
+            <h3 className="text-base font-bold" style={{ color: COLORS.textDark }}>
+              Skill-wise Breakdown
+            </h3>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm" style={{ borderCollapse: "collapse" }}>
+              <thead>
+                <tr style={{ color: COLORS.textMid }}>
+                  <th className="text-left font-semibold px-6 py-3">Skill</th>
+                  <th className="text-center font-semibold px-3 py-3">Easy</th>
+                  <th className="text-center font-semibold px-3 py-3">Medium</th>
+                  <th className="text-center font-semibold px-3 py-3">Hard</th>
+                  <th className="text-center font-semibold px-3 py-3">Score</th>
+                  <th className="text-center font-semibold px-6 py-3">Level</th>
+                </tr>
+              </thead>
+              <tbody>
+                {evaluation.skills.map((s) => {
+                  const e = s.breakdown.Easy || { correct: 0, total: 0 };
+                  const m = s.breakdown.Medium || { correct: 0, total: 0 };
+                  const h = s.breakdown.Hard || { correct: 0, total: 0 };
+                  return (
+                    <tr key={s.skill} style={{ borderTop: `1px solid ${COLORS.border}` }}>
+                      <td className="px-6 py-3 font-semibold" style={{ color: COLORS.textDark }}>
+                        {s.skill}
+                      </td>
+                      <td className="text-center px-3 py-3" style={{ color: COLORS.textMid }}>
+                        {e.correct}/{e.total}
+                      </td>
+                      <td className="text-center px-3 py-3" style={{ color: COLORS.textMid }}>
+                        {m.correct}/{m.total}
+                      </td>
+                      <td className="text-center px-3 py-3" style={{ color: COLORS.textMid }}>
+                        {h.correct}/{h.total}
+                      </td>
+                      <td className="text-center px-3 py-3 font-semibold" style={{ color: COLORS.textDark }}>
+                        {s.scorePercent}%
+                      </td>
+                      <td className="text-center px-6 py-3">
+                        <span
+                          className="px-3 py-1 text-xs font-bold rounded-full"
+                          style={{
+                            color: "#fff",
+                            background: LEVEL_COLORS[s.level] || COLORS.textMid,
+                          }}
+                        >
+                          {s.level}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         </div>
 
-        <div className="max-w-2xl mx-auto flex justify-center">
+        <div className="max-w-3xl mx-auto flex flex-col gap-6 mb-8">
+          {evaluation.skills.map((s) => (
+            <div key={s.skill}>
+              <p className="text-xs font-bold uppercase tracking-wide mb-2 px-1" style={{ color: COLORS.textLight }}>
+                {s.skill}
+              </p>
+              <div className="flex flex-col gap-3">
+                {questions
+                  .filter((q) => q.Skill === s.skill)
+                  .map((q, i) => {
+                    const chosen = answers[q.TempID];
+                    const isCorrect = chosen === q.CorrectAnswer;
+                    return (
+                      <div key={q.TempID} className="p-5" style={{ ...GLASS_CARD, borderRadius: 20 }}>
+                        <div className="flex items-start gap-3 mb-3">
+                          {isCorrect ? (
+                            <CheckCircle2 size={20} style={{ color: "#4ADE80", flexShrink: 0, marginTop: 2 }} />
+                          ) : (
+                            <XCircle size={20} style={{ color: "#E0559C", flexShrink: 0, marginTop: 2 }} />
+                          )}
+                          <div>
+                            <span
+                              className="text-[10px] font-bold uppercase tracking-wide mr-2"
+                              style={{ color: COLORS.purple }}
+                            >
+                              {q.Difficulty}
+                            </span>
+                            <p className="font-semibold inline" style={{ color: COLORS.textDark }}>
+                              {i + 1}. {q.Question}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="pl-8 text-sm space-y-1" style={{ color: COLORS.textMid }}>
+                          <p>
+                            Your answer:{" "}
+                            <span style={{ color: isCorrect ? "#22C55E" : "#E0559C", fontWeight: 600 }}>
+                              {chosen ? q[chosen] : "(skipped)"}
+                            </span>
+                          </p>
+                          {!isCorrect && (
+                            <p>
+                              Correct answer:{" "}
+                              <span style={{ color: "#22C55E", fontWeight: 600 }}>{q[q.CorrectAnswer]}</span>
+                            </p>
+                          )}
+                          {q.Explanation && <p className="italic mt-1">{q.Explanation}</p>}
+                        </div>
+                      </div>
+                    );
+                  })}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="max-w-3xl mx-auto flex justify-center">
           <motion.button
             onClick={handleRetake}
             whileHover={{ y: -2 }}
@@ -268,9 +341,6 @@ export default function AssessmentScreen({ selectedRole, selectedSkills, onBack 
     );
   }
 
-  // ---------------------------------------------------------------------
-  // In-progress quiz
-  // ---------------------------------------------------------------------
   if (!currentQuestion) return null;
 
   const optionKeys = ["OptionA", "OptionB", "OptionC", "OptionD"];
@@ -284,8 +354,7 @@ export default function AssessmentScreen({ selectedRole, selectedSkills, onBack 
           <div className="flex items-center gap-2">
             <Sparkles size={16} style={{ color: COLORS.purple }} />
             <span className="text-xs font-semibold" style={{ color: COLORS.textMid }}>
-              Question {currentIndex + 1} of {questions.length}
-              {difficulty ? ` · ${difficulty}` : ""}
+              {currentQuestion.Skill} · Question {currentIndex + 1} of {questions.length} · {currentQuestion.Difficulty}
             </span>
           </div>
         </div>
@@ -370,10 +439,10 @@ export default function AssessmentScreen({ selectedRole, selectedSkills, onBack 
 
           {isLastQuestion ? (
             <motion.button
-              disabled={!allAnswered}
+              disabled={!allAnswered || evaluating}
               onClick={handleSubmit}
-              whileHover={allAnswered ? { y: -2 } : {}}
-              whileTap={allAnswered ? { scale: 0.98 } : {}}
+              whileHover={allAnswered && !evaluating ? { y: -2 } : {}}
+              whileTap={allAnswered && !evaluating ? { scale: 0.98 } : {}}
               className="flex-1 sm:flex-none flex items-center justify-center gap-2 font-semibold"
               style={{
                 padding: "14px 28px",
@@ -381,11 +450,19 @@ export default function AssessmentScreen({ selectedRole, selectedSkills, onBack 
                 color: "#fff",
                 border: "none",
                 background: allAnswered ? GRADIENTS.purpleSky : "#C9C4D6",
-                opacity: allAnswered ? 1 : 0.65,
-                cursor: allAnswered ? "pointer" : "not-allowed",
+                opacity: allAnswered && !evaluating ? 1 : 0.65,
+                cursor: allAnswered && !evaluating ? "pointer" : "not-allowed",
               }}
             >
-              Submit Assessment <CheckCircle2 size={16} />
+              {evaluating ? (
+                <>
+                  <Loader2 size={16} className="animate-spin" /> Scoring…
+                </>
+              ) : (
+                <>
+                  Submit Assessment <CheckCircle2 size={16} />
+                </>
+              )}
             </motion.button>
           ) : (
             <motion.button

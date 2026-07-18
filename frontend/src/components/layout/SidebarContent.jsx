@@ -4,7 +4,6 @@ import { ChevronDown, ChevronLeft, ChevronRight, X, LogOut, Lock, LogIn } from "
 import Logo from "../common/Logo";
 import { COLORS, GRADIENTS } from "../../constants/theme";
 import { NAV_SECTIONS } from "../../constants/navigation";
-
 // Which section (if any) currently "owns" this activeKey — either the
 // section's own key (selfNavigable, e.g. "home"/"profile") or one of its
 // children.

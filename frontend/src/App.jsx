@@ -52,6 +52,10 @@ export default function App() {
         <HomeScreen
           onGetStarted={() => setShowLanding(false)}
           onLogin={() => setShowLanding(false)}
+          onSignup={() => {
+            setShowLanding(false);
+            setShowSignup(true);
+          }}
         />
       );
     }
@@ -174,6 +178,7 @@ export default function App() {
       "Coming Soon";
     content = <ComingSoonScreen label={label} onBack={() => setActiveKey("role")} />;
   }
+
   return (
     <DashboardLayout activeKey={activeKey} onNavigate={setActiveKey} onLogout={auth.logout}>
       <AnimatePresence mode="wait">

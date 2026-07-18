@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { Mail, Lock, Eye, EyeOff, User, CheckCircle2 } from "lucide-react";
+import { Mail, Lock, Eye, EyeOff, User, CheckCircle2, ArrowLeft } from "lucide-react";
 import PageShell from "../components/layout/PageShell";
 import Logo from "../components/common/Logo";
 import { COLORS, GRADIENTS, GLASS_CARD } from "../constants/theme";
@@ -11,7 +11,7 @@ import { COLORS, GRADIENTS, GLASS_CARD } from "../constants/theme";
 // verify-email gate in App.jsx) can catch that.
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
-export default function SignUpScreen({ auth, onLogin, onSuccess }) {
+export default function SignUpScreen({ auth, onLogin, onSuccess, onBack }) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -86,6 +86,17 @@ export default function SignUpScreen({ auth, onLogin, onSuccess }) {
           className="w-full max-w-md p-8"
           style={{ ...GLASS_CARD, borderRadius: 28 }}
         >
+          {onBack && (
+            <button
+              type="button"
+              onClick={onBack}
+              className="flex items-center gap-1.5 text-xs font-semibold mb-5"
+              style={{ color: COLORS.textMid, background: "none", border: "none", cursor: "pointer" }}
+            >
+              <ArrowLeft size={14} /> Back to Home
+            </button>
+          )}
+
           <Logo />
 
           <h1

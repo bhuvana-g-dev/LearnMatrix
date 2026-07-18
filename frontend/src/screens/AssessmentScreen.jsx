@@ -11,6 +11,7 @@ import {
   Map,
 } from "lucide-react";
 import BackButton from "../components/common/BackButton";
+import RoadmapDisplay from "../components/roadmap/RoadmapDisplay";
 import { COLORS, GRADIENTS, GLASS_CARD } from "../constants/theme";
 import { ROLE_TITLES } from "../constants/roles";
 import {
@@ -319,83 +320,7 @@ export default function AssessmentScreen({ selectedRole, selectedSkills, uid, on
             </div>
           )}
 
-          {roadmap && (
-            <div className="p-6" style={{ ...GLASS_CARD, borderRadius: 24 }}>
-              <h3 className="text-base font-bold mb-1" style={{ color: COLORS.textDark }}>
-                Your Learning Roadmap
-              </h3>
-              <p className="text-sm mb-5" style={{ color: COLORS.textMid }}>
-                {roadmap.entries.length > 0
-                  ? `${roadmap.totalWeeks}-week plan, weakest areas first`
-                  : "You're already strong across every skill tested — no revision needed."}
-              </p>
-
-              <div className="flex flex-col gap-3">
-                {roadmap.entries.map((entry) => (
-                  <div
-                    key={entry.skill}
-                    className="flex items-start gap-4 p-4"
-                    style={{ borderRadius: 16, background: "rgba(255,255,255,0.4)" }}
-                  >
-                    <div
-                      className="flex items-center justify-center font-bold text-sm flex-shrink-0"
-                      style={{
-                        width: 36, height: 36, borderRadius: "50%",
-                        background: GRADIENTS.purpleSky, color: "#fff",
-                      }}
-                    >
-                      {entry.week}
-                    </div>
-                    <div>
-                      <p className="font-semibold" style={{ color: COLORS.textDark }}>
-                        Week {entry.week}: {entry.skill}
-                        <span
-                          className="ml-2 px-2 py-0.5 text-[10px] font-bold rounded-full"
-                          style={{ color: "#fff", background: LEVEL_COLORS[entry.currentLevel] || COLORS.textMid }}
-                        >
-                          {entry.currentLevel}
-                        </span>
-                      </p>
-                      <p className="text-sm mt-1" style={{ color: COLORS.textMid }}>
-                        {entry.recommendation}
-                      </p>
-                    </div>
-                  </div>
-                ))}
-
-                {roadmap.includesProjectWeek && (
-                  <div
-                    className="flex items-start gap-4 p-4"
-                    style={{ borderRadius: 16, background: "rgba(255,255,255,0.4)" }}
-                  >
-                    <div
-                      className="flex items-center justify-center font-bold text-sm flex-shrink-0"
-                      style={{
-                        width: 36, height: 36, borderRadius: "50%",
-                        background: GRADIENTS.purplePink, color: "#fff",
-                      }}
-                    >
-                      {roadmap.totalWeeks}
-                    </div>
-                    <div>
-                      <p className="font-semibold" style={{ color: COLORS.textDark }}>
-                        Week {roadmap.totalWeeks}: Mini Project
-                      </p>
-                      <p className="text-sm mt-1" style={{ color: COLORS.textMid }}>
-                        Combine everything above into one small project to consolidate what you've learned.
-                      </p>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {roadmap.alreadyStrong.length > 0 && (
-                <p className="text-xs mt-5" style={{ color: COLORS.textLight }}>
-                  Already strong (no revision scheduled): {roadmap.alreadyStrong.join(", ")}
-                </p>
-              )}
-            </div>
-          )}
+          {roadmap && <RoadmapDisplay roadmap={roadmap} showProgress={false} />}
         </div>
 
         <div className="max-w-3xl mx-auto flex flex-col gap-6 mb-8">

@@ -9,7 +9,6 @@ import { COLORS, GRADIENTS, GLASS_CARD } from "../constants/theme";
 // "gmai.com" — only the verification email sent on signup (and the
 // verify-email gate in App.jsx) can catch that.
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
-
 // At least 8 characters, one uppercase, one lowercase, one number, and
 // one special character.
 const STRONG_PASSWORD_REGEX =

@@ -23,7 +23,6 @@ import Logo from "../components/common/Logo";
 import { COLORS, GRADIENTS, GLASS_CARD } from "../constants/theme";
 import { TN_COLLEGES } from "../constants/tnColleges";
 import { saveUserProfileDoc } from "../services/userProfileService";
-
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 const MOBILE_REGEX = /^[0-9]{10}$/;
 

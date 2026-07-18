@@ -30,6 +30,7 @@ export const ENDPOINTS = {
     // table. This is the "core intelligence" flow, not a generic quiz.
     GENERATE_DIAGNOSTIC_ASSESSMENT: "/ai/generate-diagnostic-assessment",
     EVALUATE_DIAGNOSTIC_ASSESSMENT: "/ai/evaluate-diagnostic-assessment",
+    GENERATE_ROADMAP: "/ai/generate-roadmap",
   },
   RECOMMENDATION: {
     // Placeholder for the future Scikit-Learn recommendation endpoint.

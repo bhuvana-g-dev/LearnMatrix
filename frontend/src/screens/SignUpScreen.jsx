@@ -518,4 +518,5 @@ export default function SignUpScreen({ auth, onLogin, onSuccess, onBack }) {
       </div>
     </PageShell>
   );
+  
 }

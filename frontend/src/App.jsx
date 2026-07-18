@@ -19,6 +19,7 @@ import { useProfileCompletion } from "./hooks/useProfileCompletion";
 import { saveUserProfileDoc } from "./services/userProfileService";
 import { ROLE_TITLES } from "./constants/roles";
 import { NAV_SECTIONS } from "./constants/navigation";
+
 /**
  * App.jsx is now a thin composition root:
  *  - useAuth()               -> auth state + login/logout (Firebase)
@@ -34,13 +35,34 @@ export default function App() {
   const auth = useAuth();
   const careerPath = useCareerPath();
   const profileCompletion = useProfileCompletion(auth.user);
-  const [activeKey, setActiveKey] = useState("home");
+
+  // Remembers which page was open across a browser refresh, so refreshing
+  // "Profile" (or any page) reloads that same page instead of bouncing
+  // back to Home/Login.
+  const [activeKey, setActiveKey] = useState(
+    () => localStorage.getItem("lm_activeKey") || "home"
+  );
   const [showSignup, setShowSignup] = useState(false);
   const [showLanding, setShowLanding] = useState(true);
 
   useEffect(() => {
     window.scrollTo({ top: 0, left: 0, behavior: "smooth" });
   }, [auth.isAuthenticated, activeKey]);
+
+  useEffect(() => {
+    localStorage.setItem("lm_activeKey", activeKey);
+  }, [activeKey]);
+
+  // Wait for Firebase to confirm whether a session already exists before
+  // deciding what to show — otherwise a refresh on any authenticated page
+  // would flash/fall through to the landing page for a moment.
+  if (auth.initializing) {
+    return (
+      <div className="flex items-center justify-center" style={{ minHeight: "100vh" }}>
+        <p className="text-sm text-gray-500">Loading...</p>
+      </div>
+    );
+  }
 
   if (!auth.isAuthenticated) {
     // Public landing page — shown first, before Login/Signup. "Login" in
@@ -182,8 +204,14 @@ export default function App() {
     content = <ComingSoonScreen label={label} onBack={() => setActiveKey("role")} />;
   }
 
+  const handleLogout = async () => {
+    await auth.logout();
+    localStorage.removeItem("lm_activeKey");
+    setActiveKey("home");
+  };
+
   return (
-    <DashboardLayout activeKey={activeKey} onNavigate={setActiveKey} onLogout={auth.logout}>
+    <DashboardLayout activeKey={activeKey} onNavigate={setActiveKey} onLogout={handleLogout}>
       <AnimatePresence mode="wait">
         <motion.div
           key={activeKey}

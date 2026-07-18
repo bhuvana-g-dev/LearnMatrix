@@ -37,12 +37,25 @@ export default function App() {
   const profileCompletion = useProfileCompletion(auth.user);
   const [activeKey, setActiveKey] = useState("home");
   const [showSignup, setShowSignup] = useState(false);
+  const [showLanding, setShowLanding] = useState(true);
 
   useEffect(() => {
     window.scrollTo({ top: 0, left: 0, behavior: "smooth" });
   }, [auth.isAuthenticated, activeKey]);
 
   if (!auth.isAuthenticated) {
+    // Public landing page — shown first, before Login/Signup. "Login" in
+    // the top-right and "Get Started" both drop into the Login screen
+    // (which itself links to Sign Up for people without an account yet).
+    if (showLanding) {
+      return (
+        <HomeScreen
+          onGetStarted={() => setShowLanding(false)}
+          onLogin={() => setShowLanding(false)}
+        />
+      );
+    }
+
     if (showSignup) {
       return (
         <SignUpScreen
@@ -71,6 +84,7 @@ export default function App() {
   if (!auth.user?.emailVerified) {
     return <VerifyEmailScreen auth={auth} />;
   }
+
   // Blocks access until college/department/year/mobile/photo are saved in
   // Firestore. Runs on every login, not just right after signup — so an
   // account that somehow skipped this step still gets caught.

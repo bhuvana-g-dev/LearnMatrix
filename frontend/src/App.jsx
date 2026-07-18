@@ -11,6 +11,7 @@ import HomeScreen from "./screens/HomeScreen";
 import RoleSelectionScreen from "./screens/RoleSelectionScreen";
 import SkillSelectionScreen from "./screens/SkillSelectionScreen";
 import AssessmentScreen from "./screens/AssessmentScreen";
+import RoadmapScreen from "./screens/RoadmapScreen";
 import ProfileScreen from "./screens/ProfileScreen";
 import RevisionScheduleScreen from "./screens/RevisionScheduleScreen";
 import LearningInsightsScreen from "./screens/LearningInsightsScreen";
@@ -198,9 +199,12 @@ export default function App() {
       <AssessmentScreen
         selectedRole={careerPath.selectedRole}
         selectedSkills={careerPath.selectedSkills}
+        uid={auth.user?.uid}
         onBack={() => setActiveKey("skills")}
       />
     );
+  } else if (activeKey === "roadmap") {
+    content = <RoadmapScreen uid={auth.user?.uid} onNavigate={setActiveKey} />;
   } else if (activeKey === "profile") {
     // "My Profile" > "Overview" — the main profile hub (see
     // constants/navigation.js for the dropdown's other two entries).

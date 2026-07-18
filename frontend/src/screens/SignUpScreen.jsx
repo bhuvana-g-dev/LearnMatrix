@@ -4,11 +4,17 @@ import { Mail, Lock, Eye, EyeOff, User, CheckCircle2, ArrowLeft } from "lucide-r
 import PageShell from "../components/layout/PageShell";
 import Logo from "../components/common/Logo";
 import { COLORS, GRADIENTS, GLASS_CARD } from "../constants/theme";
+
 // Catches format mistakes (missing @, no domain, no TLD, spaces, etc).
 // It can't catch a typo'd-but-syntactically-valid domain like
 // "gmai.com" — only the verification email sent on signup (and the
 // verify-email gate in App.jsx) can catch that.
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+
+// At least 8 characters, one uppercase, one lowercase, one number, and
+// one special character.
+const STRONG_PASSWORD_REGEX =
+  /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]).{8,}$/;
 
 export default function SignUpScreen({ auth, onLogin, onSuccess, onBack }) {
   const [name, setName] = useState("");
@@ -49,8 +55,10 @@ export default function SignUpScreen({ auth, onLogin, onSuccess, onBack }) {
       return;
     }
 
-    if (password.length < 6) {
-      setError("Password must be at least 6 characters.");
+    if (!STRONG_PASSWORD_REGEX.test(password)) {
+      setError(
+        "Password must be at least 8 characters and include an uppercase letter, a lowercase letter, a number, and a special character."
+      );
       return;
     }
 

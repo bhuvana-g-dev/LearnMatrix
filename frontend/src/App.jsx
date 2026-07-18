@@ -38,7 +38,6 @@ export default function App() {
   const auth = useAuth();
   const careerPath = useCareerPath();
   const profileCompletion = useProfileCompletion(auth.user);
-
   // Remembers which page was open across a browser refresh, so refreshing
   // "Profile" (or any page) reloads that same page instead of bouncing
   // back to Home/Login.

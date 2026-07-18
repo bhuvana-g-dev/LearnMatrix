@@ -105,13 +105,40 @@ export async function evaluateDiagnosticAssessment(questions, answers) {
  * an AI call, so this is fast and never fails due to Gemini/Groq being
  * down — default timeout is fine here too.
  *
+ * Passing `uid` (and `role`) saves the roadmap to Firestore so it
+ * survives a page reload instead of disappearing — omit it (e.g. for
+ * quick local testing) and the roadmap is still generated, just not
+ * persisted anywhere.
+ *
  * @param {object} evaluation - {skills: [...], overall: {...}}
- * @returns {Promise<{entries: object[], alreadyStrong: string[], totalWeeks: number, includesProjectWeek: boolean}>}
+ * @param {string} [uid] - Firebase uid, enables persistence
+ * @param {string} [role] - selected career role, stored alongside the roadmap
+ * @returns {Promise<{entries: object[], alreadyStrong: string[], totalWeeks: number, includesProjectWeek: boolean, currentWeek?: number, completionPercent?: number}>}
  */
-export async function generateRoadmap(evaluation) {
-  const { data } = await apiClient.post(ENDPOINTS.ASSESSMENT.GENERATE_ROADMAP, { evaluation });
+export async function generateRoadmap(evaluation, uid = null, role = "") {
+  const { data } = await apiClient.post(ENDPOINTS.ASSESSMENT.GENERATE_ROADMAP, {
+    evaluation,
+    uid,
+    role,
+  });
   if (!data.success) {
     throw new Error(data.error || data.message || "Roadmap generation failed.");
   }
   return data.data;
+}
+
+/**
+ * loadSavedRoadmap — fetches a previously generated & saved roadmap for
+ * this user, if one exists. Returns null if the user has never taken
+ * the diagnostic assessment yet (not an error — a normal, expected state).
+ *
+ * @param {string} uid
+ * @returns {Promise<object|null>}
+ */
+export async function loadSavedRoadmap(uid) {
+  const { data } = await apiClient.get(`/roadmap/${uid}`);
+  if (!data.success) {
+    throw new Error(data.error || data.message || "Failed to load roadmap.");
+  }
+  return data.data; // null if none saved yet
 }

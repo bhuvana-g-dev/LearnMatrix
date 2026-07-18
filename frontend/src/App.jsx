@@ -61,6 +61,7 @@ export default function App() {
         <SignUpScreen
           auth={auth}
           onLogin={() => setShowSignup(false)}
+          onBack={() => setShowLanding(true)}
           onSuccess={() => {
             setShowSignup(false);
             setActiveKey("home");
@@ -74,6 +75,7 @@ export default function App() {
         auth={auth}
         onSuccess={() => setActiveKey("home")}
         onSignup={() => setShowSignup(true)}
+        onBack={() => setShowLanding(true)}
       />
     );
   }

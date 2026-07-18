@@ -42,7 +42,6 @@ export default function App() {
   useEffect(() => {
     window.scrollTo({ top: 0, left: 0, behavior: "smooth" });
   }, [auth.isAuthenticated, activeKey]);
-
   if (!auth.isAuthenticated) {
     // Public landing page — shown first, before Login/Signup. "Login" in
     // the top-right and "Get Started" both drop into the Login screen

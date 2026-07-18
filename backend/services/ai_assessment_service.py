@@ -14,6 +14,8 @@ from agents.question_generation_agent import (
     QuestionGenerationError,
 )
 from services.difficulty_engine import compute_difficulty, DifficultyDecision
+from services.assessment_planner import build_diagnostic_plan
+from services.evaluation_service import evaluate_diagnostic_assessment
 
 
 class AIAssessmentError(Exception):
@@ -91,3 +93,72 @@ def generate_ai_questions(
         "difficulty_reasoning": reasoning,  # None when explicitly overridden
         "questions": questions,
     }
+
+
+def generate_diagnostic_assessment(
+    skills: list[str], role: str = "", learning_objective: str = ""
+) -> dict:
+    """
+    The real diagnostic assessment: one QuestionGenerationAgent.run_mixed()
+    call PER selected skill (via the Assessment Planner's fixed 2 Easy +
+    2 Medium + 2 Hard plan), aggregated into one question set.
+
+    Deliberately sequential, not parallel — keeps retry/backoff behavior
+    (agents/question_generation_agent.py) simple and predictable, and
+    Groq's per-call latency is low enough that even 5-6 skills completes
+    well within the frontend's timeout. If this becomes a bottleneck with
+    many more skills, parallelizing these calls is a contained change
+    right here — nothing else in the stack needs to know.
+
+    Raises AIAssessmentError with a partial-failure message identifying
+    which specific skill failed, rather than a generic "something broke"
+    — this matters because with 5 sequential calls, knowing skill #3 of 5
+    failed (not #1) is the difference between "just retry" and "there's
+    something wrong with how that skill's topics were phrased".
+    """
+    plan = build_diagnostic_plan(skills)
+    agent = QuestionGenerationAgent()
+    all_questions: list[dict] = []
+
+    for skill_plan in plan:
+        try:
+            questions = agent.run_mixed(
+                topics=[skill_plan.skill],
+                skill=skill_plan.skill,
+                difficulty_counts=skill_plan.difficulty_counts,
+                learning_objective=learning_objective or (f"for the {role} role" if role else ""),
+            )
+        except QuestionGenerationError as exc:
+            raise AIAssessmentError(
+                f"Diagnostic assessment generation failed on skill "
+                f"'{skill_plan.skill}': {exc}"
+            ) from exc
+
+        # CRITICAL: each run_mixed() call numbers its own questions
+        # "AI-1".."AI-6" independently — across multiple skills these
+        # collide (every skill would have an "AI-1"). Since evaluation
+        # matches answers by TempID, colliding IDs silently corrupt
+        # scoring (a later skill's answer overwrites an earlier skill's
+        # under the same key). Re-namespace by skill right here, once,
+        # so every ID in the aggregated set is globally unique.
+        for q in questions:
+            q["TempID"] = f"{skill_plan.skill}::{q['TempID']}"
+
+        all_questions.extend(questions)
+
+    return {
+        "skills": skills,
+        "totalQuestions": len(all_questions),
+        "questions": all_questions,
+    }
+
+
+def evaluate_assessment(questions: list[dict], answers: dict[str, str]) -> dict:
+    """
+    Thin wrapper around the Evaluation Agent (services/evaluation_service.py)
+    so routes only ever import from ai_assessment_service.py, same as
+    every other AI feature — keeps one consistent import surface instead
+    of routes reaching into individual agent/service modules directly.
+    """
+    result = evaluate_diagnostic_assessment(questions, answers)
+    return result.to_dict()

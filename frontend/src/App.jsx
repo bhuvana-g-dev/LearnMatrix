@@ -15,7 +15,6 @@ import ComingSoonScreen from "./screens/ComingSoonScreen";
 import { useAuth } from "./hooks/useAuth";
 import { useCareerPath } from "./hooks/useCareerPath";
 import { NAV_SECTIONS } from "./constants/navigation";
-
 /**
  * App.jsx is now a thin composition root:
  *  - useAuth()        -> auth state + login/logout (dummy today, Flask/Firebase later)

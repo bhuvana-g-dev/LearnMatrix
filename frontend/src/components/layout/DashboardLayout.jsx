@@ -5,7 +5,6 @@ import PageShell from "./PageShell";
 import SidebarContent from "./SidebarContent";
 import Logo from "../common/Logo";
 import { COLORS, GLASS_CARD } from "../../constants/theme";
-
 const EXPANDED_WIDTH = 280;
 const COLLAPSED_WIDTH = 70;
 

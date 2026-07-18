@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ChevronDown, ChevronLeft, ChevronRight, X, LogOut } from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronRight, X, LogOut, Lock, LogIn } from "lucide-react";
 import Logo from "../common/Logo";
 import { COLORS, GRADIENTS } from "../../constants/theme";
 import { NAV_SECTIONS } from "../../constants/navigation";
@@ -54,6 +54,8 @@ export default function SidebarContent({
   collapsed = false,
   onToggleCollapse,
   onClose,
+  locked = false,
+  onLoginRequired,
 }) {
   const [openKey, setOpenKey] = useState(() => findSectionKeyForActiveKey(activeKey));
 
@@ -153,7 +155,15 @@ export default function SidebarContent({
           // separate from the chevron which just opens/closes the dropdown.
           const isHeaderActive = section.selfNavigable && activeKey === section.key;
 
+          // Pre-login landing page: everything except "Home" is locked —
+          // clicking prompts login instead of navigating/expanding.
+          const isLocked = locked && section.key !== "home";
+
           const handleHeaderClick = () => {
+            if (isLocked) {
+              onLoginRequired?.();
+              return;
+            }
             if (collapsed) {
               if (section.selfNavigable) onNavigate(section.key);
               expandAndOpen(section.key);
@@ -172,15 +182,16 @@ export default function SidebarContent({
               <div
                 className="w-full flex items-center justify-between rounded-xl text-sm font-semibold transition-all"
                 style={{
-                  color: isHeaderActive ? "#fff" : COLORS.textDark,
+                  color: isHeaderActive ? "#fff" : isLocked ? COLORS.textLight : COLORS.textDark,
                   background: isHeaderActive ? GRADIENTS.purplePink : "transparent",
                   borderLeft: isHeaderActive ? "3px solid #fff" : "3px solid transparent",
                   boxShadow: isHeaderActive ? "0 4px 12px rgba(192,132,252,0.4)" : "none",
+                  opacity: isLocked ? 0.6 : 1,
                 }}
               >
                 <button
                   onClick={handleHeaderClick}
-                  title={collapsed ? section.title : undefined}
+                  title={collapsed ? section.title : isLocked ? "Login to unlock" : undefined}
                   className="flex-1 flex items-center gap-2.5 px-3 py-2.5 text-left"
                   style={{
                     background: "transparent",
@@ -191,11 +202,17 @@ export default function SidebarContent({
                     justifyContent: collapsed ? "center" : "flex-start",
                   }}
                 >
-                  <SectionIcon size={16} color={isHeaderActive ? "#fff" : COLORS.purple} />
+                  <SectionIcon size={16} color={isHeaderActive ? "#fff" : isLocked ? COLORS.textLight : COLORS.purple} />
                   <FadeLabel show={!collapsed}>{section.title}</FadeLabel>
                 </button>
 
-                {!collapsed && (
+                {!collapsed && isLocked && (
+                  <span className="px-3 py-2.5 flex items-center">
+                    <Lock size={13} color={COLORS.textLight} />
+                  </span>
+                )}
+
+                {!collapsed && !isLocked && (
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
@@ -257,21 +274,39 @@ export default function SidebarContent({
       </div>
 
       <div className="px-3 pb-5 pt-2" style={{ borderTop: `1px solid ${COLORS.border}` }}>
-        <button
-          onClick={onLogout}
-          title={collapsed ? "Logout" : undefined}
-          className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-semibold mt-2"
-          style={{
-            color: "#E4568A",
-            background: "rgba(240,171,252,0.15)",
-            border: "none",
-            cursor: "pointer",
-            justifyContent: collapsed ? "center" : "flex-start",
-          }}
-        >
-          <LogOut size={16} />
-          <FadeLabel show={!collapsed}>Logout</FadeLabel>
-        </button>
+        {locked ? (
+          <button
+            onClick={onLoginRequired}
+            title={collapsed ? "Login" : undefined}
+            className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-semibold mt-2"
+            style={{
+              color: "#fff",
+              background: GRADIENTS.purpleSky,
+              border: "none",
+              cursor: "pointer",
+              justifyContent: collapsed ? "center" : "flex-start",
+            }}
+          >
+            <LogIn size={16} />
+            <FadeLabel show={!collapsed}>Login</FadeLabel>
+          </button>
+        ) : (
+          <button
+            onClick={onLogout}
+            title={collapsed ? "Logout" : undefined}
+            className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-semibold mt-2"
+            style={{
+              color: "#E4568A",
+              background: "rgba(240,171,252,0.15)",
+              border: "none",
+              cursor: "pointer",
+              justifyContent: collapsed ? "center" : "flex-start",
+            }}
+          >
+            <LogOut size={16} />
+            <FadeLabel show={!collapsed}>Logout</FadeLabel>
+          </button>
+        )}
       </div>
     </div>
   );

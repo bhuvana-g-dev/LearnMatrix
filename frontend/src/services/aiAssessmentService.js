@@ -98,3 +98,20 @@ export async function evaluateDiagnosticAssessment(questions, answers) {
   }
   return data.data;
 }
+
+/**
+ * generateRoadmap — Roadmap Agent. Send the exact object
+ * evaluateDiagnosticAssessment returned. Rule-based on the backend, not
+ * an AI call, so this is fast and never fails due to Gemini/Groq being
+ * down — default timeout is fine here too.
+ *
+ * @param {object} evaluation - {skills: [...], overall: {...}}
+ * @returns {Promise<{entries: object[], alreadyStrong: string[], totalWeeks: number, includesProjectWeek: boolean}>}
+ */
+export async function generateRoadmap(evaluation) {
+  const { data } = await apiClient.post(ENDPOINTS.ASSESSMENT.GENERATE_ROADMAP, { evaluation });
+  if (!data.success) {
+    throw new Error(data.error || data.message || "Roadmap generation failed.");
+  }
+  return data.data;
+}

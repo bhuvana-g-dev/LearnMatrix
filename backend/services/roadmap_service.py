@@ -149,3 +149,39 @@ def generate_roadmap(evaluation: dict) -> Roadmap:
         total_weeks=total_weeks,
         includes_project_week=includes_project_week,
     )
+
+
+# ---------------------------------------------------------------------------
+# Persistence orchestration — everything above this line is the pure Roadmap
+# Agent (generate_roadmap) with zero Firestore dependency, same as every
+# other agent in this codebase. Functions below are business logic that
+# happens to call Firestore, matching the question_service.py pattern
+# (service layer delegates to a repository, which is the only Firestore
+# touchpoint — see services/roadmap_repository.py).
+# ---------------------------------------------------------------------------
+
+from firebase.firebase_config import get_firestore_client
+from services.roadmap_repository import save_roadmap as _save_roadmap, get_roadmap as _get_roadmap
+
+
+def generate_and_save_roadmap(uid: str, role: str, evaluation: dict) -> dict:
+    """
+    Generates a roadmap (pure logic above) and immediately persists it,
+    fully replacing any existing roadmap for this user. Called after a
+    fresh diagnostic assessment — including a retake, which is exactly
+    when the product requirement says the roadmap SHOULD regenerate.
+    """
+    roadmap = generate_roadmap(evaluation)
+    db = get_firestore_client()
+    return _save_roadmap(db, uid, role, roadmap.to_dict())
+
+
+def load_saved_roadmap(uid: str) -> dict | None:
+    """
+    Returns the user's saved roadmap, or None if they've never generated
+    one. Callers (the roadmap page) should treat None as "prompt them to
+    take the assessment", not an error — this is the "don't regenerate
+    every time the page opens" requirement.
+    """
+    db = get_firestore_client()
+    return _get_roadmap(db, uid)

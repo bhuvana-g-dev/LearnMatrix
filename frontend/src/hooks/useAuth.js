@@ -60,7 +60,6 @@ export function useAuth() {
       setLoading(false);
     }
   }, []);
-
   // Email Signup — also signs the new user straight in (sets user +
   // isAuthenticated). App.jsx separately gates full access behind
   // user.emailVerified, so this lands them on the "verify your email"

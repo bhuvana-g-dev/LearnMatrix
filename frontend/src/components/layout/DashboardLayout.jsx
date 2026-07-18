@@ -17,7 +17,7 @@ function getInitialCollapsed() {
   return window.innerWidth >= 768 && window.innerWidth < 1024;
 }
 
-export default function DashboardLayout({ activeKey, onNavigate, onLogout, children }) {
+export default function DashboardLayout({ activeKey, onNavigate, onLogout, children, locked = false, onLoginRequired }) {
   const [collapsed, setCollapsed] = useState(getInitialCollapsed);
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -62,6 +62,8 @@ export default function DashboardLayout({ activeKey, onNavigate, onLogout, child
             onLogout={onLogout}
             collapsed={collapsed}
             onToggleCollapse={() => setCollapsed((prev) => !prev)}
+            locked={locked}
+            onLoginRequired={onLoginRequired}
           />
         </motion.aside>
 
@@ -94,6 +96,11 @@ export default function DashboardLayout({ activeKey, onNavigate, onLogout, child
                   onLogout={onLogout}
                   collapsed={false}
                   onClose={() => setMobileOpen(false)}
+                  locked={locked}
+                  onLoginRequired={() => {
+                    setMobileOpen(false);
+                    onLoginRequired?.();
+                  }}
                 />
               </motion.aside>
             </>

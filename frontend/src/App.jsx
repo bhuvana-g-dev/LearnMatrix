@@ -174,7 +174,6 @@ export default function App() {
       "Coming Soon";
     content = <ComingSoonScreen label={label} onBack={() => setActiveKey("role")} />;
   }
-
   return (
     <DashboardLayout activeKey={activeKey} onNavigate={setActiveKey} onLogout={auth.logout}>
       <AnimatePresence mode="wait">

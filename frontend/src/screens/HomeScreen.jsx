@@ -86,7 +86,9 @@ export default function HomeScreen({ onGetStarted, onLogin, onSignup }) {
     <div className="px-4 sm:px-8 py-14 pb-20" id="home-top">
       <div className="max-w-5xl mx-auto">
 
-        {/* Top bar — only shown pre-login, when onLogin is passed */}
+        {/* Top bar — only shown pre-login, when onLogin is passed.
+            Desktop (md+): full horizontal navbar with visible links.
+            Mobile (<md): Logo + hamburger, links live in the drawer. */}
         {onLogin && (
           <div className="flex items-center justify-between mb-10">
             <div className="flex items-center gap-3">
@@ -94,7 +96,7 @@ export default function HomeScreen({ onGetStarted, onLogin, onSignup }) {
                 type="button"
                 onClick={() => setMenuOpen(true)}
                 aria-label="Open menu"
-                className="flex items-center justify-center flex-shrink-0"
+                className="flex md:hidden items-center justify-center flex-shrink-0"
                 style={{
                   width: 38,
                   height: 38,
@@ -109,23 +111,57 @@ export default function HomeScreen({ onGetStarted, onLogin, onSignup }) {
               <Logo />
             </div>
 
-            <motion.button
-              whileHover={{ y: -2, boxShadow: "0 10px 24px rgba(192,132,252,0.45)" }}
-              whileTap={{ scale: 0.97 }}
-              onClick={onLogin}
-              className="font-semibold text-sm"
-              style={{
-                padding: "10px 26px",
-                borderRadius: 9999,
-                color: "#fff",
-                border: "none",
-                background: GRADIENTS.purpleSky,
-                cursor: "pointer",
-                boxShadow: "0 6px 16px rgba(192,132,252,0.35)",
-              }}
-            >
-              Login
-            </motion.button>
+            {/* Desktop nav links — always visible, no hamburger needed */}
+            <nav className="hidden md:flex items-center gap-7">
+              {MENU_LINKS.map((link) => (
+                <button
+                  key={link.id}
+                  onClick={() => scrollToSection(link.id)}
+                  className="text-sm font-semibold"
+                  style={{ color: COLORS.textDark, background: "transparent", border: "none", cursor: "pointer" }}
+                >
+                  {link.label}
+                </button>
+              ))}
+            </nav>
+
+            <div className="flex items-center gap-3">
+              {onSignup && (
+                <motion.button
+                  whileHover={{ y: -2 }}
+                  whileTap={{ scale: 0.97 }}
+                  onClick={onSignup}
+                  className="hidden md:inline-flex font-semibold text-sm"
+                  style={{
+                    padding: "10px 22px",
+                    borderRadius: 9999,
+                    color: COLORS.textDark,
+                    border: `1.5px solid ${COLORS.border}`,
+                    background: "rgba(255,255,255,0.6)",
+                    cursor: "pointer",
+                  }}
+                >
+                  Sign Up
+                </motion.button>
+              )}
+              <motion.button
+                whileHover={{ y: -2, boxShadow: "0 10px 24px rgba(192,132,252,0.45)" }}
+                whileTap={{ scale: 0.97 }}
+                onClick={onLogin}
+                className="font-semibold text-sm"
+                style={{
+                  padding: "10px 26px",
+                  borderRadius: 9999,
+                  color: "#fff",
+                  border: "none",
+                  background: GRADIENTS.purpleSky,
+                  cursor: "pointer",
+                  boxShadow: "0 6px 16px rgba(192,132,252,0.35)",
+                }}
+              >
+                Login
+              </motion.button>
+            </div>
           </div>
         )}
 

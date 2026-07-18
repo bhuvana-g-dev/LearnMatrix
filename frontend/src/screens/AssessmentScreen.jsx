@@ -8,6 +8,7 @@ import {
   ArrowLeft as ArrowLeftIcon,
   RotateCcw,
   Sparkles,
+  Map,
 } from "lucide-react";
 import BackButton from "../components/common/BackButton";
 import { COLORS, GRADIENTS, GLASS_CARD } from "../constants/theme";
@@ -15,6 +16,7 @@ import { ROLE_TITLES } from "../constants/roles";
 import {
   generateDiagnosticAssessment,
   evaluateDiagnosticAssessment,
+  generateRoadmap,
 } from "../services/aiAssessmentService";
 
 const LEVEL_COLORS = {
@@ -52,6 +54,9 @@ export default function AssessmentScreen({ selectedRole, selectedSkills, onBack 
   const [evaluating, setEvaluating] = useState(false);
   const [evaluation, setEvaluation] = useState(null); // { skills: [...], overall: {...} }
   const [submitted, setSubmitted] = useState(false);
+  const [roadmap, setRoadmap] = useState(null);
+  const [loadingRoadmap, setLoadingRoadmap] = useState(false);
+  const [roadmapError, setRoadmapError] = useState("");
 
   const roleTitle = ROLE_TITLES[selectedRole] || "General";
   const skillsForAssessment = selectedSkills.length ? selectedSkills : [roleTitle];
@@ -118,7 +123,22 @@ export default function AssessmentScreen({ selectedRole, selectedSkills, onBack 
     setAnswers({});
     setSubmitted(false);
     setEvaluation(null);
+    setRoadmap(null);
+    setRoadmapError("");
     fetchQuestions();
+  };
+
+  const handleViewRoadmap = async () => {
+    setLoadingRoadmap(true);
+    setRoadmapError("");
+    try {
+      const result = await generateRoadmap(evaluation);
+      setRoadmap(result);
+    } catch (err) {
+      setRoadmapError(err.message || "Couldn't generate your roadmap.");
+    } finally {
+      setLoadingRoadmap(false);
+    }
   };
 
   if (fetchState === "loading") {
@@ -261,6 +281,121 @@ export default function AssessmentScreen({ selectedRole, selectedSkills, onBack 
               </tbody>
             </table>
           </div>
+        </div>
+
+        {/* Learning Roadmap — Roadmap Agent, generated on demand from the evaluation above */}
+        <div className="max-w-3xl mx-auto mb-8">
+          {!roadmap && (
+            <div className="flex flex-col items-center gap-3 py-6" style={{ ...GLASS_CARD, borderRadius: 24 }}>
+              {roadmapError && (
+                <p className="text-sm px-6 text-center" style={{ color: "#E0559C" }}>{roadmapError}</p>
+              )}
+              <motion.button
+                onClick={handleViewRoadmap}
+                disabled={loadingRoadmap}
+                whileHover={!loadingRoadmap ? { y: -2 } : {}}
+                whileTap={!loadingRoadmap ? { scale: 0.97 } : {}}
+                className="flex items-center gap-2 font-semibold"
+                style={{
+                  padding: "14px 28px",
+                  borderRadius: 9999,
+                  color: "#fff",
+                  border: "none",
+                  background: GRADIENTS.purpleSky,
+                  cursor: loadingRoadmap ? "not-allowed" : "pointer",
+                  opacity: loadingRoadmap ? 0.7 : 1,
+                }}
+              >
+                {loadingRoadmap ? (
+                  <>
+                    <Loader2 size={16} className="animate-spin" /> Building your roadmap…
+                  </>
+                ) : (
+                  <>
+                    <Map size={16} /> View My Learning Roadmap
+                  </>
+                )}
+              </motion.button>
+            </div>
+          )}
+
+          {roadmap && (
+            <div className="p-6" style={{ ...GLASS_CARD, borderRadius: 24 }}>
+              <h3 className="text-base font-bold mb-1" style={{ color: COLORS.textDark }}>
+                Your Learning Roadmap
+              </h3>
+              <p className="text-sm mb-5" style={{ color: COLORS.textMid }}>
+                {roadmap.entries.length > 0
+                  ? `${roadmap.totalWeeks}-week plan, weakest areas first`
+                  : "You're already strong across every skill tested — no revision needed."}
+              </p>
+
+              <div className="flex flex-col gap-3">
+                {roadmap.entries.map((entry) => (
+                  <div
+                    key={entry.skill}
+                    className="flex items-start gap-4 p-4"
+                    style={{ borderRadius: 16, background: "rgba(255,255,255,0.4)" }}
+                  >
+                    <div
+                      className="flex items-center justify-center font-bold text-sm flex-shrink-0"
+                      style={{
+                        width: 36, height: 36, borderRadius: "50%",
+                        background: GRADIENTS.purpleSky, color: "#fff",
+                      }}
+                    >
+                      {entry.week}
+                    </div>
+                    <div>
+                      <p className="font-semibold" style={{ color: COLORS.textDark }}>
+                        Week {entry.week}: {entry.skill}
+                        <span
+                          className="ml-2 px-2 py-0.5 text-[10px] font-bold rounded-full"
+                          style={{ color: "#fff", background: LEVEL_COLORS[entry.currentLevel] || COLORS.textMid }}
+                        >
+                          {entry.currentLevel}
+                        </span>
+                      </p>
+                      <p className="text-sm mt-1" style={{ color: COLORS.textMid }}>
+                        {entry.recommendation}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+
+                {roadmap.includesProjectWeek && (
+                  <div
+                    className="flex items-start gap-4 p-4"
+                    style={{ borderRadius: 16, background: "rgba(255,255,255,0.4)" }}
+                  >
+                    <div
+                      className="flex items-center justify-center font-bold text-sm flex-shrink-0"
+                      style={{
+                        width: 36, height: 36, borderRadius: "50%",
+                        background: GRADIENTS.purplePink, color: "#fff",
+                      }}
+                    >
+                      {roadmap.totalWeeks}
+                    </div>
+                    <div>
+                      <p className="font-semibold" style={{ color: COLORS.textDark }}>
+                        Week {roadmap.totalWeeks}: Mini Project
+                      </p>
+                      <p className="text-sm mt-1" style={{ color: COLORS.textMid }}>
+                        Combine everything above into one small project to consolidate what you've learned.
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {roadmap.alreadyStrong.length > 0 && (
+                <p className="text-xs mt-5" style={{ color: COLORS.textLight }}>
+                  Already strong (no revision scheduled): {roadmap.alreadyStrong.join(", ")}
+                </p>
+              )}
+            </div>
+          )}
         </div>
 
         <div className="max-w-3xl mx-auto flex flex-col gap-6 mb-8">

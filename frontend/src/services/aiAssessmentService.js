@@ -52,3 +52,49 @@ export async function generateAssessmentQuestions({
   //   { difficulty: "Medium", difficulty_reasoning: "..."|null, questions: [...] }
   return data.data;
 }
+
+/**
+ * generateDiagnosticAssessment — the real diagnostic flow. One call
+ * generates a fixed 2 Easy + 2 Medium + 2 Hard set PER selected skill
+ * (backend/services/assessment_planner.py), all aggregated into one
+ * question set with globally-unique TempIDs (each prefixed by skill).
+ *
+ * @param {string[]} skills - the student's selected skills (each gets
+ *   its own 6-question Easy/Medium/Hard block)
+ * @param {string} [role] - selected career role, used as generation
+ *   context only (not a topic)
+ * @returns {Promise<{skills: string[], totalQuestions: number, questions: object[]}>}
+ */
+export async function generateDiagnosticAssessment({ skills, role = "", learning_objective = "" }) {
+  const { data } = await apiClient.post(
+    ENDPOINTS.ASSESSMENT.GENERATE_DIAGNOSTIC_ASSESSMENT,
+    { skills, role, learning_objective },
+    { timeout: GENERATION_TIMEOUT_MS }
+  );
+  if (!data.success) {
+    throw new Error(data.error || data.message || "Diagnostic assessment generation failed.");
+  }
+  return data.data;
+}
+
+/**
+ * evaluateDiagnosticAssessment — Evaluation Agent. Send back the exact
+ * `questions` array generateDiagnosticAssessment returned, plus the
+ * student's answers keyed by TempID (skipped questions simply omitted).
+ * Returns the skill-wise Strong/Intermediate/Weak/Not Attempted table.
+ *
+ * @param {object[]} questions
+ * @param {Record<string, string>} answers - {TempID: "OptionA", ...}
+ * @returns {Promise<{skills: object[], overall: {correct, total, scorePercent}}>}
+ */
+export async function evaluateDiagnosticAssessment(questions, answers) {
+  // Fast, local, no cold-start/Gemini call involved — default timeout is fine.
+  const { data } = await apiClient.post(
+    ENDPOINTS.ASSESSMENT.EVALUATE_DIAGNOSTIC_ASSESSMENT,
+    { questions, answers }
+  );
+  if (!data.success) {
+    throw new Error(data.error || data.message || "Evaluation failed.");
+  }
+  return data.data;
+}

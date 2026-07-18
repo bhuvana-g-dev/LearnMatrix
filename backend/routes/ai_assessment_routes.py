@@ -24,6 +24,7 @@ from services.ai_assessment_service import (
     evaluate_assessment,
     AIAssessmentError,
 )
+from services.roadmap_service import generate_roadmap
 from utils.response_helper import success_response, error_response
 
 ai_assessment_bp = Blueprint("ai_assessment", __name__)
@@ -152,6 +153,39 @@ def evaluate_diagnostic_assessment_route():
             data=result,  # {skills: [...], overall: {...}}
             message=f"Evaluated {len(questions)} question(s) across "
                     f"{len(result['skills'])} skill(s).",
+        )
+    except Exception as exc:  # noqa: BLE001
+        return error_response(str(exc), status_code=500)
+
+
+@ai_assessment_bp.route("/ai/generate-roadmap", methods=["POST"])
+def generate_roadmap_route():
+    """
+    Roadmap Agent (#9): given an evaluation result (the exact object
+    returned by evaluate-diagnostic-assessment), produces an ordered
+    study plan — weakest/skipped skills first, "Strong" skills set aside
+    as already known. Deliberately NOT an AI call (see roadmap_service.py
+    docstring) — this always succeeds, even if every LLM provider in the
+    fallback chain is down.
+    """
+    payload = request.get_json(silent=True)
+    if not payload:
+        return error_response("Request body must be JSON.", status_code=400)
+
+    evaluation = payload.get("evaluation")
+    if not evaluation or not isinstance(evaluation, dict) or "skills" not in evaluation:
+        return error_response(
+            "Request body must include 'evaluation' — the exact object "
+            "returned by evaluate-diagnostic-assessment.",
+            status_code=400,
+        )
+
+    try:
+        roadmap = generate_roadmap(evaluation)
+        return success_response(
+            data=roadmap.to_dict(),
+            message=f"Generated a {roadmap.total_weeks}-week roadmap "
+                    f"covering {len(roadmap.entries)} skill(s).",
         )
     except Exception as exc:  # noqa: BLE001
         return error_response(str(exc), status_code=500)

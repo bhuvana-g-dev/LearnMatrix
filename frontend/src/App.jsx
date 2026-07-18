@@ -47,7 +47,6 @@ export default function App() {
   );
   const [showSignup, setShowSignup] = useState(false);
   const [showLanding, setShowLanding] = useState(true);
-
   useEffect(() => {
     window.scrollTo({ top: 0, left: 0, behavior: "smooth" });
   }, [auth.isAuthenticated, activeKey]);

@@ -24,7 +24,7 @@ from services.ai_assessment_service import (
     evaluate_assessment,
     AIAssessmentError,
 )
-from services.roadmap_service import generate_roadmap
+from services.roadmap_service import generate_roadmap, generate_and_save_roadmap
 from utils.response_helper import success_response, error_response
 
 ai_assessment_bp = Blueprint("ai_assessment", __name__)
@@ -167,12 +167,22 @@ def generate_roadmap_route():
     as already known. Deliberately NOT an AI call (see roadmap_service.py
     docstring) — this always succeeds, even if every LLM provider in the
     fallback chain is down.
+
+    If 'uid' is provided, the roadmap is also saved to Firestore
+    (fully replacing any previous one for this user) so it persists
+    across page reloads and can be loaded later via
+    GET /api/roadmap/<uid> — this is the "don't regenerate every time
+    the page opens" requirement. Without a uid, the roadmap is still
+    generated and returned, just not persisted (useful for testing).
     """
     payload = request.get_json(silent=True)
     if not payload:
         return error_response("Request body must be JSON.", status_code=400)
 
     evaluation = payload.get("evaluation")
+    uid = payload.get("uid")
+    role = payload.get("role", "")
+
     if not evaluation or not isinstance(evaluation, dict) or "skills" not in evaluation:
         return error_response(
             "Request body must include 'evaluation' — the exact object "
@@ -181,11 +191,20 @@ def generate_roadmap_route():
         )
 
     try:
-        roadmap = generate_roadmap(evaluation)
+        if uid:
+            roadmap_dict = generate_and_save_roadmap(uid=uid, role=role, evaluation=evaluation)
+            total_weeks = roadmap_dict["totalWeeks"]
+            entry_count = len(roadmap_dict["entries"])
+        else:
+            roadmap = generate_roadmap(evaluation)
+            roadmap_dict = roadmap.to_dict()
+            total_weeks = roadmap.total_weeks
+            entry_count = len(roadmap.entries)
+
         return success_response(
-            data=roadmap.to_dict(),
-            message=f"Generated a {roadmap.total_weeks}-week roadmap "
-                    f"covering {len(roadmap.entries)} skill(s).",
+            data=roadmap_dict,
+            message=f"Generated a {total_weeks}-week roadmap covering {entry_count} skill(s)."
+                    + (" (saved)" if uid else " (not saved — no uid provided)"),
         )
     except Exception as exc:  # noqa: BLE001
         return error_response(str(exc), status_code=500)

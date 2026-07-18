@@ -18,7 +18,12 @@ only parses the request, same as every other route module.
 
 from flask import Blueprint, request
 
-from services.ai_assessment_service import generate_ai_questions, AIAssessmentError
+from services.ai_assessment_service import (
+    generate_ai_questions,
+    generate_diagnostic_assessment,
+    evaluate_assessment,
+    AIAssessmentError,
+)
 from utils.response_helper import success_response, error_response
 
 ai_assessment_bp = Blueprint("ai_assessment", __name__)
@@ -67,5 +72,86 @@ def generate_questions_route():
         )
     except AIAssessmentError as exc:
         return error_response(str(exc), status_code=422)
+    except Exception as exc:  # noqa: BLE001
+        return error_response(str(exc), status_code=500)
+
+
+@ai_assessment_bp.route("/ai/generate-diagnostic-assessment", methods=["POST"])
+def generate_diagnostic_assessment_route():
+    """
+    The real diagnostic assessment described in ARCHITECTURE.md's
+    "core intelligence" upgrade: one call per selected skill, each a
+    fixed 2 Easy + 2 Medium + 2 Hard split (services/assessment_planner.py),
+    so the Evaluation Agent below has consistent, comparable data per skill.
+    """
+    payload = request.get_json(silent=True)
+    if not payload:
+        return error_response("Request body must be JSON.", status_code=400)
+
+    skills = payload.get("skills")
+    role = payload.get("role", "")
+    learning_objective = payload.get("learning_objective", "")
+
+    if not skills or not isinstance(skills, list):
+        return error_response(
+            "Request body must include 'skills' (non-empty list).",
+            status_code=400,
+        )
+
+    try:
+        result = generate_diagnostic_assessment(
+            skills=skills, role=role, learning_objective=learning_objective
+        )
+        return success_response(
+            data=result,  # {skills, totalQuestions, questions}
+            message=f"Generated {result['totalQuestions']} diagnostic question(s) "
+                    f"across {len(skills)} skill(s).",
+        )
+    except AIAssessmentError as exc:
+        return error_response(str(exc), status_code=422)
+    except Exception as exc:  # noqa: BLE001
+        return error_response(str(exc), status_code=500)
+
+
+@ai_assessment_bp.route("/ai/evaluate-diagnostic-assessment", methods=["POST"])
+def evaluate_diagnostic_assessment_route():
+    """
+    Evaluation Agent (#5): given the same questions the diagnostic
+    assessment generated plus the student's answers, returns the
+    skill-wise breakdown table (Easy/Medium/Hard correct counts, score
+    percent, and Strong/Intermediate/Weak/Not Attempted classification).
+
+    Deliberately stateless — the frontend sends back the exact questions
+    array it received from generate-diagnostic-assessment, since nothing
+    is persisted server-side yet (see ARCHITECTURE.md §9 Phase 3 for when
+    quiz_results/assessment_history land in Firestore).
+    """
+    payload = request.get_json(silent=True)
+    if not payload:
+        return error_response("Request body must be JSON.", status_code=400)
+
+    questions = payload.get("questions")
+    answers = payload.get("answers")
+
+    if not questions or not isinstance(questions, list):
+        return error_response(
+            "Request body must include 'questions' (the array returned by "
+            "generate-diagnostic-assessment).",
+            status_code=400,
+        )
+    if answers is None or not isinstance(answers, dict):
+        return error_response(
+            "Request body must include 'answers' as an object of "
+            "{TempID: chosen_option} (skipped questions simply omitted).",
+            status_code=400,
+        )
+
+    try:
+        result = evaluate_assessment(questions, answers)
+        return success_response(
+            data=result,  # {skills: [...], overall: {...}}
+            message=f"Evaluated {len(questions)} question(s) across "
+                    f"{len(result['skills'])} skill(s).",
+        )
     except Exception as exc:  # noqa: BLE001
         return error_response(str(exc), status_code=500)

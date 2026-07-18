@@ -9,6 +9,7 @@ import {
   ArrowRight,
   Sparkles,
 } from "lucide-react";
+import Logo from "../components/common/Logo";
 import { COLORS, GRADIENTS, GLASS_CARD } from "../constants/theme";
 
 const FEATURES = [
@@ -51,14 +52,46 @@ const STEPS = [
 ];
 
 /**
- * HomeScreen — the full-view "About LearnMatrix" landing page shown to a
- * newly logged-in user, before they pick a role. Purely presentational —
- * no data fetching — so it needs no service/hook of its own.
+ * HomeScreen — the full-view "About LearnMatrix" landing page.
+ *
+ * Reused in two places:
+ *  1. Pre-login (App.jsx, showLanding=true) — pass `onLogin` and this
+ *     renders a top bar (Logo left, "Login" button right) above the hero.
+ *  2. Post-login, "Home" nav item — no `onLogin` passed, so no top bar;
+ *     same landing content, just without the Login button.
+ *
+ * Purely presentational — no data fetching — so it needs no service/hook
+ * of its own either way.
  */
-export default function HomeScreen({ onGetStarted }) {
+export default function HomeScreen({ onGetStarted, onLogin }) {
   return (
     <div className="px-4 sm:px-8 py-14 pb-20">
       <div className="max-w-5xl mx-auto">
+
+        {/* Top bar — only shown pre-login, when onLogin is passed */}
+        {onLogin && (
+          <div className="flex items-center justify-between mb-10">
+            <Logo />
+            <motion.button
+              whileHover={{ y: -2, boxShadow: "0 10px 24px rgba(192,132,252,0.45)" }}
+              whileTap={{ scale: 0.97 }}
+              onClick={onLogin}
+              className="font-semibold text-sm"
+              style={{
+                padding: "10px 26px",
+                borderRadius: 9999,
+                color: "#fff",
+                border: "none",
+                background: GRADIENTS.purpleSky,
+                cursor: "pointer",
+                boxShadow: "0 6px 16px rgba(192,132,252,0.35)",
+              }}
+            >
+              Login
+            </motion.button>
+          </div>
+        )}
+
         {/* Hero */}
         <motion.div
           initial={{ opacity: 0, y: -16 }}

@@ -44,7 +44,7 @@ const LEVEL_COLORS = {
  * Fetch state machine: "loading" -> "error" | "ready"
  * Quiz state machine (once "ready"): in-progress -> "evaluating" -> "submitted"
  */
-export default function AssessmentScreen({ selectedRole, selectedSkills, onBack }) {
+export default function AssessmentScreen({ selectedRole, selectedSkills, uid, onBack }) {
   const [fetchState, setFetchState] = useState("loading"); // loading | error | ready
   const [errorMessage, setErrorMessage] = useState("");
   const [questions, setQuestions] = useState([]);
@@ -132,7 +132,7 @@ export default function AssessmentScreen({ selectedRole, selectedSkills, onBack 
     setLoadingRoadmap(true);
     setRoadmapError("");
     try {
-      const result = await generateRoadmap(evaluation);
+      const result = await generateRoadmap(evaluation, uid, roleTitle);
       setRoadmap(result);
     } catch (err) {
       setRoadmapError(err.message || "Couldn't generate your roadmap.");

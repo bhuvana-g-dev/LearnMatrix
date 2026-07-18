@@ -19,10 +19,17 @@ export const ENDPOINTS = {
   },
   ASSESSMENT: {
     // Question Generation Agent (backend/routes/ai_assessment_routes.py).
-    // Full Assessment Planner/Builder pipeline (§9 ARCHITECTURE.md Phase 2)
-    // will get its own POST /ai/assessments here later — this screen will
-    // only need aiAssessmentService.js updated, not AssessmentScreen.jsx.
+    // Single-skill, single-difficulty generation — still used wherever a
+    // quick quiz (not a full diagnostic) is needed.
     GENERATE_QUESTIONS: "/ai/generate-questions",
+
+    // Diagnostic assessment: one call generates 2 Easy + 2 Medium + 2
+    // Hard questions PER selected skill (services/assessment_planner.py),
+    // the other scores them skill-by-skill via the Evaluation Agent
+    // (services/evaluation_service.py) into a Strong/Intermediate/Weak
+    // table. This is the "core intelligence" flow, not a generic quiz.
+    GENERATE_DIAGNOSTIC_ASSESSMENT: "/ai/generate-diagnostic-assessment",
+    EVALUATE_DIAGNOSTIC_ASSESSMENT: "/ai/evaluate-diagnostic-assessment",
   },
   RECOMMENDATION: {
     // Placeholder for the future Scikit-Learn recommendation endpoint.

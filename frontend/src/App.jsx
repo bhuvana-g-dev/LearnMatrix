@@ -29,7 +29,6 @@ export default function App() {
   const careerPath = useCareerPath();
   const [activeKey, setActiveKey] = useState("home");
   const [showSignup, setShowSignup] = useState(false);
-
   useEffect(() => {
     window.scrollTo({ top: 0, left: 0, behavior: "smooth" });
   }, [auth.isAuthenticated, activeKey]);

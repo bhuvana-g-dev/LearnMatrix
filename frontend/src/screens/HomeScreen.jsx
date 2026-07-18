@@ -1,4 +1,5 @@
-import { motion } from "framer-motion";
+import { useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   Target,
   Brain,
@@ -8,6 +9,8 @@ import {
   Award,
   ArrowRight,
   Sparkles,
+  Menu,
+  X,
 } from "lucide-react";
 import Logo from "../components/common/Logo";
 import { COLORS, GRADIENTS, GLASS_CARD } from "../constants/theme";
@@ -51,27 +54,61 @@ const STEPS = [
   { n: "03", title: "Revise & earn", desc: "Stay sharp with AI revision, then earn your certificate." },
 ];
 
+const MENU_LINKS = [
+  { label: "Home", id: "home-top" },
+  { label: "Features", id: "home-features" },
+  { label: "How It Works", id: "home-how-it-works" },
+];
+
 /**
  * HomeScreen — the full-view "About LearnMatrix" landing page.
  *
  * Reused in two places:
- *  1. Pre-login (App.jsx, showLanding=true) — pass `onLogin` and this
- *     renders a top bar (Logo left, "Login" button right) above the hero.
- *  2. Post-login, "Home" nav item — no `onLogin` passed, so no top bar;
- *     same landing content, just without the Login button.
+ *  1. Pre-login (App.jsx, showLanding=true) — pass `onLogin` (and
+ *     optionally `onSignup`) and this renders a top bar: hamburger menu +
+ *     Logo on the left, "Login" button on the right. The hamburger opens
+ *     an off-canvas side drawer with section links + Login/Sign Up.
+ *  2. Post-login, "Home" nav item — no `onLogin` passed, so no top bar
+ *     and no hamburger; same landing content underneath either way.
  *
  * Purely presentational — no data fetching — so it needs no service/hook
  * of its own either way.
  */
-export default function HomeScreen({ onGetStarted, onLogin }) {
+export default function HomeScreen({ onGetStarted, onLogin, onSignup }) {
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  const scrollToSection = (id) => {
+    setMenuOpen(false);
+    document.getElementById(id)?.scrollIntoView({ behavior: "smooth" });
+  };
+
   return (
-    <div className="px-4 sm:px-8 py-14 pb-20">
+    <div className="px-4 sm:px-8 py-14 pb-20" id="home-top">
       <div className="max-w-5xl mx-auto">
 
         {/* Top bar — only shown pre-login, when onLogin is passed */}
         {onLogin && (
           <div className="flex items-center justify-between mb-10">
-            <Logo />
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => setMenuOpen(true)}
+                aria-label="Open menu"
+                className="flex items-center justify-center flex-shrink-0"
+                style={{
+                  width: 38,
+                  height: 38,
+                  borderRadius: 12,
+                  background: "rgba(255,255,255,0.5)",
+                  border: `1px solid ${COLORS.border}`,
+                  cursor: "pointer",
+                }}
+              >
+                <Menu size={18} color={COLORS.textDark} />
+              </button>
+              <Logo />
+            </div>
+
             <motion.button
               whileHover={{ y: -2, boxShadow: "0 10px 24px rgba(192,132,252,0.45)" }}
               whileTap={{ scale: 0.97 }}
@@ -133,7 +170,7 @@ export default function HomeScreen({ onGetStarted, onLogin }) {
         </motion.div>
 
         {/* Feature grid */}
-        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5 mb-14">
+        <div id="home-features" className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5 mb-14">
           {FEATURES.map((f, i) => {
             const Icon = f.icon;
             return (
@@ -165,6 +202,7 @@ export default function HomeScreen({ onGetStarted, onLogin }) {
 
         {/* How it works */}
         <motion.div
+          id="home-how-it-works"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4, delay: 0.3 }}
@@ -198,6 +236,111 @@ export default function HomeScreen({ onGetStarted, onLogin }) {
           </div>
         </motion.div>
       </div>
+
+      {/* Hamburger side drawer — pre-login only */}
+      <AnimatePresence>
+        {menuOpen && onLogin && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setMenuOpen(false)}
+              style={{ position: "fixed", inset: 0, background: "rgba(13,27,61,0.35)", zIndex: 40 }}
+            />
+            <motion.aside
+              initial={{ x: -300 }}
+              animate={{ x: 0 }}
+              exit={{ x: -300 }}
+              transition={{ type: "spring", stiffness: 300, damping: 32 }}
+              style={{
+                position: "fixed",
+                top: 0,
+                left: 0,
+                height: "100vh",
+                width: 280,
+                zIndex: 50,
+                ...GLASS_CARD,
+                borderRadius: 0,
+              }}
+            >
+              <div className="flex flex-col h-full p-5">
+                <div className="flex items-center justify-between mb-8">
+                  <Logo />
+                  <button
+                    type="button"
+                    onClick={() => setMenuOpen(false)}
+                    aria-label="Close menu"
+                    className="flex items-center justify-center flex-shrink-0"
+                    style={{
+                      width: 30,
+                      height: 30,
+                      borderRadius: 10,
+                      background: "rgba(255,255,255,0.5)",
+                      border: `1px solid ${COLORS.border}`,
+                      cursor: "pointer",
+                    }}
+                  >
+                    <X size={14} color={COLORS.textDark} />
+                  </button>
+                </div>
+
+                <nav className="flex flex-col gap-1">
+                  {MENU_LINKS.map((link) => (
+                    <button
+                      key={link.id}
+                      onClick={() => scrollToSection(link.id)}
+                      className="text-left text-sm font-semibold px-3 py-2.5 rounded-xl"
+                      style={{ color: COLORS.textDark, background: "transparent", border: "none", cursor: "pointer" }}
+                    >
+                      {link.label}
+                    </button>
+                  ))}
+                </nav>
+
+                <div className="mt-auto flex flex-col gap-2.5 pt-5" style={{ borderTop: `1px solid ${COLORS.border}` }}>
+                  <button
+                    onClick={() => {
+                      setMenuOpen(false);
+                      onLogin();
+                    }}
+                    className="w-full text-sm font-semibold"
+                    style={{
+                      padding: "11px 0",
+                      borderRadius: 9999,
+                      color: "#fff",
+                      border: "none",
+                      background: GRADIENTS.purpleSky,
+                      cursor: "pointer",
+                    }}
+                  >
+                    Login
+                  </button>
+                  {onSignup && (
+                    <button
+                      onClick={() => {
+                        setMenuOpen(false);
+                        onSignup();
+                      }}
+                      className="w-full text-sm font-semibold"
+                      style={{
+                        padding: "11px 0",
+                        borderRadius: 9999,
+                        color: COLORS.textDark,
+                        border: `1.5px solid ${COLORS.border}`,
+                        background: "rgba(255,255,255,0.6)",
+                        cursor: "pointer",
+                      }}
+                    >
+                      Sign Up
+                    </button>
+                  )}
+                </div>
+              </div>
+            </motion.aside>
+          </>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

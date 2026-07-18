@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import DashboardLayout from "./components/layout/DashboardLayout";
+import PageShell from "./components/layout/PageShell";
+import Logo from "./components/common/Logo";
 import LoginScreen from "./screens/LoginScreen";
 import SignUpScreen from "./screens/SignUpScreen";
 import VerifyEmailScreen from "./screens/VerifyEmailScreen";
@@ -19,6 +21,7 @@ import { useProfileCompletion } from "./hooks/useProfileCompletion";
 import { saveUserProfileDoc } from "./services/userProfileService";
 import { ROLE_TITLES } from "./constants/roles";
 import { NAV_SECTIONS } from "./constants/navigation";
+import { COLORS } from "./constants/theme";
 
 /**
  * App.jsx is now a thin composition root:
@@ -58,9 +61,19 @@ export default function App() {
   // would flash/fall through to the landing page for a moment.
   if (auth.initializing) {
     return (
-      <div className="flex items-center justify-center" style={{ minHeight: "100vh" }}>
-        <p className="text-sm text-gray-500">Loading...</p>
-      </div>
+      <PageShell>
+        <div className="flex flex-col items-center justify-center gap-4" style={{ minHeight: "100vh" }}>
+          <motion.div
+            animate={{ scale: [1, 1.06, 1] }}
+            transition={{ duration: 1.4, repeat: Infinity, ease: "easeInOut" }}
+          >
+            <Logo />
+          </motion.div>
+          <p className="text-xs font-medium tracking-wide" style={{ color: COLORS.textMid }}>
+            Please Wait
+          </p>
+        </div>
+      </PageShell>
     );
   }
 

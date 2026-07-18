@@ -14,7 +14,6 @@ import {
 } from "lucide-react";
 import Logo from "../components/common/Logo";
 import { COLORS, GRADIENTS, GLASS_CARD } from "../constants/theme";
-
 const FEATURES = [
   {
     icon: Target,

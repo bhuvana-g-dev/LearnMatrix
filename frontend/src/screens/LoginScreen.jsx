@@ -1,12 +1,12 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { Eye, EyeOff, Mail, Lock, Github, Check } from "lucide-react";
+import { Eye, EyeOff, Mail, Lock, Github, Check, ArrowLeft } from "lucide-react";
 import PageShell from "../components/layout/PageShell";
 import Logo from "../components/common/Logo";
 import GoogleIcon from "../components/common/GoogleIcon";
 import { COLORS, GRADIENTS, GLASS_CARD } from "../constants/theme";
 
-export default function LoginScreen({ auth, onSuccess, onSignup }) {
+export default function LoginScreen({ auth, onSuccess, onSignup, onBack }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPw, setShowPw] = useState(false);
@@ -70,6 +70,17 @@ export default function LoginScreen({ auth, onSuccess, onSignup }) {
           className="w-full max-w-md p-8 sm:p-10"
           style={{ ...GLASS_CARD, borderRadius: 30 }}
         >
+          {onBack && (
+            <button
+              type="button"
+              onClick={onBack}
+              className="flex items-center gap-1.5 text-xs font-semibold mb-5"
+              style={{ color: COLORS.textMid, background: "none", border: "none", cursor: "pointer" }}
+            >
+              <ArrowLeft size={14} /> Back to Home
+            </button>
+          )}
+
           <Logo />
 
           <h1

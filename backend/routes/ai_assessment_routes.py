@@ -22,6 +22,8 @@ from services.ai_assessment_service import (
     generate_ai_questions,
     generate_diagnostic_assessment,
     evaluate_assessment,
+    evaluate_and_save_assessment,
+    load_saved_assessment_result,
     AIAssessmentError,
 )
 from services.roadmap_service import generate_roadmap, generate_and_save_roadmap
@@ -122,10 +124,12 @@ def evaluate_diagnostic_assessment_route():
     skill-wise breakdown table (Easy/Medium/Hard correct counts, score
     percent, and Strong/Intermediate/Weak/Not Attempted classification).
 
-    Deliberately stateless — the frontend sends back the exact questions
-    array it received from generate-diagnostic-assessment, since nothing
-    is persisted server-side yet (see ARCHITECTURE.md §9 Phase 3 for when
-    quiz_results/assessment_history land in Firestore).
+    If 'uid' is provided (along with 'role' and 'skills'), the FULL
+    result — questions, answers, and evaluation — is also saved to
+    Firestore (assessment_results/{uid}), fully replacing any previous
+    attempt. This is what makes a page refresh show the same completed
+    result instead of silently generating a brand-new assessment — see
+    GET /api/assessment-result/<uid> for the load side.
     """
     payload = request.get_json(silent=True)
     if not payload:
@@ -133,6 +137,9 @@ def evaluate_diagnostic_assessment_route():
 
     questions = payload.get("questions")
     answers = payload.get("answers")
+    uid = payload.get("uid")
+    role = payload.get("role", "")
+    skills = payload.get("skills", [])
 
     if not questions or not isinstance(questions, list):
         return error_response(
@@ -148,12 +155,39 @@ def evaluate_diagnostic_assessment_route():
         )
 
     try:
-        result = evaluate_assessment(questions, answers)
+        if uid:
+            result = evaluate_and_save_assessment(
+                uid=uid, role=role, skills=skills, questions=questions, answers=answers
+            )
+        else:
+            result = evaluate_assessment(questions, answers)
+
         return success_response(
             data=result,  # {skills: [...], overall: {...}}
             message=f"Evaluated {len(questions)} question(s) across "
-                    f"{len(result['skills'])} skill(s).",
+                    f"{len(result['skills'])} skill(s)."
+                    + (" (saved)" if uid else " (not saved — no uid provided)"),
         )
+    except Exception as exc:  # noqa: BLE001
+        return error_response(str(exc), status_code=500)
+
+
+@ai_assessment_bp.route("/assessment-result/<uid>", methods=["GET"])
+def get_assessment_result_route(uid):
+    """
+    Returns the user's last completed assessment (questions, answers,
+    evaluation), or null if they haven't completed one yet. The frontend
+    calls this FIRST, before generate-diagnostic-assessment, so a page
+    refresh shows the saved result instead of generating a new one.
+    """
+    try:
+        result = load_saved_assessment_result(uid)
+        if result is None:
+            return success_response(
+                data=None,
+                message="No completed assessment found for this user yet.",
+            )
+        return success_response(data=result, message="Assessment result loaded.")
     except Exception as exc:  # noqa: BLE001
         return error_response(str(exc), status_code=500)
 

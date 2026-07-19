@@ -1,7 +1,7 @@
 import {
   Home as HomeIcon,
   Target,
-  BookOpen,
+  Map,
   Brain,
   Bot,
   Calendar,
@@ -46,14 +46,10 @@ export const NAV_SECTIONS = [
     ],
   },
   {
-    key: "learning",
-    title: "Learning",
-    icon: BookOpen,
-    children: [
-      { key: "roadmap", label: "My Roadmap" },
-      { key: "sessions", label: "Learning Sessions" },
-      { key: "resources", label: "Learning Resources" },
-    ],
+    key: "roadmap",
+    title: "Map & My Journey",
+    icon: Map,
+    selfNavigable: true, // single link, no dropdown — goes straight to RoadmapScreen
   },
   {
     key: "ai",

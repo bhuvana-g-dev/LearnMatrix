@@ -83,20 +83,45 @@ export async function generateDiagnosticAssessment({ skills, role = "", learning
  * student's answers keyed by TempID (skipped questions simply omitted).
  * Returns the skill-wise Strong/Intermediate/Weak/Not Attempted table.
  *
+ * Passing `uid`/`role`/`skills` also saves the FULL result (questions,
+ * answers, evaluation) to Firestore — this is what makes a page refresh
+ * show the same completed result instead of silently regenerating a
+ * brand-new assessment. Omit them to evaluate without persisting.
+ *
  * @param {object[]} questions
  * @param {Record<string, string>} answers - {TempID: "OptionA", ...}
+ * @param {string} [uid]
+ * @param {string} [role]
+ * @param {string[]} [skills]
  * @returns {Promise<{skills: object[], overall: {correct, total, scorePercent}}>}
  */
-export async function evaluateDiagnosticAssessment(questions, answers) {
+export async function evaluateDiagnosticAssessment(questions, answers, uid = null, role = "", skills = []) {
   // Fast, local, no cold-start/Gemini call involved — default timeout is fine.
   const { data } = await apiClient.post(
     ENDPOINTS.ASSESSMENT.EVALUATE_DIAGNOSTIC_ASSESSMENT,
-    { questions, answers }
+    { questions, answers, uid, role, skills }
   );
   if (!data.success) {
     throw new Error(data.error || data.message || "Evaluation failed.");
   }
   return data.data;
+}
+
+/**
+ * loadSavedAssessmentResult — checks whether this user already has a
+ * completed assessment saved. Call this BEFORE generating a new one —
+ * if it returns non-null, show that saved result instead of calling
+ * generateDiagnosticAssessment at all.
+ *
+ * @param {string} uid
+ * @returns {Promise<{role, skills, questions, answers, evaluation}|null>}
+ */
+export async function loadSavedAssessmentResult(uid) {
+  const { data } = await apiClient.get(`/assessment-result/${uid}`);
+  if (!data.success) {
+    throw new Error(data.error || data.message || "Failed to load your assessment result.");
+  }
+  return data.data; // null if none saved yet
 }
 
 /**

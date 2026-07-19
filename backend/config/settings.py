@@ -62,6 +62,7 @@ class Settings:
     # --- Firestore ---
     QUESTIONS_COLLECTION: str = os.getenv("QUESTIONS_COLLECTION", "questions")
     ROADMAP_COLLECTION: str = os.getenv("ROADMAP_COLLECTION", "roadmaps")
+    ASSESSMENT_RESULTS_COLLECTION: str = os.getenv("ASSESSMENT_RESULTS_COLLECTION", "assessment_results")
 
     # Status values. Stored as plain strings in Firestore, referenced via
     # these constants everywhere else so nothing typos "active" vs "Active".

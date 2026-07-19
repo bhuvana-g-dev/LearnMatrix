@@ -18,6 +18,7 @@ import {
   generateDiagnosticAssessment,
   evaluateDiagnosticAssessment,
   generateRoadmap,
+  loadSavedAssessmentResult,
 } from "../services/aiAssessmentService";
 
 const LEVEL_COLORS = {
@@ -46,7 +47,12 @@ const LEVEL_COLORS = {
  * Quiz state machine (once "ready"): in-progress -> "evaluating" -> "submitted"
  */
 export default function AssessmentScreen({ selectedRole, selectedSkills, uid, onBack }) {
-  const [fetchState, setFetchState] = useState("loading"); // loading | error | ready
+  // "checking" (new): looking for a previously completed & saved result
+  // BEFORE generating anything new — this is what stops a page refresh
+  // from silently burning a fresh AI call and discarding the student's
+  // actual first attempt. Only an explicit "Take Another Assessment"
+  // click should ever call fetchQuestions() after the initial check.
+  const [fetchState, setFetchState] = useState("checking"); // checking | loading | error | ready
   const [errorMessage, setErrorMessage] = useState("");
   const [questions, setQuestions] = useState([]);
 
@@ -82,7 +88,32 @@ export default function AssessmentScreen({ selectedRole, selectedSkills, uid, on
   }, [roleTitle, selectedSkills]);
 
   useEffect(() => {
-    fetchQuestions();
+    // No uid (not logged in / auth not ready yet) -> can't check for a
+    // saved result, just go straight to generating one.
+    if (!uid) {
+      fetchQuestions();
+      return;
+    }
+    (async () => {
+      try {
+        const saved = await loadSavedAssessmentResult(uid);
+        if (saved) {
+          // Found a previously completed attempt — show IT, don't
+          // generate a new one. Loads straight into the results view.
+          setQuestions(saved.questions);
+          setAnswers(saved.answers);
+          setEvaluation(saved.evaluation);
+          setSubmitted(true);
+          setFetchState("ready");
+        } else {
+          fetchQuestions();
+        }
+      } catch {
+        // Couldn't check (e.g. transient network issue) — fail open to
+        // the normal generation flow rather than blocking the student.
+        fetchQuestions();
+      }
+    })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -106,7 +137,12 @@ export default function AssessmentScreen({ selectedRole, selectedSkills, uid, on
   const handleSubmit = async () => {
     setEvaluating(true);
     try {
-      const result = await evaluateDiagnosticAssessment(questions, answers);
+      // Passing uid/role/skills also SAVES the full result to Firestore
+      // (backend/services/assessment_repository.py) — this is the write
+      // side of the "don't regenerate on refresh" fix.
+      const result = await evaluateDiagnosticAssessment(
+        questions, answers, uid, roleTitle, skillsForAssessment
+      );
       setEvaluation(result);
       setSubmitted(true);
     } catch (err) {
@@ -126,7 +162,7 @@ export default function AssessmentScreen({ selectedRole, selectedSkills, uid, on
     setEvaluation(null);
     setRoadmap(null);
     setRoadmapError("");
-    fetchQuestions();
+    fetchQuestions(); // explicit retake -> generate a genuinely new assessment
   };
 
   const handleViewRoadmap = async () => {
@@ -142,7 +178,8 @@ export default function AssessmentScreen({ selectedRole, selectedSkills, uid, on
     }
   };
 
-  if (fetchState === "loading") {
+  if (fetchState === "checking" || fetchState === "loading") {
+    const isChecking = fetchState === "checking";
     return (
       <div className="px-4 sm:px-8 pt-10 pb-20">
         <BackButton onClick={onBack} label="Back" />
@@ -157,11 +194,12 @@ export default function AssessmentScreen({ selectedRole, selectedSkills, uid, on
             <Loader2 size={40} style={{ color: COLORS.purple }} />
           </motion.div>
           <h3 className="text-lg font-bold" style={{ color: COLORS.textDark }}>
-            Building your diagnostic assessment…
+            {isChecking ? "Checking for a previous attempt…" : "Building your diagnostic assessment…"}
           </h3>
           <p className="text-sm" style={{ color: COLORS.textMid }}>
-            Generating Easy, Medium, and Hard questions for {skillsForAssessment.join(", ")}.
-            This can take a little while with several skills selected.
+            {isChecking
+              ? "One moment — making sure you don't already have a completed assessment."
+              : `Generating Easy, Medium, and Hard questions for ${skillsForAssessment.join(", ")}. This can take a little while with several skills selected.`}
           </p>
         </div>
       </div>

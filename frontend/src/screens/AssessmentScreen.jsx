@@ -442,19 +442,30 @@ export default function AssessmentScreen({ selectedRole, selectedSkills, uid, on
   if (!currentQuestion) return null;
 
   const optionKeys = ["OptionA", "OptionB", "OptionC", "OptionD"];
+  const optionLetters = { OptionA: "A", OptionB: "B", OptionC: "C", OptionD: "D" };
+  const DIFFICULTY_COLORS = { Easy: "#22C55E", Medium: "#D4A017", Hard: "#E0559C" };
 
   return (
     <div className="px-4 sm:px-8 pt-10 pb-40">
       <BackButton onClick={onBack} label="Back" />
 
       <div className="max-w-2xl mx-auto mb-6">
-        <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
           <div className="flex items-center gap-2">
             <Sparkles size={16} style={{ color: COLORS.purple }} />
             <span className="text-xs font-semibold" style={{ color: COLORS.textMid }}>
-              {currentQuestion.Skill} · Question {currentIndex + 1} of {questions.length} · {currentQuestion.Difficulty}
+              {currentQuestion.Skill} · Question {currentIndex + 1} of {questions.length}
             </span>
           </div>
+          <span
+            className="px-3 py-1 text-[10px] font-bold uppercase tracking-wide rounded-full"
+            style={{
+              color: "#fff",
+              background: DIFFICULTY_COLORS[currentQuestion.Difficulty] || COLORS.textMid,
+            }}
+          >
+            {currentQuestion.Difficulty}
+          </span>
         </div>
         <div
           className="w-full h-2 rounded-full overflow-hidden"
@@ -479,9 +490,12 @@ export default function AssessmentScreen({ selectedRole, selectedSkills, uid, on
           className="max-w-2xl mx-auto p-7"
           style={{ ...GLASS_CARD, borderRadius: 24 }}
         >
-          <p className="text-xs font-semibold mb-2" style={{ color: COLORS.textLight }}>
+          <span
+            className="inline-block px-3 py-1 text-[11px] font-bold mb-3 rounded-full"
+            style={{ color: COLORS.purple, background: "rgba(212,160,23,0.14)" }}
+          >
             {currentQuestion.Topic}
-          </p>
+          </span>
           <h3 className="text-lg font-bold mb-6" style={{ color: COLORS.textDark }}>
             {currentQuestion.Question}
           </h3>
@@ -495,15 +509,26 @@ export default function AssessmentScreen({ selectedRole, selectedSkills, uid, on
                   onClick={() => selectAnswer(key)}
                   whileHover={{ x: 3 }}
                   whileTap={{ scale: 0.99 }}
-                  className="text-left px-5 py-3.5 font-medium"
+                  className="flex items-center gap-3.5 text-left px-5 py-3.5 font-medium"
                   style={{
                     borderRadius: 16,
                     border: `2px solid ${isSelected ? COLORS.purple : COLORS.border}`,
-                    background: isSelected ? "rgba(192,132,252,0.18)" : "rgba(255,255,255,0.35)",
+                    background: isSelected ? "rgba(212,160,23,0.14)" : "rgba(255,255,255,0.35)",
                     color: COLORS.textDark,
                     cursor: "pointer",
                   }}
                 >
+                  <span
+                    className="flex items-center justify-center flex-shrink-0 text-xs font-bold"
+                    style={{
+                      width: 26, height: 26, borderRadius: "50%",
+                      background: isSelected ? GRADIENTS.purpleSky : "rgba(13,27,61,0.06)",
+                      color: isSelected ? "#fff" : COLORS.textMid,
+                      transition: "all .2s ease",
+                    }}
+                  >
+                    {optionLetters[key]}
+                  </span>
                   {currentQuestion[key]}
                 </motion.button>
               );

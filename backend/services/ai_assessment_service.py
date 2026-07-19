@@ -13,6 +13,7 @@ from agents.question_generation_agent import (
     QuestionGenerationAgent,
     QuestionGenerationError,
 )
+from firebase.firebase_config import get_firestore_client
 from services.difficulty_engine import compute_difficulty, DifficultyDecision
 from services.assessment_planner import build_diagnostic_plan
 from services.evaluation_service import evaluate_diagnostic_assessment
@@ -162,3 +163,35 @@ def evaluate_assessment(questions: list[dict], answers: dict[str, str]) -> dict:
     """
     result = evaluate_diagnostic_assessment(questions, answers)
     return result.to_dict()
+
+
+def evaluate_and_save_assessment(
+    uid: str, role: str, skills: list[str],
+    questions: list[dict], answers: dict[str, str],
+) -> dict:
+    """
+    Evaluates AND persists the full result (questions, answers,
+    evaluation) so a page refresh loads this saved attempt instead of
+    silently generating a brand-new assessment. See
+    services/assessment_repository.py for why the FULL result is saved,
+    not just the evaluation summary.
+    """
+    from services.assessment_repository import save_assessment_result
+
+    evaluation = evaluate_assessment(questions, answers)
+    db = get_firestore_client()
+    save_assessment_result(db, uid, role, skills, questions, answers, evaluation)
+    return evaluation
+
+
+def load_saved_assessment_result(uid: str) -> dict | None:
+    """
+    Returns the user's last completed assessment (questions, answers,
+    evaluation) or None if they haven't completed one yet. None should
+    be treated as "show the normal take-the-assessment flow", not an
+    error — this is the "don't regenerate on every refresh" fix.
+    """
+    from services.assessment_repository import get_assessment_result
+
+    db = get_firestore_client()
+    return get_assessment_result(db, uid)

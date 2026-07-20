@@ -150,7 +150,6 @@ export default function HomeScreen({ onGetStarted, onLogin, onSignup }) {
                 </button>
               ))}
             </nav>
-
             <div className="flex items-center gap-3">
               {onSignup && (
                 <motion.button

@@ -8,7 +8,6 @@ import CompletedCoursesSection from "../components/profile/CompletedCoursesSecti
 import CertificatesSection from "../components/profile/certificates/CertificatesSection";
 import LearningStatisticsSection from "../components/profile/LearningStatisticsSection";
 import { COLORS } from "../constants/theme";
-
 /**
  * ProfileScreen — the main "My Profile" overview page. "AI Revision
  * Schedule" and "Learning Insights" now live on their own separate pages

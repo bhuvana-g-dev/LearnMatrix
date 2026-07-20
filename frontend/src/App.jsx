@@ -9,12 +9,9 @@ import VerifyEmailScreen from "./screens/VerifyEmailScreen";
 import CompleteProfileScreen from "./screens/CompleteProfileScreen";
 import HomeScreen from "./screens/HomeScreen";
 import RoleSelectionScreen from "./screens/RoleSelectionScreen";
-import CareerStatusScreen from "./screens/CareerStatusScreen";
 import SkillSelectionScreen from "./screens/SkillSelectionScreen";
 import AssessmentScreen from "./screens/AssessmentScreen";
-import RoadmapScreen from "./screens/RoadmapScreen";
 import ProfileScreen from "./screens/ProfileScreen";
-import RevisionScheduleScreen from "./screens/RevisionScheduleScreen";
 import LearningInsightsScreen from "./screens/LearningInsightsScreen";
 import ComingSoonScreen from "./screens/ComingSoonScreen";
 import { useAuth } from "./hooks/useAuth";
@@ -40,6 +37,7 @@ export default function App() {
   const auth = useAuth();
   const careerPath = useCareerPath();
   const profileCompletion = useProfileCompletion(auth.user);
+
   // Remembers which page was open across a browser refresh, so refreshing
   // "Profile" (or any page) reloads that same page instead of bouncing
   // back to Home/Login.
@@ -158,14 +156,12 @@ export default function App() {
     content = <HomeScreen onGetStarted={() => setActiveKey("role")} />;
   } else if (activeKey === "role") {
     content = (
-      <CareerStatusScreen
-        uid={auth.user?.uid}
+      <RoleSelectionScreen
         roles={careerPath.roles}
         rolesLoading={careerPath.rolesLoading}
         selectedRole={careerPath.selectedRole}
         onSelectRole={careerPath.selectRole}
         onContinue={() => setActiveKey("skills")}
-        onNavigate={setActiveKey}
       />
     );
   } else if (activeKey === "skills") {
@@ -202,18 +198,13 @@ export default function App() {
       <AssessmentScreen
         selectedRole={careerPath.selectedRole}
         selectedSkills={careerPath.selectedSkills}
-        uid={auth.user?.uid}
         onBack={() => setActiveKey("skills")}
       />
     );
-  } else if (activeKey === "roadmap") {
-    content = <RoadmapScreen uid={auth.user?.uid} onNavigate={setActiveKey} />;
   } else if (activeKey === "profile") {
     // "My Profile" > "Overview" — the main profile hub (see
     // constants/navigation.js for the dropdown's other two entries).
     content = <ProfileScreen onNavigate={setActiveKey} />;
-  } else if (activeKey === "revision-schedule") {
-    content = <RevisionScheduleScreen />;
   } else if (activeKey === "learning-insights") {
     content = <LearningInsightsScreen />;
   } else {

@@ -13,7 +13,6 @@ function findSectionKeyForActiveKey(key) {
   );
   return section ? section.key : null;
 }
-
 // Label text that fades/collapses in and out as the sidebar toggles —
 // shared by section titles, child labels, and the Logout button.
 function FadeLabel({ show, children }) {

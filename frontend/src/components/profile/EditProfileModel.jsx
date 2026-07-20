@@ -28,7 +28,6 @@ function resizeImageToBase64(file, maxSize = 300) {
     reader.readAsDataURL(file);
   });
 }
-
 /**
  * EditProfileModal — lets the user update the fields ProfileHeaderCard
  * shows: name (Firebase Auth displayName), mobile/college/department/

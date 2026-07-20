@@ -13,6 +13,7 @@ function findSectionKeyForActiveKey(key) {
   );
   return section ? section.key : null;
 }
+
 // Label text that fades/collapses in and out as the sidebar toggles —
 // shared by section titles, child labels, and the Logout button.
 function FadeLabel({ show, children }) {
@@ -128,28 +129,40 @@ export default function SidebarContent({
             const isActive = activeKey === section.key;
             const isLocked = locked && section.key !== "home";
             return (
-              <button
+              <div
                 key={section.key}
-                onClick={() => (isLocked ? onLoginRequired?.() : onNavigate(section.key))}
-                title={collapsed ? section.title : isLocked ? "Login to unlock" : undefined}
-                className="w-full flex items-center justify-between gap-2.5 px-3 py-2.5 rounded-xl text-sm font-semibold mb-1.5 transition-all"
+                className="w-full flex items-center justify-between rounded-xl text-sm font-semibold mb-1.5 transition-all"
                 style={{
                   color: isActive ? "#fff" : isLocked ? COLORS.textLight : COLORS.textDark,
                   background: isActive ? GRADIENTS.purplePink : "transparent",
-                  border: "none",
                   borderLeft: isActive ? "3px solid #fff" : "3px solid transparent",
-                  cursor: "pointer",
                   boxShadow: isActive ? "0 4px 12px rgba(192,132,252,0.4)" : "none",
-                  justifyContent: collapsed ? "center" : "flex-start",
                   opacity: isLocked ? 0.6 : 1,
                 }}
               >
-                <span className="flex items-center gap-2.5" style={{ justifyContent: collapsed ? "center" : "flex-start" }}>
+                <button
+                  onClick={() => (isLocked ? onLoginRequired?.() : onNavigate(section.key))}
+                  title={collapsed ? section.title : isLocked ? "Login to unlock" : undefined}
+                  className="flex-1 flex items-center gap-2.5 px-3 py-2.5 text-left"
+                  style={{
+                    background: "transparent",
+                    border: "none",
+                    cursor: "pointer",
+                    color: "inherit",
+                    font: "inherit",
+                    justifyContent: collapsed ? "center" : "flex-start",
+                  }}
+                >
                   <SectionIcon size={16} color={isActive ? "#fff" : isLocked ? COLORS.textLight : COLORS.purple} />
                   <FadeLabel show={!collapsed}>{section.title}</FadeLabel>
-                </span>
-                {!collapsed && isLocked && <Lock size={13} color={COLORS.textLight} />}
-              </button>
+                </button>
+
+                {!collapsed && isLocked && (
+                  <span className="px-3 py-2.5 flex items-center">
+                    <Lock size={13} color={COLORS.textLight} />
+                  </span>
+                )}
+              </div>
             );
           }
 

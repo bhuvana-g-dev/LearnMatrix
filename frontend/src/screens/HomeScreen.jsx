@@ -11,41 +11,69 @@ import {
   Sparkles,
   Menu,
   X,
+  Layers,
+  Palette,
+  Server,
+  BarChart3,
+  Cloud,
+  Shield,
+  Smartphone,
+  PlayCircle,
+  TrendingUp,
 } from "lucide-react";
 import Logo from "../components/common/Logo";
 import { COLORS, GRADIENTS, GLASS_CARD } from "../constants/theme";
+import { ROLES } from "../constants/roles";
+
 const FEATURES = [
   {
     icon: Target,
     title: "Role-Based Career Paths",
-    desc: "Pick an IT career — Full Stack, Cyber Security, Data Analyst, and more — and get a path built around it.",
+    desc: "Personalized roadmap based on your career",
+    color: "#E4568A",
   },
   {
     icon: Brain,
     title: "Adaptive Assessments",
-    desc: "Initial assessments, topic quizzes, and practice tests that adjust to where you actually stand.",
+    desc: "Smart tests that adjust to your level",
+    color: "#8B5CF6",
   },
   {
     icon: BookOpen,
     title: "Structured Learning",
-    desc: "A roadmap, learning sessions, and curated resources for every skill in your chosen path.",
+    desc: "Curated resources for every skill",
+    color: "#0D9488",
   },
   {
     icon: Bot,
     title: "AI Study Assistant",
-    desc: "Chat, flashcards, mind maps, and audio overviews to help concepts actually stick.",
+    desc: "Chat, flashcards, mind maps & audio",
+    color: "#D4A017",
   },
   {
     icon: Calendar,
-    title: "AI Revision Scheduler",
-    desc: "A revision plan that resurfaces topics right when you're about to forget them.",
+    title: "Smart Revision Planner",
+    desc: "Resurfaces topics before you forget",
+    color: "#2563EB",
   },
   {
     icon: Award,
-    title: "Certificates",
-    desc: "Earn verifiable certificates as you complete courses — ready to share on LinkedIn.",
+    title: "Progress Tracking",
+    desc: "See how far you've come, always",
+    color: "#16A34A",
   },
 ];
+
+const ROLE_ICONS = {
+  fullstack: Layers,
+  frontend: Palette,
+  backend: Server,
+  aiml: Bot,
+  data: BarChart3,
+  cloud: Cloud,
+  cyber: Shield,
+  android: Smartphone,
+};
 
 const STEPS = [
   { n: "01", title: "Choose your path", desc: "Select the IT career you want to master." },
@@ -164,75 +192,215 @@ export default function HomeScreen({ onGetStarted, onLogin, onSignup }) {
           </div>
         )}
 
-        {/* Hero */}
-        <motion.div
-          initial={{ opacity: 0, y: -16 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5 }}
-          className="text-center mb-14"
-        >
-          <div
-            className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-5"
-            style={{ background: GRADIENTS.purplePink, boxShadow: "0 10px 26px rgba(192,132,252,0.45)" }}
+        {/* Hero — two column: copy + CTAs on the left, mockup card on the right */}
+        <div className="grid lg:grid-cols-2 gap-10 items-center mb-16">
+          <motion.div
+            initial={{ opacity: 0, y: -16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5 }}
           >
-            <Sparkles size={26} color="#fff" />
-          </div>
-          <h1 className="text-3xl sm:text-5xl font-bold" style={{ color: COLORS.textDark }}>
-            Welcome to LearnMatrix
-          </h1>
-          <p className="mt-4 text-sm sm:text-base max-w-xl mx-auto" style={{ color: COLORS.textMid }}>
-            Your AI-powered adaptive learning platform — pick an IT career path, learn at your
-            own pace, and let AI keep your assessments, revisions, and progress on track.
-          </p>
+            <div
+              className="inline-flex items-center gap-2 text-xs font-semibold mb-5"
+              style={{
+                padding: "7px 16px",
+                borderRadius: 9999,
+                background: "rgba(212,160,23,0.14)",
+                color: COLORS.purple,
+              }}
+            >
+              <Sparkles size={13} /> AI-Powered Adaptive Learning Platform
+            </div>
 
-          <motion.button
-            whileHover={{ y: -2, boxShadow: "0 12px 28px rgba(192,132,252,0.55)" }}
-            whileTap={{ scale: 0.98 }}
-            onClick={onGetStarted}
-            className="inline-flex items-center gap-2 font-semibold mt-8"
-            style={{
-              padding: "14px 34px",
-              borderRadius: 9999,
-              color: "#fff",
-              border: "none",
-              background: GRADIENTS.purpleSky,
-              cursor: "pointer",
-              boxShadow: "0 8px 20px rgba(192,132,252,0.4)",
-            }}
+            <h1 className="text-3xl sm:text-5xl font-bold leading-tight" style={{ color: COLORS.textDark }}>
+              Master Your IT Career with{" "}
+              <span
+                style={{
+                  background: GRADIENTS.purpleSky,
+                  WebkitBackgroundClip: "text",
+                  WebkitTextFillColor: "transparent",
+                }}
+              >
+                AI
+              </span>
+            </h1>
+            <p className="mt-4 text-sm sm:text-base max-w-md" style={{ color: COLORS.textMid }}>
+              Pick an IT career path, learn at your own pace, and let AI keep your
+              assessments, revisions, and progress on track.
+            </p>
+
+            <div className="flex flex-wrap items-center gap-3 mt-8">
+              <motion.button
+                whileHover={{ y: -2, boxShadow: "0 12px 28px rgba(212,160,23,0.45)" }}
+                whileTap={{ scale: 0.98 }}
+                onClick={onGetStarted}
+                className="inline-flex items-center gap-2 font-semibold text-sm"
+                style={{
+                  padding: "14px 30px",
+                  borderRadius: 9999,
+                  color: "#fff",
+                  border: "none",
+                  background: GRADIENTS.purpleSky,
+                  cursor: "pointer",
+                  boxShadow: "0 8px 20px rgba(212,160,23,0.35)",
+                }}
+              >
+                Get Started <ArrowRight size={16} />
+              </motion.button>
+              <motion.button
+                whileHover={{ y: -2 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={() => scrollToSection("home-how-it-works")}
+                className="inline-flex items-center gap-2 font-semibold text-sm"
+                style={{
+                  padding: "14px 26px",
+                  borderRadius: 9999,
+                  color: COLORS.textDark,
+                  border: `1.5px solid ${COLORS.border}`,
+                  background: "rgba(255,255,255,0.6)",
+                  cursor: "pointer",
+                }}
+              >
+                <PlayCircle size={16} /> How It Works
+              </motion.button>
+            </div>
+          </motion.div>
+
+          {/* Right side — dashboard-style mockup with floating badge chips */}
+          <motion.div
+            initial={{ opacity: 0, scale: 0.94 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.5, delay: 0.15 }}
+            className="relative hidden sm:block"
           >
-            Get Started <ArrowRight size={16} />
-          </motion.button>
-        </motion.div>
+            <div className="p-4 sm:p-5" style={{ ...GLASS_CARD, borderRadius: 28 }}>
+              <div className="flex items-center gap-1.5 mb-4">
+                <span className="w-2.5 h-2.5 rounded-full" style={{ background: "#E4568A" }} />
+                <span className="w-2.5 h-2.5 rounded-full" style={{ background: "#D4A017" }} />
+                <span className="w-2.5 h-2.5 rounded-full" style={{ background: "#16A34A" }} />
+              </div>
+              <div className="space-y-3">
+                {ROLES.slice(0, 3).map((r) => (
+                  <div
+                    key={r.id}
+                    className="flex items-center gap-3 p-3 rounded-2xl"
+                    style={{ background: "rgba(255,255,255,0.5)", border: `1px solid ${COLORS.border}` }}
+                  >
+                    <span className="text-xl">{r.emoji}</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-bold truncate" style={{ color: COLORS.textDark }}>
+                        {r.title}
+                      </p>
+                      <div className="h-1.5 rounded-full mt-1.5 overflow-hidden" style={{ background: COLORS.border }}>
+                        <div
+                          className="h-full rounded-full"
+                          style={{ width: `${55 + r.skills * 2}%`, background: GRADIENTS.purpleSky }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.5 }}
+              className="hidden sm:flex items-center gap-2 absolute -top-5 -right-4 px-3.5 py-2.5"
+              style={{ ...GLASS_CARD, borderRadius: 16 }}
+            >
+              <Award size={16} color={COLORS.purple} />
+              <span className="text-xs font-bold" style={{ color: COLORS.textDark }}>
+                Certified Skills
+              </span>
+            </motion.div>
+
+            <motion.div
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.65 }}
+              className="hidden sm:flex items-center gap-2 absolute -bottom-5 -left-4 px-3.5 py-2.5"
+              style={{ ...GLASS_CARD, borderRadius: 16 }}
+            >
+              <TrendingUp size={16} color="#16A34A" />
+              <span className="text-xs font-bold" style={{ color: COLORS.textDark }}>
+                AI-Tracked Progress
+              </span>
+            </motion.div>
+          </motion.div>
+        </div>
 
         {/* Feature grid */}
-        <div id="home-features" className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5 mb-14">
-          {FEATURES.map((f, i) => {
-            const Icon = f.icon;
-            return (
-              <motion.div
-                key={f.title}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.4, delay: i * 0.06 }}
-                whileHover={{ y: -4 }}
-                className="p-5"
-                style={{ ...GLASS_CARD, borderRadius: 24 }}
-              >
-                <div
-                  className="w-11 h-11 rounded-full flex items-center justify-center mb-4"
-                  style={{ background: "linear-gradient(135deg, rgba(192,132,252,0.35), rgba(125,211,252,0.3))" }}
+        <div id="home-features" className="mb-16">
+          <h2 className="text-lg sm:text-xl font-bold text-center mb-8" style={{ color: COLORS.textDark }}>
+            Why Choose LearnMatrix?
+          </h2>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+            {FEATURES.map((f, i) => {
+              const Icon = f.icon;
+              return (
+                <motion.div
+                  key={f.title}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.4, delay: i * 0.06 }}
+                  whileHover={{ y: -4 }}
+                  className="p-4 text-center"
+                  style={{ ...GLASS_CARD, borderRadius: 20 }}
                 >
-                  <Icon size={18} color="#8B5CF6" />
-                </div>
-                <h3 className="text-sm font-bold" style={{ color: COLORS.textDark }}>
-                  {f.title}
-                </h3>
-                <p className="text-xs mt-1.5 leading-snug" style={{ color: COLORS.textMid }}>
-                  {f.desc}
-                </p>
-              </motion.div>
-            );
-          })}
+                  <div
+                    className="w-10 h-10 rounded-full flex items-center justify-center mx-auto mb-3"
+                    style={{ background: `${f.color}1F` }}
+                  >
+                    <Icon size={17} color={f.color} />
+                  </div>
+                  <h3 className="text-xs font-bold" style={{ color: COLORS.textDark }}>
+                    {f.title}
+                  </h3>
+                  <p className="text-[11px] mt-1 leading-snug" style={{ color: COLORS.textMid }}>
+                    {f.desc}
+                  </p>
+                </motion.div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Popular career paths */}
+        <div className="mb-16">
+          <h2 className="text-lg sm:text-xl font-bold text-center mb-8" style={{ color: COLORS.textDark }}>
+            Popular Career Paths
+          </h2>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            {ROLES.map((r, i) => {
+              const Icon = ROLE_ICONS[r.id] || Layers;
+              return (
+                <motion.button
+                  key={r.id}
+                  onClick={onGetStarted}
+                  initial={{ opacity: 0, y: 16 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.35, delay: i * 0.05 }}
+                  whileHover={{ y: -4 }}
+                  className="p-4 text-center"
+                  style={{ ...GLASS_CARD, borderRadius: 20, border: "none", cursor: "pointer" }}
+                >
+                  <div
+                    className="w-11 h-11 rounded-2xl flex items-center justify-center mx-auto mb-3"
+                    style={{ background: GRADIENTS.purpleSky }}
+                  >
+                    <Icon size={18} color="#fff" />
+                  </div>
+                  <h3 className="text-xs font-bold" style={{ color: COLORS.textDark }}>
+                    {r.title}
+                  </h3>
+                  <p className="text-[11px] mt-1" style={{ color: COLORS.textLight }}>
+                    {r.skills} skills
+                  </p>
+                </motion.button>
+              );
+            })}
+          </div>
         </div>
 
         {/* How it works */}

@@ -5,7 +5,6 @@ import { updateProfile as updateAuthProfile } from "firebase/auth";
 import { auth } from "../../firebase";
 import { saveUserProfileDoc } from "../../services/userProfileService";
 import { COLORS, GRADIENTS, GLASS_CARD } from "../../constants/theme";
-
 const MOBILE_REGEX = /^[0-9]{10}$/;
 // Firestore documents cap out at 1MB, so we keep the base64 photo small
 // by resizing it down before storing it.

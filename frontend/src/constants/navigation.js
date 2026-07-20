@@ -78,7 +78,6 @@ export const NAV_SECTIONS = [
     icon: User,
     selfNavigable: true, // clicking the header itself opens the profile page
     children: [
-      { key: "revision-schedule", label: "AI Revision Schedule" },
       { key: "learning-insights", label: "Learning Insights" },
     ],
   },

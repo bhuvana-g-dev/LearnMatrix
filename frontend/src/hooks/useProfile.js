@@ -54,6 +54,14 @@ export function useProfile() {
     };
   }, []);
 
+  // Re-fetches just the profile section — used after EditProfileModal
+  // saves changes, so ProfileHeaderCard reflects the new data immediately
+  // without a full page reload.
+  const refetchProfile = useCallback(async () => {
+    const p = await getUserProfile();
+    setProfile(p);
+  }, []);
+
   // Optimistic local toggle + fire-and-forget sync (future Flask write).
   const toggleRevisionCompleted = useCallback((id) => {
     setRevisions((prev) =>
@@ -95,5 +103,6 @@ export function useProfile() {
     toggleRevisionCompleted,
     snoozeRevision,
     markAllTodayCompleted,
+    refetchProfile,
   };
 }

@@ -90,7 +90,6 @@ export function useProfile() {
       return next;
     });
   }, []);
-
   return {
     profile,
     progress,

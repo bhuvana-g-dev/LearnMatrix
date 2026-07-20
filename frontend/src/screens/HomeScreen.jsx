@@ -108,7 +108,6 @@ export default function HomeScreen({ onGetStarted, onLogin, onSignup }) {
     setMenuOpen(false);
     document.getElementById(id)?.scrollIntoView({ behavior: "smooth" });
   };
-
   return (
     <div className="px-4 sm:px-8 py-14 pb-20" id="home-top">
       <div className="max-w-5xl mx-auto">

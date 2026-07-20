@@ -7,6 +7,7 @@ import { saveUserProfileDoc } from "../../services/userProfileService";
 import { COLORS, GRADIENTS, GLASS_CARD } from "../../constants/theme";
 const MOBILE_REGEX = /^[0-9]{10}$/;
 // Firestore documents cap out at 1MB, so we keep the base64 photo small
+
 // by resizing it down before storing it.
 function resizeImageToBase64(file, maxSize = 300) {
   return new Promise((resolve, reject) => {

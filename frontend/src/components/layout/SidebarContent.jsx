@@ -127,24 +127,29 @@ export default function SidebarContent({
           // no chevron, no dropdown, ever.
           if (!hasChildren) {
             const isActive = activeKey === section.key;
+            const isLocked = locked && section.key !== "home";
             return (
               <button
                 key={section.key}
-                onClick={() => onNavigate(section.key)}
-                title={collapsed ? section.title : undefined}
-                className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-semibold mb-1.5 transition-all"
+                onClick={() => (isLocked ? onLoginRequired?.() : onNavigate(section.key))}
+                title={collapsed ? section.title : isLocked ? "Login to unlock" : undefined}
+                className="w-full flex items-center justify-between gap-2.5 px-3 py-2.5 rounded-xl text-sm font-semibold mb-1.5 transition-all"
                 style={{
-                  color: isActive ? "#fff" : COLORS.textDark,
+                  color: isActive ? "#fff" : isLocked ? COLORS.textLight : COLORS.textDark,
                   background: isActive ? GRADIENTS.purplePink : "transparent",
                   border: "none",
                   borderLeft: isActive ? "3px solid #fff" : "3px solid transparent",
                   cursor: "pointer",
                   boxShadow: isActive ? "0 4px 12px rgba(192,132,252,0.4)" : "none",
                   justifyContent: collapsed ? "center" : "flex-start",
+                  opacity: isLocked ? 0.6 : 1,
                 }}
               >
-                <SectionIcon size={16} color={isActive ? "#fff" : COLORS.purple} />
-                <FadeLabel show={!collapsed}>{section.title}</FadeLabel>
+                <span className="flex items-center gap-2.5" style={{ justifyContent: collapsed ? "center" : "flex-start" }}>
+                  <SectionIcon size={16} color={isActive ? "#fff" : isLocked ? COLORS.textLight : COLORS.purple} />
+                  <FadeLabel show={!collapsed}>{section.title}</FadeLabel>
+                </span>
+                {!collapsed && isLocked && <Lock size={13} color={COLORS.textLight} />}
               </button>
             );
           }

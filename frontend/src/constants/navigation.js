@@ -19,6 +19,7 @@ import {
  * the dropdown. "Home" has no `children` at all — it's a single link,
  * no dropdown, no chevron.
  */
+
 export const NAV_SECTIONS = [
   {
     key: "home",
@@ -47,7 +48,7 @@ export const NAV_SECTIONS = [
   },
   {
     key: "roadmap",
-    title: "Map & My Journey",
+    title: "Learning Hub",
     icon: Map,
     selfNavigable: true, // single link, no dropdown — goes straight to RoadmapScreen
   },
@@ -76,7 +77,7 @@ export const NAV_SECTIONS = [
     key: "profile",
     title: "My Profile",
     icon: User,
-    selfNavigable: true, // clicking the header itself opens the profile page
+    selfNavigable: true,
     children: [
       { key: "learning-insights", label: "Learning Insights" },
     ],

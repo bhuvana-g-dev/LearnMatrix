@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useProfile } from "../hooks/useProfile";
 import ProfileHeaderCard from "../components/profile/ProfileHeaderCard";
-import EditProfileModal from "../components/profile/EditProfileModal";
+import EditProfileModal from "../components/profile/EditProfileModel";
 import LearningProgressSection from "../components/profile/LearningProgressSection";
 import UpcomingAssessmentsSection from "../components/profile/UpcomingAssessmentsSection";
 import CompletedCoursesSection from "../components/profile/CompletedCoursesSection";

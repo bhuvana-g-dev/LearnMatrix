@@ -9,6 +9,7 @@ import VerifyEmailScreen from "./screens/VerifyEmailScreen";
 import CompleteProfileScreen from "./screens/CompleteProfileScreen";
 import HomeScreen from "./screens/HomeScreen";
 import RoleSelectionScreen from "./screens/RoleSelectionScreen";
+import CareerStatusScreen from "./screens/CareerStatusScreen";
 import SkillSelectionScreen from "./screens/SkillSelectionScreen";
 import AssessmentScreen from "./screens/AssessmentScreen";
 import RoadmapScreen from "./screens/RoadmapScreen";
@@ -157,12 +158,14 @@ export default function App() {
     content = <HomeScreen onGetStarted={() => setActiveKey("role")} />;
   } else if (activeKey === "role") {
     content = (
-      <RoleSelectionScreen
+      <CareerStatusScreen
+        uid={auth.user?.uid}
         roles={careerPath.roles}
         rolesLoading={careerPath.rolesLoading}
         selectedRole={careerPath.selectedRole}
         onSelectRole={careerPath.selectRole}
         onContinue={() => setActiveKey("skills")}
+        onNavigate={setActiveKey}
       />
     );
   } else if (activeKey === "skills") {

@@ -1,5 +1,7 @@
+import { useState } from "react";
 import { useProfile } from "../hooks/useProfile";
 import ProfileHeaderCard from "../components/profile/ProfileHeaderCard";
+import EditProfileModal from "../components/profile/EditProfileModal";
 import LearningProgressSection from "../components/profile/LearningProgressSection";
 import UpcomingAssessmentsSection from "../components/profile/UpcomingAssessmentsSection";
 import CompletedCoursesSection from "../components/profile/CompletedCoursesSection";
@@ -28,7 +30,10 @@ export default function ProfileScreen({ onNavigate }) {
     completedCourses,
     statistics,
     loading,
+    refetchProfile,
   } = useProfile();
+
+  const [editOpen, setEditOpen] = useState(false);
 
   if (loading) {
     return (
@@ -45,8 +50,19 @@ export default function ProfileScreen({ onNavigate }) {
       <div className="max-w-5xl mx-auto">
         <ProfileHeaderCard
           profile={profile}
-          onEditProfile={() => alert("Edit Profile — wire this up once the Flask backend is ready.")}
+          onEditProfile={() => setEditOpen(true)}
         />
+
+        {editOpen && (
+          <EditProfileModal
+            profile={profile}
+            onClose={() => setEditOpen(false)}
+            onSaved={async () => {
+              await refetchProfile();
+              setEditOpen(false);
+            }}
+          />
+        )}
 
         <LearningProgressSection
           progress={progress}

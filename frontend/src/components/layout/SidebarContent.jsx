@@ -32,7 +32,6 @@ function FadeLabel({ show, children }) {
     </AnimatePresence>
   );
 }
-
 /**
  * SidebarContent — reused by both the persistent (tablet/desktop) sidebar
  * and the mobile off-canvas drawer.

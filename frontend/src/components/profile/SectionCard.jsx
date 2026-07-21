@@ -7,14 +7,27 @@ import { COLORS, GLASS_CARD } from "../../constants/theme";
  * with each other and with the rest of LearnMatrix (same GLASS_CARD
  * token, same fade/slide-in animation as RoleSelectionScreen cards).
  */
-export default function SectionCard({ icon: Icon, title, subtitle, children, delay = 0 }) {
+export default function SectionCard({ icon: Icon, title, subtitle, children, delay = 0, theme }) {
+  const cardStyle = theme
+    ? {
+        background: theme.cardBg,
+        border: `1px solid ${theme.border}`,
+        boxShadow: GLASS_CARD.boxShadow,
+        backdropFilter: GLASS_CARD.backdropFilter,
+        WebkitBackdropFilter: GLASS_CARD.WebkitBackdropFilter,
+        borderRadius: 28,
+      }
+    : { ...GLASS_CARD, borderRadius: 28 };
+  const titleColor = theme ? theme.textDark : COLORS.textDark;
+  const subtitleColor = theme ? theme.textMid : COLORS.textMid;
+
   return (
     <motion.section
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4, delay }}
       className="p-6 sm:p-7 mb-6"
-      style={{ ...GLASS_CARD, borderRadius: 28 }}
+      style={cardStyle}
     >
       <div className="flex items-center gap-3 mb-5">
         {Icon && (
@@ -26,11 +39,11 @@ export default function SectionCard({ icon: Icon, title, subtitle, children, del
           </div>
         )}
         <div>
-          <h2 className="text-lg sm:text-xl font-bold" style={{ color: COLORS.textDark }}>
+          <h2 className="text-lg sm:text-xl font-bold" style={{ color: titleColor }}>
             {title}
           </h2>
           {subtitle && (
-            <p className="text-xs sm:text-sm" style={{ color: COLORS.textMid }}>
+            <p className="text-xs sm:text-sm" style={{ color: subtitleColor }}>
               {subtitle}
             </p>
           )}

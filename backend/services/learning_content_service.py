@@ -48,7 +48,11 @@ def get_topic_package(skill: str, topic: str, focus_band: str) -> dict:
             ) from exc
         notes = save_notes(db, skill, topic, focus_band, generated)
 
-    resources = list_resources(db, skill=skill, topic=topic)
+    # status="verified" explicitly, not a default in the repository —
+    # this is the actual guarantee that a student never sees an
+    # AI-suggested resource before a human has checked it (see
+    # resource_repository.py's status field docs).
+    resources = list_resources(db, skill=skill, topic=topic, status="verified")
 
     return {
         "skill": skill,

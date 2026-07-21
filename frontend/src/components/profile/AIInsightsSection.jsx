@@ -178,38 +178,52 @@ export default function AIInsightsSection({ insights, dark = false, onStartAsses
 
       {/* ---- new AI-powered cards ---- */}
       <div className="grid sm:grid-cols-2 gap-4 mt-4">
-        <LearningScoreCard data={insights.learningScore} theme={theme} />
-        <MentorMessageCard message={insights.mentorMessage} theme={theme} />
+        {insights.learningScore && <LearningScoreCard data={insights.learningScore} theme={theme} />}
+        {insights.mentorMessage && <MentorMessageCard message={insights.mentorMessage} theme={theme} />}
 
-        <SampleWrap show={isSample("todayPlan")} theme={theme}>
-          <TodayPlanCard plan={insights.todayPlan} theme={theme} />
-        </SampleWrap>
-        <SampleWrap show={isSample("weeklyActivity")} theme={theme}>
-          <WeeklyActivityChart activity={insights.weeklyActivity} theme={theme} />
-        </SampleWrap>
-
-        <SkillProgressCard skills={insights.skillProgress} theme={theme} />
-        <SampleWrap show={isSample("achievements")} theme={theme}>
-          <AchievementsCard achievements={insights.achievements} theme={theme} />
-        </SampleWrap>
-
-        <SampleWrap show={isSample("revisionReminder")} theme={theme}>
-          <RevisionReminderCard reminder={insights.revisionReminder} theme={theme} />
-        </SampleWrap>
-        <RiskPredictionCard risk={insights.riskPrediction} theme={theme} />
-
-        <CareerReadinessCard readiness={insights.careerReadiness} theme={theme} />
-        <MotivationCard message={insights.motivation} />
-
-        <div className="sm:col-span-2">
-          <SmartResourcesCard resources={insights.smartResources} theme={theme} />
-        </div>
-
-        <div className="sm:col-span-2">
-          <SampleWrap show={isSample("communityRanking")} theme={theme}>
-            <CommunityRankingCard ranking={insights.communityRanking} theme={theme} />
+        {Array.isArray(insights.todayPlan) && insights.todayPlan.length > 0 && (
+          <SampleWrap show={isSample("todayPlan")} theme={theme}>
+            <TodayPlanCard plan={insights.todayPlan} theme={theme} />
           </SampleWrap>
-        </div>
+        )}
+        {Array.isArray(insights.weeklyActivity) && insights.weeklyActivity.length > 0 && (
+          <SampleWrap show={isSample("weeklyActivity")} theme={theme}>
+            <WeeklyActivityChart activity={insights.weeklyActivity} theme={theme} />
+          </SampleWrap>
+        )}
+
+        {Array.isArray(insights.skillProgress) && insights.skillProgress.length > 0 && (
+          <SkillProgressCard skills={insights.skillProgress} theme={theme} />
+        )}
+        {Array.isArray(insights.achievements) && insights.achievements.length > 0 && (
+          <SampleWrap show={isSample("achievements")} theme={theme}>
+            <AchievementsCard achievements={insights.achievements} theme={theme} />
+          </SampleWrap>
+        )}
+
+        {insights.revisionReminder && (
+          <SampleWrap show={isSample("revisionReminder")} theme={theme}>
+            <RevisionReminderCard reminder={insights.revisionReminder} theme={theme} />
+          </SampleWrap>
+        )}
+        {insights.riskPrediction && <RiskPredictionCard risk={insights.riskPrediction} theme={theme} />}
+
+        {insights.careerReadiness && <CareerReadinessCard readiness={insights.careerReadiness} theme={theme} />}
+        {insights.motivation && <MotivationCard message={insights.motivation} />}
+
+        {Array.isArray(insights.smartResources) && insights.smartResources.length > 0 && (
+          <div className="sm:col-span-2">
+            <SmartResourcesCard resources={insights.smartResources} theme={theme} />
+          </div>
+        )}
+
+        {insights.communityRanking && (
+          <div className="sm:col-span-2">
+            <SampleWrap show={isSample("communityRanking")} theme={theme}>
+              <CommunityRankingCard ranking={insights.communityRanking} theme={theme} />
+            </SampleWrap>
+          </div>
+        )}
       </div>
     </SectionCard>
   );

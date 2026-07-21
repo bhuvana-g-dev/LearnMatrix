@@ -20,6 +20,10 @@ import {
   Smartphone,
   PlayCircle,
   TrendingUp,
+  ClipboardCheck,
+  Map,
+  Code2,
+  RefreshCw,
 } from "lucide-react";
 import Logo from "../components/common/Logo";
 import { COLORS, GRADIENTS, GLASS_CARD } from "../constants/theme";
@@ -76,9 +80,13 @@ const ROLE_ICONS = {
 };
 
 const STEPS = [
-  { n: "01", title: "Choose your path", desc: "Select the IT career you want to master." },
-  { n: "02", title: "Learn & get assessed", desc: "Work through skills with AI-adjusted assessments." },
-  { n: "03", title: "Revise & earn", desc: "Stay sharp with AI revision, then earn your certificate." },
+  { n: "1", icon: Target, title: "Choose Career", desc: "Select your dream IT role", color: "#E4568A" },
+  { n: "2", icon: ClipboardCheck, title: "Assessment", desc: "Take initial assessment", color: "#8B5CF6" },
+  { n: "3", icon: Map, title: "AI Roadmap", desc: "Get your personalized roadmap", color: "#2563EB" },
+  { n: "4", icon: BookOpen, title: "Learn", desc: "Study through structured modules", color: "#0D9488" },
+  { n: "5", icon: Code2, title: "Practice", desc: "Solve quizzes & coding challenges", color: "#D4A017" },
+  { n: "6", icon: RefreshCw, title: "Revise", desc: "Smart revision at the right time", color: "#16A34A" },
+  { n: "7", icon: Award, title: "Get Certified", desc: "Earn certificate after completing your path", color: "#D97706" },
 ];
 
 const MENU_LINKS = [
@@ -108,6 +116,7 @@ export default function HomeScreen({ onGetStarted, onLogin, onSignup }) {
     setMenuOpen(false);
     document.getElementById(id)?.scrollIntoView({ behavior: "smooth" });
   };
+
   return (
     <div className="px-4 sm:px-8 py-14 pb-20" id="home-top">
       <div className="max-w-5xl mx-auto">
@@ -150,6 +159,7 @@ export default function HomeScreen({ onGetStarted, onLogin, onSignup }) {
                 </button>
               ))}
             </nav>
+
             <div className="flex items-center gap-3">
               {onSignup && (
                 <motion.button
@@ -410,30 +420,82 @@ export default function HomeScreen({ onGetStarted, onLogin, onSignup }) {
           className="p-6 sm:p-8"
           style={{ ...GLASS_CARD, borderRadius: 28 }}
         >
-          <h2 className="text-lg sm:text-xl font-bold text-center mb-8" style={{ color: COLORS.textDark }}>
-            How it works
+          <h2 className="text-lg sm:text-xl font-bold text-center mb-10" style={{ color: COLORS.textDark }}>
+            How LearnMatrix Works
           </h2>
-          <div className="grid sm:grid-cols-3 gap-6">
-            {STEPS.map((s) => (
-              <div key={s.n} className="text-center">
-                <p
-                  className="text-2xl font-bold mb-2"
-                  style={{
-                    background: GRADIENTS.purplePink,
-                    WebkitBackgroundClip: "text",
-                    WebkitTextFillColor: "transparent",
-                  }}
+
+          <div className="hidden md:flex items-start">
+            {STEPS.map((s, i) => {
+              const Icon = s.icon;
+              return (
+                <div key={s.n} className="flex items-center flex-1 last:flex-none">
+                  <motion.div
+                    initial={{ opacity: 0, y: 16 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.35, delay: i * 0.08 }}
+                    className="flex flex-col items-center text-center"
+                    style={{ width: 116 }}
+                  >
+                    <div
+                      className="w-12 h-12 rounded-full flex items-center justify-center mb-2"
+                      style={{ background: `${s.color}1F` }}
+                    >
+                      <Icon size={20} color={s.color} />
+                    </div>
+                    <p className="text-xs font-bold mb-1" style={{ color: s.color }}>
+                      {s.n}
+                    </p>
+                    <h3 className="text-xs font-bold" style={{ color: COLORS.textDark }}>
+                      {s.title}
+                    </h3>
+                    <p className="text-[11px] mt-1 leading-snug" style={{ color: COLORS.textMid }}>
+                      {s.desc}
+                    </p>
+                  </motion.div>
+
+                  {i < STEPS.length - 1 && (
+                    <div
+                      className="flex-1 mx-1"
+                      style={{ height: 0, borderTop: `2px dashed ${COLORS.border}`, marginTop: 24 }}
+                    />
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Mobile — stacked list, no horizontal connectors */}
+          <div className="flex md:hidden flex-col gap-5">
+            {STEPS.map((s, i) => {
+              const Icon = s.icon;
+              return (
+                <motion.div
+                  key={s.n}
+                  initial={{ opacity: 0, x: -12 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ duration: 0.35, delay: i * 0.06 }}
+                  className="flex items-center gap-3.5"
                 >
-                  {s.n}
-                </p>
-                <h3 className="text-sm font-bold" style={{ color: COLORS.textDark }}>
-                  {s.title}
-                </h3>
-                <p className="text-xs mt-1.5" style={{ color: COLORS.textMid }}>
-                  {s.desc}
-                </p>
-              </div>
-            ))}
+                  <div
+                    className="w-11 h-11 rounded-full flex items-center justify-center flex-shrink-0"
+                    style={{ background: `${s.color}1F` }}
+                  >
+                    <Icon size={18} color={s.color} />
+                  </div>
+                  <div>
+                    <p className="text-[11px] font-bold" style={{ color: s.color }}>
+                      Step {s.n}
+                    </p>
+                    <h3 className="text-xs font-bold" style={{ color: COLORS.textDark }}>
+                      {s.title}
+                    </h3>
+                    <p className="text-[11px] mt-0.5" style={{ color: COLORS.textMid }}>
+                      {s.desc}
+                    </p>
+                  </div>
+                </motion.div>
+              );
+            })}
           </div>
         </motion.div>
       </div>

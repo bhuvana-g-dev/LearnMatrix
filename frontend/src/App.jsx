@@ -215,7 +215,9 @@ export default function App() {
   } else if (activeKey === "revision-schedule") {
     content = <RevisionScheduleScreen />;
   } else if (activeKey === "learning-insights") {
-    content = <LearningInsightsScreen />;
+    content = (
+      <LearningInsightsScreen onStartAssessment={() => setActiveKey("initial-assessment")} />
+    );
   } else {
     const label =
       NAV_SECTIONS.flatMap((s) => s.children || []).find((c) => c.key === activeKey)?.label ||

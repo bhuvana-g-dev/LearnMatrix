@@ -16,7 +16,7 @@ import { loadSavedRoadmap } from "../services/aiAssessmentService";
  * "empty" is a normal, expected state for a brand-new user, not an error
  * — it just means they haven't taken the diagnostic assessment yet.
  */
-export default function RoadmapScreen({ uid, onNavigate }) {
+export default function RoadmapScreen({ uid, onNavigate, onSelectTopic }) {
   const [state, setState] = useState("loading"); // loading | empty | error | ready
   const [roadmap, setRoadmap] = useState(null);
   const [errorMessage, setErrorMessage] = useState("");
@@ -128,7 +128,7 @@ export default function RoadmapScreen({ uid, onNavigate }) {
   return (
     <div className="px-4 sm:px-8 pt-10 pb-20">
       <div className="max-w-3xl mx-auto">
-        <RoadmapDisplay roadmap={roadmap} showProgress />
+        <RoadmapDisplay roadmap={roadmap} showProgress onSelectEntry={onSelectTopic} />
       </div>
     </div>
   );

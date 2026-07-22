@@ -8,11 +8,11 @@ import SignUpScreen from "./screens/SignUpScreen";
 import VerifyEmailScreen from "./screens/VerifyEmailScreen";
 import CompleteProfileScreen from "./screens/CompleteProfileScreen";
 import HomeScreen from "./screens/HomeScreen";
-import RoleSelectionScreen from "./screens/RoleSelectionScreen";
 import CareerStatusScreen from "./screens/CareerStatusScreen";
 import SkillSelectionScreen from "./screens/SkillSelectionScreen";
 import AssessmentScreen from "./screens/AssessmentScreen";
 import RoadmapScreen from "./screens/RoadmapScreen";
+import LearningSessionScreen from "./screens/LearningSessionScreen";
 import ProfileScreen from "./screens/ProfileScreen";
 import RevisionScheduleScreen from "./screens/RevisionScheduleScreen";
 import LearningInsightsScreen from "./screens/LearningInsightsScreen";
@@ -48,6 +48,7 @@ export default function App() {
   );
   const [showSignup, setShowSignup] = useState(false);
   const [showLanding, setShowLanding] = useState(true);
+  const [learningSession, setLearningSession] = useState(null); // { skill, topic, focusBand }
 
   useEffect(() => {
     window.scrollTo({ top: 0, left: 0, behavior: "smooth" });
@@ -207,7 +208,28 @@ export default function App() {
       />
     );
   } else if (activeKey === "roadmap") {
-    content = <RoadmapScreen uid={auth.user?.uid} onNavigate={setActiveKey} />;
+    content = (
+      <RoadmapScreen
+        uid={auth.user?.uid}
+        onNavigate={setActiveKey}
+        onSelectTopic={(entry) => {
+          // See LearningSessionScreen.jsx: `topic` is currently the same
+          // as `skill` since the roadmap tracks one focusBand per skill,
+          // not finer sub-topics yet — a known, deliberate simplification.
+          setLearningSession({ skill: entry.skill, topic: entry.skill, focusBand: entry.focusBand });
+          setActiveKey("learning-session");
+        }}
+      />
+    );
+  } else if (activeKey === "learning-session" && learningSession) {
+    content = (
+      <LearningSessionScreen
+        skill={learningSession.skill}
+        topic={learningSession.topic}
+        focusBand={learningSession.focusBand}
+        onBack={() => setActiveKey("roadmap")}
+      />
+    );
   } else if (activeKey === "profile") {
     // "My Profile" > "Overview" — the main profile hub (see
     // constants/navigation.js for the dropdown's other two entries).

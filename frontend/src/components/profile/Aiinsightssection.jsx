@@ -1,12 +1,6 @@
 import { Sparkles, AlertCircle, Compass, BookOpen, TrendingUp, ClipboardList, ArrowRight } from "lucide-react";
 import SectionCard from "./SectionCard";
 import LearningScoreCard from "./insights/LearningScoreCard";
-import MentorMessageCard from "./insights/MentorMessageCard";
-import TodayPlanCard from "./insights/TodayPlanCard";
-import WeeklyActivityChart from "./insights/WeeklyActivityChart";
-import SkillProgressCard from "./insights/SkillProgressCard";
-import AchievementsCard from "./insights/AchievementsCard";
-import RevisionReminderCard from "./insights/RevisionReminderCard";
 import RiskPredictionCard from "./insights/RiskPredictionCard";
 import CareerReadinessCard from "./insights/CareerReadinessCard";
 import MotivationCard from "./insights/MotivationCard";
@@ -179,33 +173,6 @@ export default function AIInsightsSection({ insights, dark = false, onStartAsses
       {/* ---- new AI-powered cards ---- */}
       <div className="grid sm:grid-cols-2 gap-4 mt-4">
         {insights.learningScore && <LearningScoreCard data={insights.learningScore} theme={theme} />}
-        {insights.mentorMessage && <MentorMessageCard message={insights.mentorMessage} theme={theme} />}
-
-        {Array.isArray(insights.todayPlan) && insights.todayPlan.length > 0 && (
-          <SampleWrap show={isSample("todayPlan")} theme={theme}>
-            <TodayPlanCard plan={insights.todayPlan} theme={theme} />
-          </SampleWrap>
-        )}
-        {Array.isArray(insights.weeklyActivity) && insights.weeklyActivity.length > 0 && (
-          <SampleWrap show={isSample("weeklyActivity")} theme={theme}>
-            <WeeklyActivityChart activity={insights.weeklyActivity} theme={theme} />
-          </SampleWrap>
-        )}
-
-        {Array.isArray(insights.skillProgress) && insights.skillProgress.length > 0 && (
-          <SkillProgressCard skills={insights.skillProgress} theme={theme} />
-        )}
-        {Array.isArray(insights.achievements) && insights.achievements.length > 0 && (
-          <SampleWrap show={isSample("achievements")} theme={theme}>
-            <AchievementsCard achievements={insights.achievements} theme={theme} />
-          </SampleWrap>
-        )}
-
-        {insights.revisionReminder && (
-          <SampleWrap show={isSample("revisionReminder")} theme={theme}>
-            <RevisionReminderCard reminder={insights.revisionReminder} theme={theme} />
-          </SampleWrap>
-        )}
         {insights.riskPrediction && <RiskPredictionCard risk={insights.riskPrediction} theme={theme} />}
 
         {insights.careerReadiness && <CareerReadinessCard readiness={insights.careerReadiness} theme={theme} />}

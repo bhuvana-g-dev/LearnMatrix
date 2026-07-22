@@ -1,4 +1,5 @@
 import { motion } from "framer-motion";
+import { ArrowRight } from "lucide-react";
 import { COLORS, GRADIENTS, GLASS_CARD } from "../../constants/theme";
 
 export const LEVEL_COLORS = {
@@ -23,7 +24,7 @@ export const LEVEL_COLORS = {
  * only exists on a SAVED roadmap (fields set by roadmap_repository.py) —
  * a freshly-generated-but-not-yet-saved roadmap won't have them.
  */
-export default function RoadmapDisplay({ roadmap, showProgress = false }) {
+export default function RoadmapDisplay({ roadmap, showProgress = false, onSelectEntry }) {
   return (
     <div className="p-6" style={{ ...GLASS_CARD, borderRadius: 24 }}>
       <h3 className="text-base font-bold mb-1" style={{ color: COLORS.textDark }}>
@@ -54,10 +55,16 @@ export default function RoadmapDisplay({ roadmap, showProgress = false }) {
 
       <div className="flex flex-col gap-3">
         {roadmap.entries.map((entry) => (
-          <div
+          <motion.div
             key={entry.skill}
+            onClick={onSelectEntry ? () => onSelectEntry(entry) : undefined}
+            whileHover={onSelectEntry ? { x: 3 } : {}}
             className="flex items-start gap-4 p-4"
-            style={{ borderRadius: 16, background: "rgba(255,255,255,0.4)" }}
+            style={{
+              borderRadius: 16,
+              background: "rgba(255,255,255,0.4)",
+              cursor: onSelectEntry ? "pointer" : "default",
+            }}
           >
             <div
               className="flex items-center justify-center font-bold text-sm flex-shrink-0"
@@ -68,7 +75,7 @@ export default function RoadmapDisplay({ roadmap, showProgress = false }) {
             >
               {entry.week}
             </div>
-            <div>
+            <div className="flex-1">
               <p className="font-semibold" style={{ color: COLORS.textDark }}>
                 Week {entry.week}: {entry.skill}
                 <span
@@ -82,7 +89,10 @@ export default function RoadmapDisplay({ roadmap, showProgress = false }) {
                 {entry.recommendation}
               </p>
             </div>
-          </div>
+            {onSelectEntry && (
+              <ArrowRight size={18} style={{ color: COLORS.textLight, flexShrink: 0, marginTop: 4 }} />
+            )}
+          </motion.div>
         ))}
 
         {roadmap.includesProjectWeek && (

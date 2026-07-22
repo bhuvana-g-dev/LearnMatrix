@@ -8,6 +8,7 @@ import SignUpScreen from "./screens/SignUpScreen";
 import VerifyEmailScreen from "./screens/VerifyEmailScreen";
 import CompleteProfileScreen from "./screens/CompleteProfileScreen";
 import HomeScreen from "./screens/HomeScreen";
+import RoleSelectionScreen from "./screens/RoleSelectionScreen";
 import CareerStatusScreen from "./screens/CareerStatusScreen";
 import SkillSelectionScreen from "./screens/SkillSelectionScreen";
 import AssessmentScreen from "./screens/AssessmentScreen";
@@ -237,9 +238,7 @@ export default function App() {
   } else if (activeKey === "revision-schedule") {
     content = <RevisionScheduleScreen />;
   } else if (activeKey === "learning-insights") {
-    content = (
-      <LearningInsightsScreen onStartAssessment={() => setActiveKey("initial-assessment")} />
-    );
+    content = <LearningInsightsScreen />;
   } else {
     const label =
       NAV_SECTIONS.flatMap((s) => s.children || []).find((c) => c.key === activeKey)?.label ||

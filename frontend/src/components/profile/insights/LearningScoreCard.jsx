@@ -1,6 +1,5 @@
 import { motion } from "framer-motion";
 import { TrendingUp, TrendingDown } from "lucide-react";
-
 export default function LearningScoreCard({ data, theme }) {
   const { score, delta, trend, caption } = data;
   const radius = 40;

@@ -1,29 +1,39 @@
 import { useState, useEffect, useCallback } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import { Loader2, ArrowRight, Compass, TrendingUp, Map as MapIcon } from "lucide-react";
+import { motion } from "framer-motion";
+import { Loader2, ArrowRight, Compass, TrendingUp, Zap, Flame } from "lucide-react";
 import { COLORS, GRADIENTS, GLASS_CARD } from "../constants/theme";
-import { ROLES, ROLE_TITLES } from "../constants/roles";
+import { ROLES } from "../constants/roles";
 import RoleSelectionScreen from "./RoleSelectionScreen";
 import { loadSavedAssessmentResult, loadSavedRoadmap } from "../services/aiAssessmentService";
+import { getActivity } from "../services/activityService";
+
+const PACE_STYLES = {
+  "Fast-Track": { icon: Zap, color: "#D4A017" },
+  "Steady & Thorough": { icon: Compass, color: "#7C6FE0" },
+};
 
 /**
  * CareerStatusScreen — what "My Career Path" shows once a student has
- * actually completed a diagnostic assessment, instead of the generic
- * role picker every time. First-time students (no saved assessment yet)
- * see the normal RoleSelectionScreen, completely unchanged — this file
- * only changes what RETURNING students see.
+ * completed a diagnostic assessment, instead of the generic role picker
+ * every time.
  *
- * Checks loadSavedAssessmentResult() (already built for the assessment
- * page's own "don't regenerate on refresh" fix) — reused here rather
- * than adding a second way to answer "has this student done this yet".
+ * BUG FIX from the previous version: role name now comes from the
+ * SAVED assessment (assessment.role, persisted in Firestore) instead of
+ * careerPath.selectedRole — that's just in-memory React state
+ * (useCareerPath.js starts it at `useState(null)`), so it silently
+ * reset to null on every page refresh, falling back to a hardcoded
+ * "Developer" default. The saved assessment's `role` field is the
+ * actual source of truth and survives a refresh.
  */
 export default function CareerStatusScreen({
-  uid, roles, rolesLoading, selectedRole, onSelectRole, onContinue, onNavigate,
+  uid, displayName, roles, rolesLoading, selectedRole, onSelectRole, onContinue, onNavigate,
 }) {
   const [checking, setChecking] = useState(true);
   const [hasAssessment, setHasAssessment] = useState(false);
+  const [roleTitle, setRoleTitle] = useState("");
   const [overallScore, setOverallScore] = useState(null);
   const [roadmap, setRoadmap] = useState(null);
+  const [activeDates, setActiveDates] = useState([]);
   const [exploring, setExploring] = useState(false);
 
   const check = useCallback(async () => {
@@ -33,20 +43,21 @@ export default function CareerStatusScreen({
     }
     setChecking(true);
     try {
-      const [assessment, savedRoadmap] = await Promise.all([
+      const [assessment, savedRoadmap, dates] = await Promise.all([
         loadSavedAssessmentResult(uid),
         loadSavedRoadmap(uid),
+        getActivity(uid).catch(() => []), // streak is a nice-to-have, never block the page on it
       ]);
       if (assessment) {
         setHasAssessment(true);
+        setRoleTitle(assessment.role || "Developer");
         setOverallScore(assessment.evaluation?.overall?.scorePercent ?? null);
         setRoadmap(savedRoadmap);
+        setActiveDates(dates);
       } else {
         setHasAssessment(false);
       }
     } catch {
-      // Fail open — if the check itself breaks, don't block the student
-      // from at least seeing the normal role picker.
       setHasAssessment(false);
     } finally {
       setChecking(false);
@@ -65,7 +76,6 @@ export default function CareerStatusScreen({
     );
   }
 
-  // First-time student, or exploring other roles -> the normal picker.
   if (!hasAssessment || exploring) {
     return (
       <div>
@@ -91,13 +101,33 @@ export default function CareerStatusScreen({
     );
   }
 
-  const roleData = ROLES.find((r) => r.id === selectedRole);
-  const roleTitle = ROLE_TITLES[selectedRole] || "Developer";
+  const roleData = ROLES.find((r) => r.title === roleTitle || r.id === selectedRole);
   const emoji = roleData?.emoji || "💻";
+  const firstName = (displayName || "").trim().split(" ")[0];
+  const greeting = firstName ? `${firstName}, you're becoming a` : "You're becoming a";
+
+  const paceStyle = roadmap ? PACE_STYLES[roadmap.paceLabel] || PACE_STYLES["Steady & Thorough"] : null;
+  const PaceIcon = paceStyle?.icon;
+
+  // Last 7 calendar days, oldest to newest, each flagged active/inactive.
+  const last7Days = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date();
+    d.setDate(d.getDate() - (6 - i));
+    const iso = d.toISOString().slice(0, 10);
+    return { label: d.toLocaleDateString(undefined, { weekday: "narrow" }), active: activeDates.includes(iso) };
+  });
+  const streakCount = (() => {
+    let count = 0;
+    for (let i = last7Days.length - 1; i >= 0; i--) {
+      if (last7Days[i].active) count++;
+      else break;
+    }
+    return count;
+  })();
 
   return (
     <div className="px-4 sm:px-8 pt-10 pb-20">
-      <div className="max-w-2xl mx-auto">
+      <div className="max-w-2xl mx-auto flex flex-col gap-6">
         <motion.div
           initial={{ opacity: 0, y: -12 }}
           animate={{ opacity: 1, y: 0 }}
@@ -117,13 +147,13 @@ export default function CareerStatusScreen({
           </div>
 
           <p className="text-sm font-semibold mb-1" style={{ color: COLORS.textMid }}>
-            You're becoming a
+            {greeting}
           </p>
           <h1 className="text-3xl sm:text-4xl font-extrabold mb-6" style={{ color: COLORS.textDark }}>
             {roleTitle}
           </h1>
 
-          <div className="flex flex-wrap justify-center gap-4 mb-8">
+          <div className="flex flex-wrap justify-center gap-3 mb-8">
             {overallScore !== null && (
               <div
                 className="flex items-center gap-2 px-4 py-2"
@@ -140,9 +170,9 @@ export default function CareerStatusScreen({
                 className="flex items-center gap-2 px-4 py-2"
                 style={{ borderRadius: 14, background: "rgba(255,255,255,0.5)" }}
               >
-                <MapIcon size={16} style={{ color: COLORS.purple }} />
+                <PaceIcon size={16} style={{ color: paceStyle.color }} />
                 <span className="text-sm font-semibold" style={{ color: COLORS.textDark }}>
-                  Week {roadmap.currentWeek} of {roadmap.totalWeeks} · {roadmap.completionPercent}% complete
+                  {roadmap.completionPercent}% through the course · {roadmap.paceLabel}
                 </span>
               </div>
             )}
@@ -176,6 +206,44 @@ export default function CareerStatusScreen({
             >
               <Compass size={16} /> Explore Other Courses
             </motion.button>
+          </div>
+        </motion.div>
+
+        {/* Real activity streak — actual recorded login days, not decorative */}
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: 0.1 }}
+          className="p-6"
+          style={{ ...GLASS_CARD, borderRadius: 24 }}
+        >
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-sm font-bold" style={{ color: COLORS.textDark }}>
+              This Week's Activity
+            </h3>
+            {streakCount > 0 && (
+              <span className="flex items-center gap-1 text-xs font-bold" style={{ color: "#E0559C" }}>
+                <Flame size={14} /> {streakCount}-day streak
+              </span>
+            )}
+          </div>
+          <div className="flex justify-between gap-2">
+            {last7Days.map((day, i) => (
+              <div key={i} className="flex flex-col items-center gap-1.5 flex-1">
+                <span className="text-[10px] font-semibold" style={{ color: COLORS.textLight }}>
+                  {day.label}
+                </span>
+                <div
+                  className="flex items-center justify-center"
+                  style={{
+                    width: 32, height: 32, borderRadius: "50%",
+                    background: day.active ? GRADIENTS.purpleSky : "rgba(13,27,61,0.06)",
+                  }}
+                >
+                  {day.active && <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#fff" }} />}
+                </div>
+              </div>
+            ))}
           </div>
         </motion.div>
       </div>

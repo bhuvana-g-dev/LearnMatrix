@@ -547,14 +547,17 @@ export default function AssessmentScreen({ selectedRole, selectedSkills, uid, on
           <motion.button
             onClick={goPrev}
             disabled={currentIndex === 0}
-            whileHover={currentIndex > 0 ? { x: -2 } : {}}
+            whileHover={currentIndex > 0 ? { y: -2 } : {}}
+            whileTap={currentIndex > 0 ? { scale: 0.97 } : {}}
             className="flex items-center gap-1.5 text-sm font-semibold"
             style={{
-              color: COLORS.textMid,
+              padding: "14px 24px",
+              borderRadius: 9999,
+              color: COLORS.textDark,
+              border: `1px solid ${COLORS.border}`,
+              background: "rgba(255,255,255,0.5)",
               opacity: currentIndex === 0 ? 0.4 : 1,
               cursor: currentIndex === 0 ? "not-allowed" : "pointer",
-              background: "none",
-              border: "none",
             }}
           >
             <ArrowLeftIcon size={16} /> Previous

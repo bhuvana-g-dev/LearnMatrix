@@ -21,6 +21,7 @@ import {
   loadSavedAssessmentResult,
 } from "../services/aiAssessmentService";
 
+
 const LEVEL_COLORS = {
   Strong: "#22C55E",
   Intermediate: "#F59E0B",

@@ -9,6 +9,7 @@ import CommunityRankingCard from "./insights/CommunityRankingCard";
 import { COLORS, GRADIENTS } from "../../constants/theme";
 import { getInsightsTheme } from "../../constants/insightsTheme";
 
+
 // Small "Sample" pill for cards not yet backed by real tracking data
 // (see aiInsightsService.js's `sampleFields`) — wraps a card, doesn't
 // touch its internals.

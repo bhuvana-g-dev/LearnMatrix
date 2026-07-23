@@ -21,6 +21,7 @@ import ComingSoonScreen from "./screens/ComingSoonScreen";
 import { useAuth } from "./hooks/useAuth";
 import { useCareerPath } from "./hooks/useCareerPath";
 import { useProfileCompletion } from "./hooks/useProfileCompletion";
+import { pingActivity } from "./services/activityService";
 import { saveUserProfileDoc } from "./services/userProfileService";
 import { ROLE_TITLES } from "./constants/roles";
 import { NAV_SECTIONS } from "./constants/navigation";
@@ -58,6 +59,13 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem("lm_activeKey", activeKey);
   }, [activeKey]);
+
+  useEffect(() => {
+    if (auth.isAuthenticated && auth.user?.uid) {
+      pingActivity(auth.user.uid);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [auth.isAuthenticated, auth.user?.uid]);
 
   // Wait for Firebase to confirm whether a session already exists before
   // deciding what to show — otherwise a refresh on any authenticated page
@@ -162,6 +170,7 @@ export default function App() {
     content = (
       <CareerStatusScreen
         uid={auth.user?.uid}
+        displayName={auth.user?.displayName}
         roles={careerPath.roles}
         rolesLoading={careerPath.rolesLoading}
         selectedRole={careerPath.selectedRole}

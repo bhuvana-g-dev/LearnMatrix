@@ -4,32 +4,32 @@ services/roadmap_service.py
 Roadmap Agent (#9 in ARCHITECTURE.md).
 
 Responsibility: given the Evaluation Agent's skill-wise breakdown
-(services/evaluation_service.py), produce an ORDERED study plan — which
-skill to tackle first, what to focus on within it, and roughly how many
-weeks the plan spans.
+(services/evaluation_service.py), produce the student's FULL course
+roadmap — every selected skill, not just the weak ones. Skills already
+at "Strong" level are included as already-completed/mastered entries
+(status="mastered"), so the roadmap represents the whole journey — what
+they've already earned, not only what's left. Skills needing work are
+scheduled week-by-week (status="upcoming"), worst first.
 
-DESIGN DECISION: this is deliberately rule-based, NOT an LLM call. The
-question "which weak skill should a student study first" doesn't need a
-language model — it needs the student's own diagnostic data, which we
-already have in full. Keeping this deterministic means:
-  1. It's instant (no API call, no cold start, no cost).
-  2. It NEVER fails due to Gemini/Groq being down — unlike question
-     generation, there's no external dependency to have a bad day.
-  3. It's fully explainable and testable — every ordering decision below
-     has a one-line reason, not a black-box model output.
+WHY THIS CHANGED from an earlier version that excluded Strong skills
+entirely: a roadmap that only ever shows the remedial slice looks thin
+and demoralizing for anyone with even one strong skill, and doesn't
+answer "how far am I through the whole course" — which is the actual
+point of a roadmap. Including mastered skills as completed entries lets
+completionPercent start above 0% immediately (a student Strong in 2 of
+5 skills has legitimately already finished 40% of the course before
+touching a single upcoming week), and gives students something to see
+progress against beyond "you have 3 weak skills to fix".
 
-An AI-enhanced version (e.g. Gemini writing more natural, personalized
-paragraph explanations instead of the templated ones below) is a
-reasonable future upgrade — but it should be an OPTIONAL layer on top of
-this, never a replacement, so a roadmap can always be generated even if
-every AI provider is unavailable.
+DESIGN DECISION (unchanged): still deliberately rule-based, NOT an LLM
+call — the question "which skill needs work first" doesn't need a
+language model, it needs the diagnostic data already in hand. See the
+original docstring reasoning (instant, no external dependency to fail,
+fully explainable) — none of that changes with this restructure.
 """
 
 from dataclasses import dataclass, field
 
-# Skills at these levels get a roadmap entry, ordered worst-first.
-# "Strong" skills are excluded from the main plan — the student already
-# knows them — but still listed separately as a quick maintenance note.
 NEEDS_WORK_LEVELS = ["Not Attempted", "Weak", "Intermediate"]
 LEVEL_PRIORITY_RANK = {"Not Attempted": 0, "Weak": 1, "Intermediate": 2}
 
@@ -40,24 +40,35 @@ FOCUS_BAND_MESSAGES = {
     "polish": "Overall solid, but not yet consistent — a quick revision pass should be enough.",
 }
 
+MASTERED_MESSAGE = "Already mastered on your diagnostic assessment — no scheduled study, just quick revision if you want it."
+
+# Simple, explainable pace label — NOT a different visual theme per
+# learner (that would mean maintaining multiple UIs), just an honest,
+# encouraging framing of the SAME roadmap structure that matches how
+# much ground is actually left to cover.
+PACE_FAST_TRACK = "Fast-Track"
+PACE_STEADY = "Steady & Thorough"
+
 
 @dataclass
 class RoadmapEntry:
     order: int
-    week: int
     skill: str
     current_level: str
     score_percent: float
-    focus_band: str  # "fundamentals" | "application" | "advanced" | "polish"
+    status: str  # "mastered" | "upcoming"
+    week: int | None  # None for mastered entries — they're not "scheduled"
+    focus_band: str | None  # None for mastered entries
     recommendation: str
 
     def to_dict(self) -> dict:
         return {
             "order": self.order,
-            "week": self.week,
             "skill": self.skill,
             "currentLevel": self.current_level,
             "scorePercent": self.score_percent,
+            "status": self.status,
+            "week": self.week,
             "focusBand": self.focus_band,
             "recommendation": self.recommendation,
         }
@@ -66,28 +77,28 @@ class RoadmapEntry:
 @dataclass
 class Roadmap:
     entries: list[RoadmapEntry] = field(default_factory=list)
-    already_strong: list[str] = field(default_factory=list)
-    total_weeks: int = 0
+    total_skills: int = 0
+    mastered_count: int = 0
+    upcoming_count: int = 0
+    total_weeks: int = 0  # upcoming weeks + project week — weeks still AHEAD
     includes_project_week: bool = False
+    pace_label: str = PACE_STEADY
+    course_completion_percent: float = 0.0  # mastered / total, BEFORE any upcoming week is completed
 
     def to_dict(self) -> dict:
         return {
             "entries": [e.to_dict() for e in self.entries],
-            "alreadyStrong": self.already_strong,
+            "totalSkills": self.total_skills,
+            "masteredCount": self.mastered_count,
+            "upcomingCount": self.upcoming_count,
             "totalWeeks": self.total_weeks,
             "includesProjectWeek": self.includes_project_week,
+            "paceLabel": self.pace_label,
+            "courseCompletionPercent": self.course_completion_percent,
         }
 
 
 def _determine_focus_band(breakdown: dict[str, dict[str, int]]) -> str:
-    """
-    Looks at WHERE within a skill the student is weak — not just the
-    overall score — to give a more specific recommendation than "study
-    more". e.g. two skills can both be 50%, but one is weak on basics
-    (needs fundamentals) and the other is weak only on edge cases (needs
-    advanced practice) — very different study plans.
-    """
-
     def accuracy(level: str) -> float:
         band = breakdown.get(level, {"correct": 0, "total": 0})
         return (band["correct"] / band["total"] * 100) if band["total"] else 100.0
@@ -107,57 +118,75 @@ def _determine_focus_band(breakdown: dict[str, dict[str, int]]) -> str:
 
 def generate_roadmap(evaluation: dict) -> Roadmap:
     """
-    evaluation: the dict returned by services/evaluation_service.py's
-    EvaluationResult.to_dict() — i.e. {"skills": [...], "overall": {...}}.
+    evaluation: {"skills": [...], "overall": {...}} from
+    services/evaluation_service.py.
 
-    Ordering: skills needing work are sorted by (level priority, score
-    ascending) — "Not Attempted" and "Weak" skills come before
-    "Intermediate" ones, and within the same level, the lowest score goes
-    first. "Strong" skills are set aside as already-known, not scheduled.
-    A final "Mini Project" week is added whenever there's more than one
-    skill in the plan, to consolidate what was learned — matches the
-    workflow's own Step 6 example (Week 4: Mini Project).
+    Every skill gets an entry. "Strong" skills become status="mastered"
+    (order comes first, no week assigned). Everything else becomes
+    status="upcoming", sorted worst-first (level priority, then score
+    ascending) and assigned sequential week numbers. A "Mini Project"
+    week is added whenever there's more than one upcoming skill.
     """
-    needs_work = [
-        s for s in evaluation["skills"] if s["level"] in NEEDS_WORK_LEVELS
-    ]
-    already_strong = [s["skill"] for s in evaluation["skills"] if s["level"] == "Strong"]
+    all_skills = evaluation["skills"]
+    total_skills = len(all_skills)
 
+    mastered = [s for s in all_skills if s["level"] == "Strong"]
+    needs_work = [s for s in all_skills if s["level"] in NEEDS_WORK_LEVELS]
     needs_work.sort(key=lambda s: (LEVEL_PRIORITY_RANK[s["level"]], s["scorePercent"]))
 
-    entries = []
-    for i, skill_result in enumerate(needs_work):
-        focus_band = _determine_focus_band(skill_result["breakdown"])
+    entries: list[RoadmapEntry] = []
+    order = 1
+    for s in mastered:
         entries.append(
             RoadmapEntry(
-                order=i + 1,
-                week=i + 1,
-                skill=skill_result["skill"],
-                current_level=skill_result["level"],
-                score_percent=skill_result["scorePercent"],
-                focus_band=focus_band,
+                order=order, skill=s["skill"], current_level=s["level"],
+                score_percent=s["scorePercent"], status="mastered",
+                week=None, focus_band=None, recommendation=MASTERED_MESSAGE,
+            )
+        )
+        order += 1
+
+    for i, s in enumerate(needs_work):
+        focus_band = _determine_focus_band(s["breakdown"])
+        entries.append(
+            RoadmapEntry(
+                order=order, skill=s["skill"], current_level=s["level"],
+                score_percent=s["scorePercent"], status="upcoming",
+                week=i + 1, focus_band=focus_band,
                 recommendation=FOCUS_BAND_MESSAGES[focus_band],
             )
         )
+        order += 1
 
-    includes_project_week = len(entries) > 1
-    total_weeks = len(entries) + (1 if includes_project_week else 0)
+    includes_project_week = len(needs_work) > 1
+    upcoming_weeks = len(needs_work) + (1 if includes_project_week else 0)
+
+    mastered_count = len(mastered)
+    course_completion_percent = round(
+        (mastered_count / total_skills * 100) if total_skills else 0.0, 1
+    )
+
+    # Pace framing: mostly-mastered-already reads as "fast track" (short
+    # sprint left); mostly-still-to-learn reads as "steady, thorough
+    # path" — same roadmap structure either way, just an honest label
+    # that matches how much is actually ahead, not a different UI.
+    pace_label = PACE_FAST_TRACK if (mastered_count / total_skills if total_skills else 0) >= 0.5 else PACE_STEADY
 
     return Roadmap(
         entries=entries,
-        already_strong=already_strong,
-        total_weeks=total_weeks,
+        total_skills=total_skills,
+        mastered_count=mastered_count,
+        upcoming_count=len(needs_work),
+        total_weeks=upcoming_weeks,
         includes_project_week=includes_project_week,
+        pace_label=pace_label,
+        course_completion_percent=course_completion_percent,
     )
 
 
 # ---------------------------------------------------------------------------
 # Persistence orchestration — everything above this line is the pure Roadmap
-# Agent (generate_roadmap) with zero Firestore dependency, same as every
-# other agent in this codebase. Functions below are business logic that
-# happens to call Firestore, matching the question_service.py pattern
-# (service layer delegates to a repository, which is the only Firestore
-# touchpoint — see services/roadmap_repository.py).
+# Agent (generate_roadmap) with zero Firestore dependency.
 # ---------------------------------------------------------------------------
 
 from firebase.firebase_config import get_firestore_client
@@ -165,23 +194,11 @@ from services.roadmap_repository import save_roadmap as _save_roadmap, get_roadm
 
 
 def generate_and_save_roadmap(uid: str, role: str, evaluation: dict) -> dict:
-    """
-    Generates a roadmap (pure logic above) and immediately persists it,
-    fully replacing any existing roadmap for this user. Called after a
-    fresh diagnostic assessment — including a retake, which is exactly
-    when the product requirement says the roadmap SHOULD regenerate.
-    """
     roadmap = generate_roadmap(evaluation)
     db = get_firestore_client()
     return _save_roadmap(db, uid, role, roadmap.to_dict())
 
 
 def load_saved_roadmap(uid: str) -> dict | None:
-    """
-    Returns the user's saved roadmap, or None if they've never generated
-    one. Callers (the roadmap page) should treat None as "prompt them to
-    take the assessment", not an error — this is the "don't regenerate
-    every time the page opens" requirement.
-    """
     db = get_firestore_client()
     return _get_roadmap(db, uid)

@@ -30,6 +30,8 @@ fully explainable) — none of that changes with this restructure.
 
 from dataclasses import dataclass, field
 
+from services.focus_band import determine_focus_band
+
 NEEDS_WORK_LEVELS = ["Not Attempted", "Weak", "Intermediate"]
 LEVEL_PRIORITY_RANK = {"Not Attempted": 0, "Weak": 1, "Intermediate": 2}
 
@@ -98,24 +100,6 @@ class Roadmap:
         }
 
 
-def _determine_focus_band(breakdown: dict[str, dict[str, int]]) -> str:
-    def accuracy(level: str) -> float:
-        band = breakdown.get(level, {"correct": 0, "total": 0})
-        return (band["correct"] / band["total"] * 100) if band["total"] else 100.0
-
-    easy_acc = accuracy("Easy")
-    medium_acc = accuracy("Medium")
-    hard_acc = accuracy("Hard")
-
-    if easy_acc < 50:
-        return "fundamentals"
-    if medium_acc < 50:
-        return "application"
-    if hard_acc < 50:
-        return "advanced"
-    return "polish"
-
-
 def generate_roadmap(evaluation: dict) -> Roadmap:
     """
     evaluation: {"skills": [...], "overall": {...}} from
@@ -147,7 +131,7 @@ def generate_roadmap(evaluation: dict) -> Roadmap:
         order += 1
 
     for i, s in enumerate(needs_work):
-        focus_band = _determine_focus_band(s["breakdown"])
+        focus_band = determine_focus_band(s["breakdown"])
         entries.append(
             RoadmapEntry(
                 order=order, skill=s["skill"], current_level=s["level"],

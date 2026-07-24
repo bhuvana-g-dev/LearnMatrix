@@ -67,6 +67,17 @@ class Settings:
     LEARNING_RESOURCES_COLLECTION: str = os.getenv("LEARNING_RESOURCES_COLLECTION", "learning_resources")
     ACTIVITY_COLLECTION: str = os.getenv("ACTIVITY_COLLECTION", "learning_activity")
 
+    # --- Skill Syllabus Tree (Adaptive Roadmap System) ---
+    # skill_topics/{TopicID} — the ordered curriculum inside one skill
+    # (e.g. HTML5 -> Introduction, Headings, Paragraphs, ...).
+    # role_skill_mapping/{RoleID} — which skills a role requires, in order.
+    SKILL_TOPICS_COLLECTION: str = os.getenv("SKILL_TOPICS_COLLECTION", "skill_topics")
+    ROLE_SKILL_MAPPING_COLLECTION: str = os.getenv(
+        "ROLE_SKILL_MAPPING_COLLECTION", "role_skill_mapping"
+    )
+
+    VALID_TOPIC_DIFFICULTIES: list[str] = ["Beginner", "Intermediate", "Advanced"]
+
     # Status values. Stored as plain strings in Firestore, referenced via
     # these constants everywhere else so nothing typos "active" vs "Active".
     STATUS_ACTIVE: str = "Active"

@@ -28,6 +28,7 @@ from routes.ai_assessment_routes import ai_assessment_bp
 from routes.roadmap_routes import roadmap_bp
 from routes.learning_routes import learning_bp
 from routes.activity_routes import activity_bp
+from routes.skill_topic_routes import skill_topic_bp
 
 
 def create_app() -> Flask:
@@ -50,6 +51,7 @@ def create_app() -> Flask:
     app.register_blueprint(roadmap_bp, url_prefix="/api")
     app.register_blueprint(learning_bp, url_prefix="/api")
     app.register_blueprint(activity_bp, url_prefix="/api")
+    app.register_blueprint(skill_topic_bp, url_prefix="/api")
 
     return app
 

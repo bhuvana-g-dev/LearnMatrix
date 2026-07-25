@@ -1,6 +1,8 @@
+import { useState } from "react";
 import { motion } from "framer-motion";
-import { ArrowRight, CheckCircle2, Zap, Compass } from "lucide-react";
+import { ArrowRight, CheckCircle2, Zap, Compass, ChevronDown } from "lucide-react";
 import { COLORS, GRADIENTS, GLASS_CARD } from "../../constants/theme";
+import TopicList from "./TopicList";
 
 export const LEVEL_COLORS = {
   Strong: "#22C55E",
@@ -26,8 +28,23 @@ const PACE_STYLES = {
  * instead of excluding them, specifically so this component can show
  * "how far through the whole course" a student is, not just "here's
  * what's still wrong".
+ *
+ * `compressedSyllabus` (optional) — the object
+ * services/syllabus_compression_service.py's get_compressed_role_syllabus
+ * returns: {roleId, skills: [{skill, topics: [...]}]}. When provided,
+ * every entry (mastered or upcoming) becomes clickable to expand its
+ * topic-level Verified/Current/Locked breakdown (TopicList). Omit it
+ * and entries render exactly as before — no expand affordance at all.
  */
-export default function RoadmapDisplay({ roadmap, showProgress = false, onSelectEntry }) {
+export default function RoadmapDisplay({ roadmap, showProgress = false, onSelectEntry, compressedSyllabus }) {
+  const [expandedSkill, setExpandedSkill] = useState(null);
+
+  const topicsForSkill = (skillName) =>
+    compressedSyllabus?.skills?.find((s) => s.skill === skillName)?.topics || null;
+
+  const toggleExpand = (skillName) =>
+    setExpandedSkill((current) => (current === skillName ? null : skillName));
+
   const mastered = roadmap.entries.filter((e) => e.status === "mastered");
   const upcoming = roadmap.entries.filter((e) => e.status === "upcoming");
   const completionPercent = showProgress ? roadmap.completionPercent : roadmap.courseCompletionPercent;
@@ -75,21 +92,37 @@ export default function RoadmapDisplay({ roadmap, showProgress = false, onSelect
             Already Mastered
           </p>
           <div className="flex flex-col gap-2">
-            {mastered.map((entry) => (
-              <div
-                key={entry.skill}
-                className="flex items-center gap-3 px-4 py-3"
-                style={{ borderRadius: 14, background: "rgba(34,197,94,0.08)" }}
-              >
-                <CheckCircle2 size={20} style={{ color: "#22C55E", flexShrink: 0 }} />
-                <span className="text-sm font-semibold flex-1" style={{ color: COLORS.textDark }}>
-                  {entry.skill}
-                </span>
-                <span className="text-xs" style={{ color: COLORS.textLight }}>
-                  {entry.scorePercent}%
-                </span>
-              </div>
-            ))}
+            {mastered.map((entry) => {
+              const topics = topicsForSkill(entry.skill);
+              const isExpanded = expandedSkill === entry.skill;
+              return (
+                <div key={entry.skill} style={{ borderRadius: 14, background: "rgba(34,197,94,0.08)" }}>
+                  <div
+                    onClick={topics ? () => toggleExpand(entry.skill) : undefined}
+                    className="flex items-center gap-3 px-4 py-3"
+                    style={{ cursor: topics ? "pointer" : "default" }}
+                  >
+                    <CheckCircle2 size={20} style={{ color: "#22C55E", flexShrink: 0 }} />
+                    <span className="text-sm font-semibold flex-1" style={{ color: COLORS.textDark }}>
+                      {entry.skill}
+                    </span>
+                    <span className="text-xs" style={{ color: COLORS.textLight }}>
+                      {entry.scorePercent}%
+                    </span>
+                    {topics && (
+                      <motion.span animate={{ rotate: isExpanded ? 180 : 0 }} style={{ display: "flex" }}>
+                        <ChevronDown size={16} style={{ color: COLORS.textLight }} />
+                      </motion.span>
+                    )}
+                  </div>
+                  {topics && isExpanded && (
+                    <div className="px-4 pb-3">
+                      <TopicList topics={topics} />
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </div>
       )}
@@ -106,47 +139,72 @@ export default function RoadmapDisplay({ roadmap, showProgress = false, onSelect
               className="absolute"
               style={{ left: 21, top: 18, bottom: 18, width: 2, background: "rgba(212,160,23,0.25)" }}
             />
-            {upcoming.map((entry) => (
-              <motion.div
-                key={entry.skill}
-                onClick={onSelectEntry ? () => onSelectEntry(entry) : undefined}
-                whileHover={onSelectEntry ? { x: 3 } : {}}
-                className="relative flex items-start gap-4 p-4"
-                style={{
-                  borderRadius: 16,
-                  background: "rgba(255,255,255,0.5)",
-                  cursor: onSelectEntry ? "pointer" : "default",
-                }}
-              >
-                <div
-                  className="flex items-center justify-center font-bold text-sm flex-shrink-0"
-                  style={{
-                    width: 36, height: 36, borderRadius: "50%",
-                    background: GRADIENTS.purpleSky, color: "#fff",
-                    boxShadow: "0 0 0 4px rgba(250,247,240,0.9)",
-                  }}
+            {upcoming.map((entry) => {
+              const topics = topicsForSkill(entry.skill);
+              const isExpanded = expandedSkill === entry.skill;
+              return (
+                <motion.div
+                  key={entry.skill}
+                  whileHover={onSelectEntry ? { x: 3 } : {}}
+                  className="relative p-4"
+                  style={{ borderRadius: 16, background: "rgba(255,255,255,0.5)" }}
                 >
-                  {entry.week}
-                </div>
-                <div className="flex-1">
-                  <p className="font-semibold" style={{ color: COLORS.textDark }}>
-                    Week {entry.week}: {entry.skill}
-                    <span
-                      className="ml-2 px-2 py-0.5 text-[10px] font-bold rounded-full"
-                      style={{ color: "#fff", background: LEVEL_COLORS[entry.currentLevel] || COLORS.textMid }}
+                  <div
+                    onClick={onSelectEntry ? () => onSelectEntry(entry) : undefined}
+                    className="flex items-start gap-4"
+                    style={{ cursor: onSelectEntry ? "pointer" : "default" }}
+                  >
+                    <div
+                      className="flex items-center justify-center font-bold text-sm flex-shrink-0"
+                      style={{
+                        width: 36, height: 36, borderRadius: "50%",
+                        background: GRADIENTS.purpleSky, color: "#fff",
+                        boxShadow: "0 0 0 4px rgba(250,247,240,0.9)",
+                      }}
                     >
-                      {entry.currentLevel}
-                    </span>
-                  </p>
-                  <p className="text-sm mt-1" style={{ color: COLORS.textMid }}>
-                    {entry.recommendation}
-                  </p>
-                </div>
-                {onSelectEntry && (
-                  <ArrowRight size={18} style={{ color: COLORS.textLight, flexShrink: 0, marginTop: 4 }} />
-                )}
-              </motion.div>
-            ))}
+                      {entry.week}
+                    </div>
+                    <div className="flex-1">
+                      <p className="font-semibold" style={{ color: COLORS.textDark }}>
+                        Week {entry.week}: {entry.skill}
+                        <span
+                          className="ml-2 px-2 py-0.5 text-[10px] font-bold rounded-full"
+                          style={{ color: "#fff", background: LEVEL_COLORS[entry.currentLevel] || COLORS.textMid }}
+                        >
+                          {entry.currentLevel}
+                        </span>
+                      </p>
+                      <p className="text-sm mt-1" style={{ color: COLORS.textMid }}>
+                        {entry.recommendation}
+                      </p>
+                    </div>
+                    {topics && (
+                      <motion.button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleExpand(entry.skill);
+                        }}
+                        animate={{ rotate: isExpanded ? 180 : 0 }}
+                        style={{
+                          display: "flex", background: "none", border: "none",
+                          cursor: "pointer", padding: 4, marginTop: 4, flexShrink: 0,
+                        }}
+                      >
+                        <ChevronDown size={18} style={{ color: COLORS.textLight }} />
+                      </motion.button>
+                    )}
+                    {!topics && onSelectEntry && (
+                      <ArrowRight size={18} style={{ color: COLORS.textLight, flexShrink: 0, marginTop: 4 }} />
+                    )}
+                  </div>
+                  {topics && isExpanded && (
+                    <div className="pl-[52px]">
+                      <TopicList topics={topics} />
+                    </div>
+                  )}
+                </motion.div>
+              );
+            })}
 
             {roadmap.includesProjectWeek && (
               <div

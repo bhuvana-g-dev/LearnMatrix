@@ -32,6 +32,17 @@ export const ENDPOINTS = {
     EVALUATE_DIAGNOSTIC_ASSESSMENT: "/ai/evaluate-diagnostic-assessment",
     GENERATE_ROADMAP: "/ai/generate-roadmap",
   },
+  SYLLABUS: {
+    // Skill Syllabus Tree (backend/services/skill_topic_service.py) —
+    // the raw, uncompressed skill -> topic list for a role.
+    GET_ROLE_SYLLABUS: (roleId) => `/roles/${roleId}/syllabus`,
+
+    // Compression Engine (backend/services/syllabus_compression_service.py) —
+    // same tree, but every topic tagged Verified/Current/Locked based on
+    // the diagnostic evaluation passed in. POST because the evaluation
+    // object is too large/specific to be a query param.
+    GET_COMPRESSED_SYLLABUS: (roleId) => `/roles/${roleId}/compressed-syllabus`,
+  },
   RECOMMENDATION: {
     // Placeholder for the future Scikit-Learn recommendation endpoint.
     ROADMAP: "/recommendation/roadmap",

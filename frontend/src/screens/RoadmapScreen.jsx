@@ -2,8 +2,10 @@ import { useState, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
 import { Loader2, Map, ArrowRight, XCircle } from "lucide-react";
 import { COLORS, GRADIENTS, GLASS_CARD } from "../constants/theme";
+import { ROLES } from "../constants/roles";
 import RoadmapDisplay from "../components/roadmap/RoadmapDisplay";
-import { loadSavedRoadmap } from "../services/aiAssessmentService";
+import { loadSavedRoadmap, loadSavedAssessmentResult } from "../services/aiAssessmentService";
+import { getCompressedRoleSyllabus } from "../services/syllabusService";
 
 /**
  * RoadmapScreen — "My Roadmap" nav item. Loads whatever roadmap was last
@@ -20,6 +22,7 @@ export default function RoadmapScreen({ uid, onNavigate, onSelectTopic }) {
   const [state, setState] = useState("loading"); // loading | empty | error | ready
   const [roadmap, setRoadmap] = useState(null);
   const [errorMessage, setErrorMessage] = useState("");
+  const [compressedSyllabus, setCompressedSyllabus] = useState(null);
 
   const fetchRoadmap = useCallback(async () => {
     if (!uid) {
@@ -45,6 +48,42 @@ export default function RoadmapScreen({ uid, onNavigate, onSelectTopic }) {
   useEffect(() => {
     fetchRoadmap();
   }, [fetchRoadmap]);
+
+  // Best-effort enhancement: once a roadmap exists, also fetch the
+  // topic-level compressed syllabus (services/syllabus_compression_service.py)
+  // so RoadmapDisplay can render each skill expandable into its
+  // Verified/Current/Locked topic tree. This is purely additive — if it
+  // fails (role not seeded yet, saved assessment missing, etc.) the
+  // roadmap screen still works exactly as it did before, just without
+  // the expand affordance on each entry.
+  useEffect(() => {
+    if (state !== "ready" || !uid) return;
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const savedAssessment = await loadSavedAssessmentResult(uid);
+        if (!savedAssessment || !savedAssessment.evaluation) return;
+
+        // savedAssessment.role is stored as the role TITLE (e.g.
+        // "Frontend Developer" — see AssessmentScreen's calls to
+        // evaluateDiagnosticAssessment/generateRoadmap), but the
+        // syllabus endpoints key on roleId (e.g. "frontend").
+        const roleEntry = ROLES.find((r) => r.title === savedAssessment.role);
+        if (!roleEntry) return; // role not resolvable, skip silently
+
+        const syllabus = await getCompressedRoleSyllabus(roleEntry.id, savedAssessment.evaluation);
+        if (!cancelled) setCompressedSyllabus(syllabus);
+      } catch {
+        // Silent — this role/skill set may not be seeded yet
+        // (data/skill_syllabus_seed.py only covers "frontend" so far).
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [state, uid]);
 
   if (state === "loading") {
     return (
@@ -128,7 +167,12 @@ export default function RoadmapScreen({ uid, onNavigate, onSelectTopic }) {
   return (
     <div className="px-4 sm:px-8 pt-10 pb-20">
       <div className="max-w-3xl mx-auto">
-        <RoadmapDisplay roadmap={roadmap} showProgress onSelectEntry={onSelectTopic} />
+        <RoadmapDisplay
+          roadmap={roadmap}
+          showProgress
+          onSelectEntry={onSelectTopic}
+          compressedSyllabus={compressedSyllabus}
+        />
       </div>
     </div>
   );

@@ -135,16 +135,28 @@ export async function loadSavedAssessmentResult(uid) {
  * quick local testing) and the roadmap is still generated, just not
  * persisted anywhere.
  *
+ * Passing `roleId` (e.g. "frontend" — see constants/roles.js) makes the
+ * roadmap role-driven: every skill in that role's syllabus is included,
+ * not just the ones assessed — unclaimed skills come back as their own
+ * "not_assessed" entries instead of disappearing. Omit it and the
+ * roadmap falls back to assessed-skills-only, same as before. Either
+ * way, the response now also includes `compressedSyllabus` — the
+ * topic-level Verified/Current/Locked tree per skill, ready to hand
+ * straight to <RoadmapDisplay compressedSyllabus={...} /> — no second
+ * call needed.
+ *
  * @param {object} evaluation - {skills: [...], overall: {...}}
  * @param {string} [uid] - Firebase uid, enables persistence
- * @param {string} [role] - selected career role, stored alongside the roadmap
- * @returns {Promise<{entries: object[], alreadyStrong: string[], totalWeeks: number, includesProjectWeek: boolean, currentWeek?: number, completionPercent?: number}>}
+ * @param {string} [role] - selected career role TITLE, stored alongside the roadmap
+ * @param {string} [roleId] - selected career role ID, drives the full curriculum
+ * @returns {Promise<{entries: object[], totalWeeks: number, includesProjectWeek: boolean, notAssessedCount: number, compressedSyllabus: object|null, currentWeek?: number, completionPercent?: number}>}
  */
-export async function generateRoadmap(evaluation, uid = null, role = "") {
+export async function generateRoadmap(evaluation, uid = null, role = "", roleId = "") {
   const { data } = await apiClient.post(ENDPOINTS.ASSESSMENT.GENERATE_ROADMAP, {
     evaluation,
     uid,
     role,
+    roleId,
   });
   if (!data.success) {
     throw new Error(data.error || data.message || "Roadmap generation failed.");

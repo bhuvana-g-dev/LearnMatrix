@@ -49,15 +49,24 @@ export default function RoadmapScreen({ uid, onNavigate, onSelectTopic }) {
     fetchRoadmap();
   }, [fetchRoadmap]);
 
-  // Best-effort enhancement: once a roadmap exists, also fetch the
-  // topic-level compressed syllabus (services/syllabus_compression_service.py)
-  // so RoadmapDisplay can render each skill expandable into its
-  // Verified/Current/Locked topic tree. This is purely additive — if it
-  // fails (role not seeded yet, saved assessment missing, etc.) the
-  // roadmap screen still works exactly as it did before, just without
-  // the expand affordance on each entry.
+  // Topic-level compressed syllabus for RoadmapDisplay's expand affordance.
+  // Preferred source: it's now persisted directly on the roadmap doc
+  // (backend/services/roadmap_repository.py) whenever the roadmap was
+  // generated with a roleId — no extra call needed, and no more relying
+  // on a fragile role-TITLE -> role-ID lookup.
+  //
+  // Fallback: roadmaps saved BEFORE this was persisted won't have the
+  // field yet, so for those we fall back to the old best-effort live
+  // fetch. Purely additive either way — if it fails (role not seeded
+  // yet, saved assessment missing, etc.) the screen still works exactly
+  // as before, just without the expand affordance on each entry.
   useEffect(() => {
     if (state !== "ready" || !uid) return;
+
+    if (roadmap?.compressedSyllabus) {
+      setCompressedSyllabus(roadmap.compressedSyllabus);
+      return;
+    }
 
     let cancelled = false;
     (async () => {
@@ -83,7 +92,7 @@ export default function RoadmapScreen({ uid, onNavigate, onSelectTopic }) {
     return () => {
       cancelled = true;
     };
-  }, [state, uid]);
+  }, [state, uid, roadmap]);
 
   if (state === "loading") {
     return (

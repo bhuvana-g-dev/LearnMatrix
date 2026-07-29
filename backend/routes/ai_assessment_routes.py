@@ -26,7 +26,7 @@ from services.ai_assessment_service import (
     load_saved_assessment_result,
     AIAssessmentError,
 )
-from services.roadmap_service import generate_roadmap, generate_and_save_roadmap
+from services.roadmap_service import generate_and_save_roadmap, generate_roadmap_preview
 from utils.response_helper import success_response, error_response
 
 ai_assessment_bp = Blueprint("ai_assessment", __name__)
@@ -202,6 +202,15 @@ def generate_roadmap_route():
     docstring) — this always succeeds, even if every LLM provider in the
     fallback chain is down.
 
+    'roleId' (optional, e.g. "frontend") makes this role-driven: every
+    skill in that role's syllabus appears on the roadmap, not just the
+    ones the learner claimed/assessed — skills never assessed come back
+    as status="not_assessed" instead of silently disappearing. Omit it
+    (or pass a role that isn't seeded yet) and this falls back to the
+    original assessed-skills-only roadmap. Either way the response also
+    includes 'compressedSyllabus' — the topic-level Verified/Current/
+    Locked tree per skill — so the frontend never needs a second call.
+
     If 'uid' is provided, the roadmap is also saved to Firestore
     (fully replacing any previous one for this user) so it persists
     across page reloads and can be loaded later via
@@ -216,6 +225,7 @@ def generate_roadmap_route():
     evaluation = payload.get("evaluation")
     uid = payload.get("uid")
     role = payload.get("role", "")
+    role_id = payload.get("roleId") or None
 
     if not evaluation or not isinstance(evaluation, dict) or "skills" not in evaluation:
         return error_response(
@@ -226,18 +236,21 @@ def generate_roadmap_route():
 
     try:
         if uid:
-            roadmap_dict = generate_and_save_roadmap(uid=uid, role=role, evaluation=evaluation)
-            total_weeks = roadmap_dict["totalWeeks"]
-            entry_count = len(roadmap_dict["entries"])
+            roadmap_dict = generate_and_save_roadmap(
+                uid=uid, role=role, evaluation=evaluation, role_id=role_id,
+            )
         else:
-            roadmap = generate_roadmap(evaluation)
-            roadmap_dict = roadmap.to_dict()
-            total_weeks = roadmap.total_weeks
-            entry_count = len(roadmap.entries)
+            roadmap_dict = generate_roadmap_preview(evaluation, role_id=role_id)
+
+        total_weeks = roadmap_dict["totalWeeks"]
+        entry_count = len(roadmap_dict["entries"])
+        not_assessed_count = roadmap_dict.get("notAssessedCount", 0)
+        not_assessed_note = f", {not_assessed_count} not yet assessed" if not_assessed_count else ""
 
         return success_response(
             data=roadmap_dict,
-            message=f"Generated a {total_weeks}-week roadmap covering {entry_count} skill(s)."
+            message=f"Generated a {total_weeks}-week roadmap covering {entry_count} skill(s)"
+                    f"{not_assessed_note}."
                     + (" (saved)" if uid else " (not saved — no uid provided)"),
         )
     except Exception as exc:  # noqa: BLE001

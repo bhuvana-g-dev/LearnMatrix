@@ -169,7 +169,10 @@ export default function AssessmentScreen({ selectedRole, selectedSkills, uid, on
     setLoadingRoadmap(true);
     setRoadmapError("");
     try {
-      const result = await generateRoadmap(evaluation, uid, roleTitle);
+      // selectedRole is already the role ID (e.g. "frontend" — see
+      // constants/roles.js), so no title->id lookup needed here, unlike
+      // RoadmapScreen.jsx which only has the saved role TITLE to work with.
+      const result = await generateRoadmap(evaluation, uid, roleTitle, selectedRole);
       setRoadmap(result);
     } catch (err) {
       setRoadmapError(err.message || "Couldn't generate your roadmap.");
@@ -358,7 +361,13 @@ export default function AssessmentScreen({ selectedRole, selectedSkills, uid, on
             </div>
           )}
 
-          {roadmap && <RoadmapDisplay roadmap={roadmap} showProgress={false} />}
+          {roadmap && (
+            <RoadmapDisplay
+              roadmap={roadmap}
+              showProgress={false}
+              compressedSyllabus={roadmap.compressedSyllabus}
+            />
+          )}
         </div>
 
         <div className="max-w-3xl mx-auto flex flex-col gap-6 mb-8">

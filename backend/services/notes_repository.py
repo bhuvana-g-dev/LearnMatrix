@@ -1,26 +1,41 @@
 """
-services/notes_repository.py
+services/roadmap_repository.py
 
-The ONLY module that touches the `learning_notes` Firestore collection.
-Same dependency-injection pattern as roadmap_repository.py /
-assessment_repository.py.
+The ONLY module that touches the `roadmaps` Firestore collection. Same
+dependency-injection pattern as services/question_repository.py.
 
-Document ID is a deterministic composite key — skill_topic_focusBand,
-slugified — NOT auto-generated, because the whole point is "does a cache
-entry already exist for this exact combination", which needs a
-predictable lookup key, not a query.
+Firestore document layout — ONE document per user (one active roadmap
+at a time):
 
-    learning_notes/{skill}__{topic}__{focusBand}
-        skill, topic, focusBand, title, summary, sections, codeExample,
-        keyTakeaways, generatedAt
+    roadmaps/{uid}
+        uid, role, roleId, entries: [...] (each tagged
+        status="mastered"|"upcoming"|"not_assessed"),
+        totalSkills, masteredCount, upcomingCount, notAssessedCount,
+        totalWeeks, includesProjectWeek, paceLabel, currentWeek,
+        completionPercent, courseCompletionPercent, compressedSyllabus,
+        generatedAt, updatedAt
 
-This collection is GLOBAL, not per-user — notes for "CSS3 / Flexbox /
-fundamentals" are identical for every student at that level, which is
-exactly what makes the cache effective (at most 4 entries per topic,
-ever, regardless of how many students study it).
+roleId + compressedSyllabus (services/syllabus_compression_service.py's
+get_compressed_role_syllabus output) are persisted alongside the
+roadmap itself so the frontend's topic-level expand view
+(RoadmapDisplay.jsx) loads from this ONE document instead of a second
+live call on every page open. Both are None when role_id wasn't
+resolvable (services/roadmap_service.resolve_role_skills) — same
+"silently fall back, never error" rule as the rest of the role-driven
+path.
+
+completionPercent is initialized from the Roadmap Agent's own
+courseCompletionPercent (mastered skills / total skills) — NOT
+hardcoded to 0.0 — because a student who's already Strong in some
+skills has genuinely already completed that fraction of the course
+before their first "upcoming" week even starts. Completing upcoming
+weeks later should push this percentage further (that recompute isn't
+built yet — same "topic completion" gap noted before — but the STARTING
+value is now honest instead of always zero).
+
+Saving a NEW roadmap (e.g. after a retake) fully REPLACES the previous
+one — intentional, matches "regenerate only on retake".
 """
-
-import re
 
 from firebase_admin import firestore
 
@@ -29,37 +44,51 @@ from config.settings import settings
 SERVER_TIMESTAMP = firestore.SERVER_TIMESTAMP
 
 
-def _slugify(value: str) -> str:
-    return re.sub(r"[^a-z0-9]+", "-", value.strip().lower()).strip("-")
+def _doc_ref(db, uid: str):
+    return db.collection(settings.ROADMAP_COLLECTION).document(uid)
 
 
-def _doc_id(skill: str, topic: str, focus_band: str) -> str:
-    return f"{_slugify(skill)}__{_slugify(topic)}__{_slugify(focus_band)}"
-
-
-def get_cached_notes(db, skill: str, topic: str, focus_band: str) -> dict | None:
-    """Returns None on a cache miss — caller should generate + save, not treat this as an error."""
-    doc_id = _doc_id(skill, topic, focus_band)
-    snap = db.collection(settings.LEARNING_NOTES_COLLECTION).document(doc_id).get()
-    return snap.to_dict() if snap.exists else None
-
-
-def save_notes(db, skill: str, topic: str, focus_band: str, notes: dict) -> dict:
+def save_roadmap(
+    db, uid: str, role: str, roadmap: dict,
+    role_id: str | None = None, compressed_syllabus: dict | None = None,
+) -> dict:
     """
-    Saves generated notes to the cache. Uses set() (not add()) with the
-    deterministic doc ID so a second concurrent generation for the same
-    key just overwrites rather than creating a duplicate — acceptable
-    here since notes content for a given key should converge to
-    essentially the same thing regardless of which request generated it.
+    `roadmap` is the dict from services/roadmap_service.py's
+    Roadmap.to_dict(). `role_id` and `compressed_syllabus` are optional
+    — both None when the role wasn't resolvable (role not seeded yet),
+    in which case the roadmap still saves fine, just without the
+    topic-level expand data.
     """
-    doc_id = _doc_id(skill, topic, focus_band)
-    doc_ref = db.collection(settings.LEARNING_NOTES_COLLECTION).document(doc_id)
+    doc_ref = _doc_ref(db, uid)
+    existing = doc_ref.get()
+
     payload = {
-        "skill": skill,
-        "topic": topic,
-        "focusBand": focus_band,
-        **notes,
-        "generatedAt": SERVER_TIMESTAMP,
+        "uid": uid,
+        "role": role,
+        "roleId": role_id,
+        "entries": roadmap["entries"],
+        "totalSkills": roadmap["totalSkills"],
+        "masteredCount": roadmap["masteredCount"],
+        "upcomingCount": roadmap["upcomingCount"],
+        "notAssessedCount": roadmap.get("notAssessedCount", 0),
+        "totalWeeks": roadmap["totalWeeks"],
+        "includesProjectWeek": roadmap["includesProjectWeek"],
+        "paceLabel": roadmap["paceLabel"],
+        "currentWeek": 1,
+        "completionPercent": roadmap["courseCompletionPercent"],
+        "courseCompletionPercent": roadmap["courseCompletionPercent"],
+        "compressedSyllabus": compressed_syllabus,
+        "updatedAt": SERVER_TIMESTAMP,
     }
-    doc_ref.set(payload)
+    if not existing.exists:
+        payload["generatedAt"] = SERVER_TIMESTAMP
+
+    doc_ref.set(payload, merge=False)
     return doc_ref.get().to_dict()
+
+
+def get_roadmap(db, uid: str) -> dict | None:
+    """Returns None if the user has never generated a roadmap yet —
+    callers should treat that as "take the assessment first", not an error."""
+    snap = _doc_ref(db, uid).get()
+    return snap.to_dict() if snap.exists else None

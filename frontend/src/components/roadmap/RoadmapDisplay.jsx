@@ -9,6 +9,7 @@ export const LEVEL_COLORS = {
   Intermediate: "#F59E0B",
   Weak: "#E0559C",
   "Not Attempted": "#9CA3AF",
+  "Not Assessed": "#8DA9C4",
 };
 
 const PACE_STYLES = {
@@ -27,7 +28,10 @@ const PACE_STYLES = {
  * Roadmap.to_dict() — entries now always include mastered skills
  * instead of excluding them, specifically so this component can show
  * "how far through the whole course" a student is, not just "here's
- * what's still wrong".
+ * what's still wrong". When the roadmap was generated with a roleId,
+ * entries also include status="not_assessed" — role skills the learner
+ * never claimed/assessed, rendered as their own "Not Yet Assessed"
+ * section so they never silently vanish from the roadmap.
  *
  * `compressedSyllabus` (optional) — the object
  * services/syllabus_compression_service.py's get_compressed_role_syllabus
@@ -47,6 +51,7 @@ export default function RoadmapDisplay({ roadmap, showProgress = false, onSelect
 
   const mastered = roadmap.entries.filter((e) => e.status === "mastered");
   const upcoming = roadmap.entries.filter((e) => e.status === "upcoming");
+  const notAssessed = roadmap.entries.filter((e) => e.status === "not_assessed");
   const completionPercent = showProgress ? roadmap.completionPercent : roadmap.courseCompletionPercent;
   const paceStyle = PACE_STYLES[roadmap.paceLabel] || PACE_STYLES["Steady & Thorough"];
   const PaceIcon = paceStyle.icon;
@@ -66,7 +71,12 @@ export default function RoadmapDisplay({ roadmap, showProgress = false, onSelect
       </div>
       <p className="text-sm mb-5" style={{ color: COLORS.textMid }}>
         {roadmap.masteredCount} of {roadmap.totalSkills} skill(s) already mastered
-        {roadmap.upcomingCount > 0 ? ` · ${roadmap.totalWeeks}-week plan for the rest` : " · nothing left to schedule!"}
+        {roadmap.upcomingCount > 0
+          ? ` · ${roadmap.totalWeeks}-week plan for the rest`
+          : notAssessed.length === 0
+          ? " · nothing left to schedule!"
+          : ""}
+        {notAssessed.length > 0 ? ` · ${notAssessed.length} not yet assessed` : ""}
       </p>
 
       {/* Overall course completion — the honest full-course number, not just "this week's plan" */}
@@ -235,7 +245,56 @@ export default function RoadmapDisplay({ roadmap, showProgress = false, onSelect
         </div>
       )}
 
-      {upcoming.length === 0 && mastered.length > 0 && (
+      {/* Not-yet-assessed role skills — still part of the curriculum, just
+          never claimed/assessed. Its own section (not merged into "upcoming")
+          since there's no diagnostic score to schedule these by yet. */}
+      {notAssessed.length > 0 && (
+        <div className="mt-6">
+          <p className="text-xs font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.textLight }}>
+            Not Yet Assessed
+          </p>
+          <p className="text-xs mb-2.5" style={{ color: COLORS.textLight }}>
+            Part of your role's full curriculum — take a diagnostic on these whenever you're ready.
+          </p>
+          <div className="flex flex-col gap-2">
+            {notAssessed.map((entry) => {
+              const topics = topicsForSkill(entry.skill);
+              const isExpanded = expandedSkill === entry.skill;
+              return (
+                <div key={entry.skill} style={{ borderRadius: 14, background: "rgba(141,169,196,0.1)" }}>
+                  <div
+                    onClick={topics ? () => toggleExpand(entry.skill) : undefined}
+                    className="flex items-center gap-3 px-4 py-3"
+                    style={{ cursor: topics ? "pointer" : "default" }}
+                  >
+                    <span
+                      className="px-2 py-0.5 text-[10px] font-bold rounded-full flex-shrink-0"
+                      style={{ color: "#fff", background: LEVEL_COLORS["Not Assessed"] }}
+                    >
+                      Not Assessed
+                    </span>
+                    <span className="text-sm font-semibold flex-1" style={{ color: COLORS.textDark }}>
+                      {entry.skill}
+                    </span>
+                    {topics && (
+                      <motion.span animate={{ rotate: isExpanded ? 180 : 0 }} style={{ display: "flex" }}>
+                        <ChevronDown size={16} style={{ color: COLORS.textLight }} />
+                      </motion.span>
+                    )}
+                  </div>
+                  {topics && isExpanded && (
+                    <div className="px-4 pb-3">
+                      <TopicList topics={topics} />
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {upcoming.length === 0 && notAssessed.length === 0 && mastered.length > 0 && (
         <div className="text-center py-6">
           <p className="text-sm font-semibold" style={{ color: COLORS.textDark }}>
             🎉 You've mastered every skill in this course!

@@ -34,6 +34,17 @@ from the roadmap. Omit `role_skills` (e.g. the role isn't seeded in
 data/skill_syllabus_seed.py yet) and this falls back to the original
 assessed-skills-only behavior — same shape, just a narrower skill set.
 
+MODULE GROUPING (this revision): generate_roadmap() now also accepts
+optional `role_categories` — the {category: [skills]} mapping from
+data/role_skill_categories.py — used purely to tag each entry with
+which "module" it belongs to (e.g. "Frontend", "Backend", "Database",
+"Tools" for the fullstack role) so the frontend can group the roadmap
+into Module 1, Module 2, ... instead of one flat list. This is
+DISPLAY-ONLY: it changes nothing about how a skill is classified
+mastered/upcoming/not_assessed or how weeks are numbered — it only adds
+a `module` tag to each entry. Omit it and every entry's module is None,
+which the frontend treats as "no module grouping, render as before".
+
 DESIGN DECISION (unchanged): still deliberately rule-based, NOT an LLM
 call — the question "which skill needs work first" doesn't need a
 language model, it needs the diagnostic data already in hand. See the
@@ -76,6 +87,7 @@ class RoadmapEntry:
     week: int | None  # None for mastered/not_assessed entries — they're not "scheduled"
     focus_band: str | None  # None for mastered/not_assessed entries
     recommendation: str
+    module: str | None = None  # e.g. "Frontend", "Backend" — None when role_categories wasn't provided
 
     def to_dict(self) -> dict:
         return {
@@ -87,6 +99,7 @@ class RoadmapEntry:
             "week": self.week,
             "focusBand": self.focus_band,
             "recommendation": self.recommendation,
+            "module": self.module,
         }
 
 
@@ -101,6 +114,7 @@ class Roadmap:
     includes_project_week: bool = False
     pace_label: str = PACE_STEADY
     course_completion_percent: float = 0.0  # mastered / total, BEFORE any upcoming week is completed
+    module_order: list[str] = field(default_factory=list)  # category names in display order, [] if ungrouped
 
     def to_dict(self) -> dict:
         return {
@@ -113,16 +127,22 @@ class Roadmap:
             "includesProjectWeek": self.includes_project_week,
             "paceLabel": self.pace_label,
             "courseCompletionPercent": self.course_completion_percent,
+            "moduleOrder": self.module_order,
         }
 
 
-def generate_roadmap(evaluation: dict, role_skills: list[str] | None = None) -> Roadmap:
+def generate_roadmap(
+    evaluation: dict,
+    role_skills: list[str] | None = None,
+    role_categories: dict[str, list[str]] | None = None,
+) -> Roadmap:
     """
     evaluation: {"skills": [...], "overall": {...}} from
     services/evaluation_service.py.
 
     role_skills (optional): the learner's FULL role skill list
-    (services/skill_topic_service.get_syllabus_for_role). When provided,
+    (services/skill_topic_service.get_syllabus_for_role, or
+    data/role_skill_categories.get_role_skill_list). When provided,
     THIS — not evaluation["skills"] — decides which skills appear and
     how many total_skills the roadmap covers. Any role skill that was
     never claimed/assessed still gets its own status="not_assessed"
@@ -133,6 +153,10 @@ def generate_roadmap(evaluation: dict, role_skills: list[str] | None = None) -> 
 
     Omit role_skills (role not seeded yet) and this is the original
     behavior: only assessed skills appear, total_skills = count of those.
+
+    role_categories (optional): {category: [skills]} — tags each entry
+    with a `module` field and populates the roadmap's `moduleOrder` for
+    grouped display. Purely a display tag; doesn't affect classification.
 
     "Strong" skills become status="mastered" (no week assigned).
     Everything else assessed becomes status="upcoming", sorted
@@ -158,6 +182,12 @@ def generate_roadmap(evaluation: dict, role_skills: list[str] | None = None) -> 
     needs_work = [s for s in assessed_skills if s["level"] in NEEDS_WORK_LEVELS]
     needs_work.sort(key=lambda s: (LEVEL_PRIORITY_RANK[s["level"]], s["scorePercent"]))
 
+    skill_to_module: dict[str, str] = {}
+    if role_categories:
+        for category, skills in role_categories.items():
+            for sk in skills:
+                skill_to_module[sk] = category
+
     entries: list[RoadmapEntry] = []
     order = 1
     for s in mastered:
@@ -166,6 +196,7 @@ def generate_roadmap(evaluation: dict, role_skills: list[str] | None = None) -> 
                 order=order, skill=s["skill"], current_level=s["level"],
                 score_percent=s["scorePercent"], status="mastered",
                 week=None, focus_band=None, recommendation=MASTERED_MESSAGE,
+                module=skill_to_module.get(s["skill"]),
             )
         )
         order += 1
@@ -178,6 +209,7 @@ def generate_roadmap(evaluation: dict, role_skills: list[str] | None = None) -> 
                 score_percent=s["scorePercent"], status="upcoming",
                 week=i + 1, focus_band=focus_band,
                 recommendation=FOCUS_BAND_MESSAGES[focus_band],
+                module=skill_to_module.get(s["skill"]),
             )
         )
         order += 1
@@ -188,6 +220,7 @@ def generate_roadmap(evaluation: dict, role_skills: list[str] | None = None) -> 
                 order=order, skill=sk, current_level="Not Assessed",
                 score_percent=None, status="not_assessed",
                 week=None, focus_band=None, recommendation=NOT_ASSESSED_MESSAGE,
+                module=skill_to_module.get(sk),
             )
         )
         order += 1
@@ -217,6 +250,7 @@ def generate_roadmap(evaluation: dict, role_skills: list[str] | None = None) -> 
         includes_project_week=includes_project_week,
         pace_label=pace_label,
         course_completion_percent=course_completion_percent,
+        module_order=list(role_categories.keys()) if role_categories else [],
     )
 
 
@@ -231,12 +265,20 @@ from services.roadmap_repository import save_roadmap as _save_roadmap, get_roadm
 
 def resolve_role_skills(role_id: str | None) -> list[str] | None:
     """
-    Best-effort: returns the full skill list for a role (in syllabus
-    order), or None if the role isn't seeded yet
-    (data/skill_syllabus_seed.py only covers "frontend" so far — the
-    other 7 entries in frontend/src/constants/roles.js aren't seeded).
-    None here means "fall back to assessed-skills-only roadmap" — the
-    exact same fallback as never passing a role_id — never an error.
+    Returns the full skill list for a role, or None if role_id is
+    empty/unrecognized anywhere. Two sources, tried in order:
+
+      1. Topic-seeded syllabus (services/skill_topic_service.py, backed
+         by data/skill_syllabus_seed.py) — currently "frontend" only,
+         but when available also unlocks the topic-level Verified/
+         Current/Locked expand view via compressedSyllabus.
+      2. data/role_skill_categories.py — covers ALL 8 roles (mirrors
+         frontend/src/constants/skills.js), just without per-topic
+         detail. This is what makes "every role skill appears on the
+         roadmap" true for every role today, not just frontend.
+
+    None only when NEITHER source recognizes role_id — the same
+    fallback as never passing a role_id at all, never an error.
     """
     if not role_id:
         return None
@@ -246,9 +288,25 @@ def resolve_role_skills(role_id: str | None) -> list[str] | None:
     db = get_firestore_client()
     try:
         role_syllabus = get_syllabus_for_role(db, role_id)
+        return [s["skill"] for s in role_syllabus["skills"]]
     except SkillTopicError:
+        pass
+
+    from data.role_skill_categories import get_role_skill_list
+
+    return get_role_skill_list(role_id)
+
+
+def resolve_role_categories(role_id: str | None) -> dict[str, list[str]] | None:
+    """{category: [skills]} for module-grouped display — see
+    data/role_skill_categories.py. None if role_id isn't recognized
+    there, in which case the roadmap renders ungrouped (unchanged
+    behavior), same fallback pattern as resolve_role_skills."""
+    if not role_id:
         return None
-    return [s["skill"] for s in role_syllabus["skills"]]
+    from data.role_skill_categories import get_role_categories
+
+    return get_role_categories(role_id)
 
 
 def _compressed_syllabus_or_none(role_id: str | None, role_skills: list[str] | None, evaluation: dict) -> dict | None:
@@ -264,7 +322,8 @@ def _compressed_syllabus_or_none(role_id: str | None, role_skills: list[str] | N
 
 def generate_and_save_roadmap(uid: str, role: str, evaluation: dict, role_id: str | None = None) -> dict:
     role_skills = resolve_role_skills(role_id)
-    roadmap = generate_roadmap(evaluation, role_skills=role_skills)
+    role_categories = resolve_role_categories(role_id)
+    roadmap = generate_roadmap(evaluation, role_skills=role_skills, role_categories=role_categories)
     compressed_syllabus = _compressed_syllabus_or_none(role_id, role_skills, evaluation)
 
     db = get_firestore_client()
@@ -283,7 +342,8 @@ def generate_roadmap_preview(evaluation: dict, role_id: str | None = None) -> di
     collection.
     """
     role_skills = resolve_role_skills(role_id)
-    roadmap = generate_roadmap(evaluation, role_skills=role_skills)
+    role_categories = resolve_role_categories(role_id)
+    roadmap = generate_roadmap(evaluation, role_skills=role_skills, role_categories=role_categories)
     roadmap_dict = roadmap.to_dict()
     roadmap_dict["compressedSyllabus"] = _compressed_syllabus_or_none(role_id, role_skills, evaluation)
     return roadmap_dict

@@ -1,41 +1,27 @@
 """
-services/roadmap_repository.py
+services/notes_repository.py
 
-The ONLY module that touches the `roadmaps` Firestore collection. Same
-dependency-injection pattern as services/question_repository.py.
+The ONLY module that touches the `learning_notes` Firestore collection.
+Same dependency-injection pattern as services/question_repository.py
+and services/resource_repository.py.
 
-Firestore document layout — ONE document per user (one active roadmap
-at a time):
+Notes are cached per (skill, topic, focusBand) — generated once by
+agents/notes_generation_agent.py, reused by every student who reaches
+that exact skill/topic/level after that, never regenerated per-request
+(see services/learning_content_service.py for the cache-check-then-
+generate orchestration this repository is called from).
 
-    roadmaps/{uid}
-        uid, role, roleId, entries: [...] (each tagged
-        status="mastered"|"upcoming"|"not_assessed"),
-        totalSkills, masteredCount, upcomingCount, notAssessedCount,
-        totalWeeks, includesProjectWeek, paceLabel, currentWeek,
-        completionPercent, courseCompletionPercent, compressedSyllabus,
-        generatedAt, updatedAt
+Doc ID is a deterministic slug built from (skill, topic, focus_band) —
+not an auto-generated ID — specifically so a cache lookup is a single
+direct .get() by ID instead of a filtered query. This is what makes
+"check cache, skip the AI call entirely on a hit" cheap and instant.
 
-roleId + compressedSyllabus (services/syllabus_compression_service.py's
-get_compressed_role_syllabus output) are persisted alongside the
-roadmap itself so the frontend's topic-level expand view
-(RoadmapDisplay.jsx) loads from this ONE document instead of a second
-live call on every page open. Both are None when role_id wasn't
-resolvable (services/roadmap_service.resolve_role_skills) — same
-"silently fall back, never error" rule as the rest of the role-driven
-path.
-
-completionPercent is initialized from the Roadmap Agent's own
-courseCompletionPercent (mastered skills / total skills) — NOT
-hardcoded to 0.0 — because a student who's already Strong in some
-skills has genuinely already completed that fraction of the course
-before their first "upcoming" week even starts. Completing upcoming
-weeks later should push this percentage further (that recompute isn't
-built yet — same "topic completion" gap noted before — but the STARTING
-value is now honest instead of always zero).
-
-Saving a NEW roadmap (e.g. after a retake) fully REPLACES the previous
-one — intentional, matches "regenerate only on retake".
+    learning_notes/{skill}__{topic}__{focusBand}  (slugified)
+        skill, topic, focusBand, title, summary, sections: [...],
+        codeExample, keyTakeaways: [...], generatedAt
 """
+
+import re
 
 from firebase_admin import firestore
 
@@ -44,51 +30,49 @@ from config.settings import settings
 SERVER_TIMESTAMP = firestore.SERVER_TIMESTAMP
 
 
-def _doc_ref(db, uid: str):
-    return db.collection(settings.ROADMAP_COLLECTION).document(uid)
+def _slugify(value: str) -> str:
+    """Lowercase, alphanumeric-and-hyphen only — keeps Firestore doc IDs
+    safe regardless of punctuation in a skill/topic name
+    (e.g. "React.js" -> "react-js")."""
+    slug = re.sub(r"[^a-z0-9]+", "-", value.strip().lower())
+    return slug.strip("-")
 
 
-def save_roadmap(
-    db, uid: str, role: str, roadmap: dict,
-    role_id: str | None = None, compressed_syllabus: dict | None = None,
-) -> dict:
-    """
-    `roadmap` is the dict from services/roadmap_service.py's
-    Roadmap.to_dict(). `role_id` and `compressed_syllabus` are optional
-    — both None when the role wasn't resolvable (role not seeded yet),
-    in which case the roadmap still saves fine, just without the
-    topic-level expand data.
-    """
-    doc_ref = _doc_ref(db, uid)
-    existing = doc_ref.get()
-
-    payload = {
-        "uid": uid,
-        "role": role,
-        "roleId": role_id,
-        "entries": roadmap["entries"],
-        "totalSkills": roadmap["totalSkills"],
-        "masteredCount": roadmap["masteredCount"],
-        "upcomingCount": roadmap["upcomingCount"],
-        "notAssessedCount": roadmap.get("notAssessedCount", 0),
-        "totalWeeks": roadmap["totalWeeks"],
-        "includesProjectWeek": roadmap["includesProjectWeek"],
-        "paceLabel": roadmap["paceLabel"],
-        "currentWeek": 1,
-        "completionPercent": roadmap["courseCompletionPercent"],
-        "courseCompletionPercent": roadmap["courseCompletionPercent"],
-        "compressedSyllabus": compressed_syllabus,
-        "updatedAt": SERVER_TIMESTAMP,
-    }
-    if not existing.exists:
-        payload["generatedAt"] = SERVER_TIMESTAMP
-
-    doc_ref.set(payload, merge=False)
-    return doc_ref.get().to_dict()
+def _doc_id(skill: str, topic: str, focus_band: str) -> str:
+    return f"{_slugify(skill)}__{_slugify(topic)}__{_slugify(focus_band)}"
 
 
-def get_roadmap(db, uid: str) -> dict | None:
-    """Returns None if the user has never generated a roadmap yet —
-    callers should treat that as "take the assessment first", not an error."""
-    snap = _doc_ref(db, uid).get()
+def _doc_ref(db, skill: str, topic: str, focus_band: str):
+    doc_id = _doc_id(skill, topic, focus_band)
+    return db.collection(settings.LEARNING_NOTES_COLLECTION).document(doc_id)
+
+
+def get_cached_notes(db, skill: str, topic: str, focus_band: str) -> dict | None:
+    """Returns the cached notes dict, or None on a cache miss — None is
+    the normal/expected signal to generate now, not an error (see
+    services/learning_content_service.py)."""
+    snap = _doc_ref(db, skill, topic, focus_band).get()
     return snap.to_dict() if snap.exists else None
+
+
+def save_notes(db, skill: str, topic: str, focus_band: str, notes: dict) -> dict:
+    """
+    `notes` is the raw dict returned by
+    agents/notes_generation_agent.py's NotesGenerationAgent.run() —
+    already validated there (title, summary, sections, keyTakeaways
+    required; codeExample optional).
+    """
+    doc_ref = _doc_ref(db, skill, topic, focus_band)
+    payload = {
+        "skill": skill,
+        "topic": topic,
+        "focusBand": focus_band,
+        "title": notes["title"],
+        "summary": notes["summary"],
+        "sections": notes["sections"],
+        "codeExample": notes.get("codeExample", ""),
+        "keyTakeaways": notes["keyTakeaways"],
+        "generatedAt": SERVER_TIMESTAMP,
+    }
+    doc_ref.set(payload)
+    return doc_ref.get().to_dict()

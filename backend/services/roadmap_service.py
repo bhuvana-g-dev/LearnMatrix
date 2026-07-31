@@ -310,14 +310,30 @@ def resolve_role_categories(role_id: str | None) -> dict[str, list[str]] | None:
 
 
 def _compressed_syllabus_or_none(role_id: str | None, role_skills: list[str] | None, evaluation: dict) -> dict | None:
-    """Only computed when a role was actually resolved — mirrors the
-    same "seeded role or silently skip" rule as resolve_role_skills."""
+    """
+    Only computed when a role was actually resolved AND has topic-level
+    seed data (data/skill_syllabus_seed.py — currently "frontend" only).
+
+    IMPORTANT: role_skills being non-None is no longer a safe proxy for
+    "topic-seed data exists" — resolve_role_skills() now also succeeds
+    via data/role_skill_categories.py for roles that have NO topic seed
+    at all (e.g. "fullstack"). So this still has to actually try the
+    topic-seeded call and catch SkillTopicError itself, exactly like
+    resolve_role_skills() does — same "seeded role or silently skip"
+    rule, just re-applied here because get_compressed_role_syllabus()
+    hits get_syllabus_for_role() again internally.
+    """
     if not role_id or role_skills is None:
         return None
+
+    from services.skill_topic_service import SkillTopicError
     from services.syllabus_compression_service import get_compressed_role_syllabus
 
     db = get_firestore_client()
-    return get_compressed_role_syllabus(db, role_id, evaluation)
+    try:
+        return get_compressed_role_syllabus(db, role_id, evaluation)
+    except SkillTopicError:
+        return None
 
 
 def generate_and_save_roadmap(uid: str, role: str, evaluation: dict, role_id: str | None = None) -> dict:

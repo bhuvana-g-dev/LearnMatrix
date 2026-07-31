@@ -77,6 +77,7 @@ def save_roadmap(
         "currentWeek": 1,
         "completionPercent": roadmap["courseCompletionPercent"],
         "courseCompletionPercent": roadmap["courseCompletionPercent"],
+        "moduleOrder": roadmap.get("moduleOrder", []),
         "compressedSyllabus": compressed_syllabus,
         "updatedAt": SERVER_TIMESTAMP,
     }

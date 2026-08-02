@@ -6,6 +6,7 @@ import AdminDashboardScreen from "./screens/admin/AdminDashboardScreen";
 import QuestionBankScreen from "./screens/admin/QuestionBankScreen";
 import QuestionUploadScreen from "./screens/admin/QuestionUploadScreen";
 import QuestionPreviewScreen from "./screens/admin/QuestionPreviewScreen";
+import ResourceBankScreen from "./screens/admin/ResourceBankScreen";
 import { useAdminAuth } from "./hooks/useAdminAuth";
 
 /**
@@ -86,6 +87,8 @@ export default function AdminApp() {
     );
   } else if (activeKey === "question-preview") {
     content = <QuestionPreviewScreen question={previewQuestion} onBack={backToQuestionBank} />;
+  } else if (activeKey === "resource-bank") {
+    content = <ResourceBankScreen />;
   }
 
   return (

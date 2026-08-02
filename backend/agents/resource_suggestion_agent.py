@@ -21,12 +21,16 @@ a human explicitly opens each link and marks it "verified". The agent's
 job is to save an admin from starting a resource search from a blank
 page — not to be trusted unsupervised.
 
-Future upgrade path (not built here): replace the "ask the LLM to name
-a URL" step with a real search API call (e.g. YouTube Data API) so every
-suggestion is guaranteed to be a real, existing resource — the admin
-would then only be judging QUALITY, not whether the link is real at
-all. The rest of this pipeline (pending -> review -> verified) doesn't
-need to change for that upgrade; only this one function's internals would.
+UPDATE (implemented): the "video" type has been removed from what this
+agent is asked for — services/youtube_service.py now handles ALL video
+suggestions via a real YouTube Data API v3 search, so a video result is
+guaranteed to actually exist (title/channel/thumbnail/duration/views
+all come straight from YouTube, never invented). This agent now covers
+only the resource types where "ask the LLM to name a real URL" remains
+the only available approach: documentation, articles, GitHub repos,
+PDFs/cheat sheets, practice links — all still carry the same
+hallucination risk described above, still gated behind the identical
+pending -> review -> verified pipeline.
 """
 
 import time
@@ -36,7 +40,8 @@ from config.settings import settings
 from utils.gemini_client import generate_json, GeminiClientError
 
 REQUIRED_FIELDS = ["title", "url", "type", "platform"]
-VALID_TYPES = ["video", "documentation", "github"]
+# "video" deliberately excluded — see UPDATE note above.
+VALID_TYPES = [t for t in settings.VALID_RESOURCE_TYPES if t != "video"]
 
 
 class ResourceSuggestionError(AgentError):
@@ -72,16 +77,18 @@ class ResourceSuggestionAgent(BaseAgent):
         )
 
     def _build_prompt(self, skill: str, topic: str, count: int) -> str:
-        return f"""Suggest {count} well-known, genuinely popular learning
+        types_list = " | ".join(f'"{t}"' for t in VALID_TYPES)
+        return f"""Suggest {count} well-known, genuinely useful learning
 resources for the topic "{topic}" (part of the skill "{skill}") —
 things a working developer would actually recognize by name: official
-documentation, widely-used GitHub repositories, or well-known YouTube
-channels/playlists on this exact topic.
+documentation, widely-used GitHub repositories, well-known articles,
+downloadable PDF notes/cheat sheets, or hands-on practice sites (e.g.
+an interactive exercise platform) on this exact topic.
 
 Only suggest resources you are highly confident actually exist under
 that exact name and URL. If you are not confident a specific URL is
-correct, suggest the resource's official homepage or channel URL
-instead of guessing a deep link.
+correct, suggest the resource's official homepage instead of guessing
+a deep link.
 
 Respond with ONLY a JSON array, no prose, no markdown fences, in this
 exact shape:
@@ -89,8 +96,8 @@ exact shape:
   {{
     "title": "<resource name>",
     "url": "<url>",
-    "type": "video" | "documentation" | "github",
-    "platform": "<e.g. YouTube, MDN, official docs, GitHub>"
+    "type": {types_list},
+    "platform": "<e.g. MDN, official docs, GitHub, freeCodeCamp>"
   }}
 ]"""
 

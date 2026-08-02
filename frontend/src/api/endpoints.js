@@ -59,5 +59,19 @@ export const ENDPOINTS = {
       SET_STATUS: (questionId) => `/admin/questions/${questionId}/status`, // PATCH
       EXTRACT_PDF: "/admin/questions/extract-pdf", // POST multipart/form-data
     },
+    // Resource Bank — backend: routes/learning_routes.py
+    RESOURCES: {
+      LIST: "/admin/learning-resources", // GET, supports ?skill=&topic=&type=&difficulty=&status=
+      CREATE: "/admin/learning-resources", // POST
+      UPDATE: (resourceId) => `/admin/learning-resources/${resourceId}`, // PATCH — general field edit
+      DELETE: (resourceId) => `/admin/learning-resources/${resourceId}`, // DELETE
+      SET_PINNED: (resourceId) => `/admin/learning-resources/${resourceId}/pin`, // PATCH {pinned}
+      SET_ENABLED: (resourceId) => `/admin/learning-resources/${resourceId}/enabled`, // PATCH {enabled}
+      SUGGEST_AI: "/admin/learning-resources/suggest", // POST {skill, topic, count} — non-video types
+      SUGGEST_YOUTUBE: "/admin/learning-resources/suggest-youtube", // POST {skill, topic, count} — real YouTube search
+      PENDING: "/admin/learning-resources/pending", // GET, supports ?skill=&topic=
+      VERIFY: (resourceId) => `/admin/learning-resources/${resourceId}/verify`, // PATCH
+      REJECT: (resourceId) => `/admin/learning-resources/${resourceId}/reject`, // PATCH
+    },
   },
 };

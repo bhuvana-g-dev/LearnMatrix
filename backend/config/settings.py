@@ -67,6 +67,30 @@ class Settings:
     LEARNING_RESOURCES_COLLECTION: str = os.getenv("LEARNING_RESOURCES_COLLECTION", "learning_resources")
     ACTIVITY_COLLECTION: str = os.getenv("ACTIVITY_COLLECTION", "learning_activity")
 
+    # --- Learning Resources (services/resource_repository.py) ---
+    # One shared list of resource types across student display, admin
+    # CRUD, and the AI/YouTube suggestion pipelines — adding a new type
+    # later means editing this one line, not hunting through 3 files.
+    VALID_RESOURCE_TYPES: list[str] = [
+        "video", "documentation", "article", "pdf", "cheatsheet", "practice", "github",
+    ]
+    # Reuses the same three-tier scale as VALID_TOPIC_DIFFICULTIES below
+    # (Beginner/Intermediate/Advanced) rather than inventing a second
+    # difficulty vocabulary for resources — one scale, one meaning,
+    # everywhere in the app.
+    VALID_RESOURCE_STATUSES: list[str] = ["pending", "verified", "rejected"]
+
+    # --- YouTube Data API v3 (services/youtube_service.py) ---
+    # Required only for: (1) the admin's "Search YouTube" suggestion
+    # button, and (2) the live fallback when a topic has zero
+    # admin-verified videos. Missing/empty key means both features
+    # degrade to "show nothing for video resources" rather than
+    # erroring — see youtube_service.py's module docstring. Get a key
+    # at https://console.cloud.google.com/apis/credentials after
+    # enabling "YouTube Data API v3" for the project.
+    YOUTUBE_API_KEY: str = os.getenv("YOUTUBE_API_KEY", "")
+    YOUTUBE_SEARCH_MAX_RESULTS: int = int(os.getenv("YOUTUBE_SEARCH_MAX_RESULTS", 6))
+
     # --- Skill Syllabus Tree (Adaptive Roadmap System) ---
     # skill_topics/{TopicID} — the ordered curriculum inside one skill
     # (e.g. HTML5 -> Introduction, Headings, Paragraphs, ...).

@@ -46,6 +46,21 @@ export default function RoadmapDisplay({ roadmap, showProgress = false, onSelect
   const topicsForSkill = (skillName) =>
     compressedSyllabus?.skills?.find((s) => s.skill === skillName)?.topics || null;
 
+  // The ONE specific topic the learner should be studying right now for
+  // a skill — used so clicking into a Learning Session passes a real
+  // topic name instead of falling back to the skill name (see
+  // App.jsx's onSelectTopic, which now prefers entry.currentTopic).
+  // Returns null when there's no compressedSyllabus for this skill at
+  // all (role/skill not topic-seeded yet) — App.jsx already has a
+  // skill-name fallback for exactly that case, so this degrades safely.
+  const currentTopicForSkill = (skillName) => {
+    const topics = topicsForSkill(skillName);
+    const current = topics?.find((t) => t.status === "Current");
+    return current ? current.title : null;
+  };
+
+  const withCurrentTopic = (entry) => ({ ...entry, currentTopic: currentTopicForSkill(entry.skill) });
+
   const toggleExpand = (skillName) =>
     setExpandedSkill((current) => (current === skillName ? null : skillName));
 
@@ -133,7 +148,12 @@ export default function RoadmapDisplay({ roadmap, showProgress = false, onSelect
                         : entry.status === "not_assessed"
                         ? "rgba(141,169,196,0.1)"
                         : "rgba(255,255,255,0.5)";
-                    const clickable = topics ? () => toggleExpand(entry.skill) : undefined;
+                    const clickable =
+                      entry.status === "upcoming" && onSelectEntry
+                        ? () => onSelectEntry(withCurrentTopic(entry))
+                        : topics
+                        ? () => toggleExpand(entry.skill)
+                        : undefined;
 
                     return (
                       <div key={entry.skill} style={{ borderRadius: 14, background: rowBg }}>
@@ -176,7 +196,18 @@ export default function RoadmapDisplay({ roadmap, showProgress = false, onSelect
                             </span>
                           )}
                           {topics && (
-                            <motion.span animate={{ rotate: isExpanded ? 180 : 0 }} style={{ display: "flex", flexShrink: 0 }}>
+                            <motion.span
+                              onClick={
+                                entry.status === "upcoming" && onSelectEntry
+                                  ? (e) => {
+                                      e.stopPropagation();
+                                      toggleExpand(entry.skill);
+                                    }
+                                  : undefined
+                              }
+                              animate={{ rotate: isExpanded ? 180 : 0 }}
+                              style={{ display: "flex", flexShrink: 0, cursor: "pointer" }}
+                            >
                               <ChevronDown size={16} style={{ color: COLORS.textLight }} />
                             </motion.span>
                           )}
@@ -283,7 +314,7 @@ export default function RoadmapDisplay({ roadmap, showProgress = false, onSelect
                       style={{ borderRadius: 16, background: "rgba(255,255,255,0.5)" }}
                     >
                       <div
-                        onClick={onSelectEntry ? () => onSelectEntry(entry) : undefined}
+                        onClick={onSelectEntry ? () => onSelectEntry(withCurrentTopic(entry)) : undefined}
                         className="flex items-start gap-4"
                         style={{ cursor: onSelectEntry ? "pointer" : "default" }}
                       >

@@ -223,10 +223,16 @@ export default function App() {
         uid={auth.user?.uid}
         onNavigate={setActiveKey}
         onSelectTopic={(entry) => {
-          // See LearningSessionScreen.jsx: `topic` is currently the same
-          // as `skill` since the roadmap tracks one focusBand per skill,
-          // not finer sub-topics yet — a known, deliberate simplification.
-          setLearningSession({ skill: entry.skill, topic: entry.skill, focusBand: entry.focusBand });
+          // Prefer the learner's actual CURRENT topic within this skill
+          // (RoadmapDisplay.jsx's withCurrentTopic(), sourced from
+          // compressedSyllabus's Verified/Current/Locked breakdown) so
+          // learning resources are fetched for the SPECIFIC topic being
+          // studied, not a generic skill-level search. Falls back to the
+          // skill name itself when no topic-level data exists for this
+          // skill (role/skill not topic-seeded yet) — same "one learning
+          // session per roadmap week" behavior as before in that case.
+          const topic = entry.currentTopic || entry.skill;
+          setLearningSession({ skill: entry.skill, topic, focusBand: entry.focusBand });
           setActiveKey("learning-session");
         }}
       />

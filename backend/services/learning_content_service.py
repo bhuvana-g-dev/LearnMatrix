@@ -40,6 +40,25 @@ RESOURCE PRIORITY ORDER (this revision):
 Other categories (documentation/article/pdf/cheatsheet/practice/github)
 only ever come from step 1 — the live-search fallback is video-only,
 matching the actual ask (YouTube Data API only covers video).
+
+SINGLE PRIMARY VIDEO (this revision): a learner should see ONE
+recommended video for the current topic, not a wall of search results.
+_select_primary_and_alternates() below picks that one video — an
+admin's isPinned choice wins outright if one exists (an explicit human
+judgment beats any heuristic); otherwise every candidate is scored
+against the learner's CURRENT focus_band (services/focus_band.py's
+"fundamentals"/"application"/"advanced"/"polish", already computed by
+the Roadmap Agent per skill — reused here as-is, nothing new to
+compute) using simple, explainable signals: title keywords that match
+how detailed/concise a video for that band should be, a soft preferred-
+duration range, and view count as a mild tiebreaker. This is
+deliberately NOT an ML ranking model — same "instant, no external
+dependency, fully explainable" reasoning as every other rule-based
+piece of this app (see services/roadmap_service.py's docstring for the
+original version of this argument). The rest of the candidates (from
+whichever source won — admin-curated or live fallback) are still
+returned as `alternateVideos`, so nothing is thrown away, just
+de-emphasized behind a single clear recommendation.
 """
 
 from firebase.firebase_config import get_firestore_client
@@ -50,19 +69,86 @@ from services.youtube_service import search_videos, is_configured as youtube_is_
 
 RESOURCE_TYPES = ["video", "documentation", "article", "pdf", "cheatsheet", "practice", "github"]
 
+# Biases the live YouTube search query itself toward the right kind of
+# video for the learner's current focus_band, on top of the post-hoc
+# scoring in _score_video_for_focus_band() below — two light touches
+# rather than one, neither doing anything YouTube's own relevance
+# ranking can't already work with.
+FOCUS_BAND_QUERY_HINTS = {
+    "fundamentals": "for beginners explained",
+    "application": "tutorial",
+    "advanced": "advanced",
+    "polish": "quick overview",
+}
+
+FOCUS_BAND_TITLE_KEYWORDS = {
+    "fundamentals": ["beginner", "basics", "introduction", "explained", "for beginners", "step by step", "full course"],
+    "application": ["tutorial", "guide", "how to", "practical", "project", "example"],
+    "advanced": ["advanced", "deep dive", "in depth", "internals", "under the hood", "expert"],
+    "polish": ["quick", "crash course", "in 10 minutes", "summary", "revision", "cheat sheet", "recap"],
+}
+
+# Soft preferred duration range in seconds per band — a TIEBREAKER, not
+# a filter. A great video outside this range is still shown; this only
+# nudges the ranking when several reasonable candidates exist.
+FOCUS_BAND_DURATION_RANGE = {
+    "fundamentals": (600, 3600),  # 10-60 min: room for a thorough, from-scratch explanation
+    "application": (300, 1500),  # 5-25 min: balanced, hands-on
+    "advanced": (180, 900),  # 3-15 min: concise, assumes the fundamentals
+    "polish": (60, 600),  # 1-10 min: quick refresher
+}
+
 
 class LearningContentError(Exception):
     pass
 
 
-def _resolve_resources_by_type(db, skill: str, topic: str) -> dict[str, list[dict]]:
+def _score_video_for_focus_band(video: dict, focus_band: str) -> float:
+    """Higher is a better fit for this learner's current level. See
+    module docstring for why this is rule-based, not ML."""
+    title_lower = (video.get("title") or "").lower()
+    score = sum(3 for kw in FOCUS_BAND_TITLE_KEYWORDS.get(focus_band, []) if kw in title_lower)
+
+    lo, hi = FOCUS_BAND_DURATION_RANGE.get(focus_band, (0, 10**9))
+    if lo <= (video.get("durationSeconds") or 0) <= hi:
+        score += 2
+
+    # Mild popularity tiebreaker (capped) — stops two keyword-tied
+    # candidates from being an arbitrary coin flip, without letting raw
+    # view count alone override actual topic/level fit.
+    score += min((video.get("viewCount") or 0) / 100_000, 2)
+    return score
+
+
+def _select_primary_and_alternates(videos: list[dict], focus_band: str) -> tuple[dict | None, list[dict]]:
+    """
+    Returns (primary_video_or_None, remaining_videos). An admin's
+    isPinned choice always wins outright — that's an explicit human
+    decision, not something a heuristic should ever override. Otherwise
+    the highest-scoring candidate for this learner's focus_band wins.
+    """
+    if not videos:
+        return None, []
+
+    pinned = [v for v in videos if v.get("isPinned")]
+    if pinned:
+        primary = pinned[0]
+        return primary, [v for v in videos if v is not primary]
+
+    ranked = sorted(videos, key=lambda v: _score_video_for_focus_band(v, focus_band), reverse=True)
+    return ranked[0], ranked[1:]
+
+
+def _resolve_resources_by_type(db, skill: str, topic: str, focus_band: str) -> dict[str, list[dict]]:
     """
     Implements the priority order documented above:
     admin-curated verified -> YouTube live fallback (video only) -> [].
 
     Grouped by type up front (not left as one flat list) so the
-    frontend can render the 6 categorized sections directly without
-    re-deriving the grouping itself.
+    frontend can render the categorized sections directly without
+    re-deriving the grouping itself. The "video" list here is still the
+    FULL candidate pool (admin-curated or live-fetched) — get_topic_package()
+    below is what narrows it down to one primary recommendation.
     """
     verified = list_resources(db, skill=skill, topic=topic, status="verified", enabled_only=True)
 
@@ -73,13 +159,14 @@ def _resolve_resources_by_type(db, skill: str, topic: str) -> dict[str, list[dic
             by_type[r_type].append(r)
 
     if not by_type["video"] and youtube_is_configured():
-        # Topic-first query — the whole point of this fallback is
-        # relevance to the SPECIFIC topic the learner is on, not a
-        # generic "{skill} tutorial" search (see module docstring and
-        # the matching note in services/resource_review_service.py's
-        # generate_youtube_suggestions()).
+        # Topic-first query, further biased by focus_band — the whole
+        # point of this fallback is relevance to the SPECIFIC topic AND
+        # level the learner is on, not a generic "{skill} tutorial"
+        # search (see module docstring and the matching note in
+        # services/resource_review_service.py's generate_youtube_suggestions()).
+        query_hint = FOCUS_BAND_QUERY_HINTS.get(focus_band, "tutorial")
         try:
-            live_videos = search_videos(f"{topic} {skill} tutorial", max_results=6)
+            live_videos = search_videos(f"{topic} {skill} {query_hint}", max_results=6)
             by_type["video"] = [
                 {
                     "id": f"youtube-live-{v['videoId']}",
@@ -125,11 +212,14 @@ def get_topic_package(skill: str, topic: str, focus_band: str) -> dict:
             ) from exc
         notes = save_notes(db, skill, topic, focus_band, generated)
 
-    resources_by_type = _resolve_resources_by_type(db, skill, topic)
+    resources_by_type = _resolve_resources_by_type(db, skill, topic, focus_band)
+    primary_video, alternate_videos = _select_primary_and_alternates(resources_by_type["video"], focus_band)
+
     # Flat list preserved alongside the grouped one — existing behavior,
     # existing field, untouched shape/order (skips empty categories'
     # placeholders since they're just []). Nothing that already reads
-    # pkg.resources breaks; resourcesByType is purely additive.
+    # pkg.resources breaks; resourcesByType/primaryVideo/alternateVideos
+    # are purely additive.
     flat_resources = [r for resources in resources_by_type.values() for r in resources]
 
     return {
@@ -146,4 +236,6 @@ def get_topic_package(skill: str, topic: str, focus_band: str) -> dict:
         "notesFromCache": was_cached,  # useful for debugging/demoing the caching behavior
         "resources": flat_resources,
         "resourcesByType": resources_by_type,
+        "primaryVideo": primary_video,  # the ONE recommended video — always this, never a list, in the primary UI
+        "alternateVideos": alternate_videos,  # everything else, for an optional secondary "More Resources" view
     }

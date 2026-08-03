@@ -13,6 +13,7 @@ import CareerStatusScreen from "./screens/CareerStatusScreen";
 import SkillSelectionScreen from "./screens/SkillSelectionScreen";
 import AssessmentScreen from "./screens/AssessmentScreen";
 import RoadmapScreen from "./screens/RoadmapScreen";
+import CourseWorkspaceScreen from "./screens/CourseWorkspaceScreen";
 import LearningSessionScreen from "./screens/LearningSessionScreen";
 import ProfileScreen from "./screens/ProfileScreen";
 import RevisionScheduleScreen from "./screens/RevisionScheduleScreen";
@@ -51,6 +52,7 @@ export default function App() {
   const [showSignup, setShowSignup] = useState(false);
   const [showLanding, setShowLanding] = useState(true);
   const [learningSession, setLearningSession] = useState(null); // { skill, topic, focusBand }
+  const [workspaceContext, setWorkspaceContext] = useState(null); // { roadmap, compressedSyllabus, initialEntry }
 
   useEffect(() => {
     window.scrollTo({ top: 0, left: 0, behavior: "smooth" });
@@ -235,6 +237,19 @@ export default function App() {
           setLearningSession({ skill: entry.skill, topic, focusBand: entry.focusBand });
           setActiveKey("learning-session");
         }}
+        onStartJourney={(context) => {
+          setWorkspaceContext(context);
+          setActiveKey("course-workspace");
+        }}
+      />
+    );
+  } else if (activeKey === "course-workspace" && workspaceContext) {
+    content = (
+      <CourseWorkspaceScreen
+        roadmap={workspaceContext.roadmap}
+        compressedSyllabus={workspaceContext.compressedSyllabus}
+        initialEntry={workspaceContext.initialEntry}
+        onBack={() => setActiveKey("roadmap")}
       />
     );
   } else if (activeKey === "learning-session" && learningSession) {

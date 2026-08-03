@@ -18,7 +18,7 @@ import { getCompressedRoleSyllabus } from "../services/syllabusService";
  * "empty" is a normal, expected state for a brand-new user, not an error
  * — it just means they haven't taken the diagnostic assessment yet.
  */
-export default function RoadmapScreen({ uid, onNavigate, onSelectTopic }) {
+export default function RoadmapScreen({ uid, onNavigate, onSelectTopic, onStartJourney }) {
   const [state, setState] = useState("loading"); // loading | empty | error | ready
   const [roadmap, setRoadmap] = useState(null);
   const [errorMessage, setErrorMessage] = useState("");
@@ -181,6 +181,11 @@ export default function RoadmapScreen({ uid, onNavigate, onSelectTopic }) {
           showProgress
           onSelectEntry={onSelectTopic}
           compressedSyllabus={compressedSyllabus}
+          onStartJourney={
+            onStartJourney
+              ? (startEntry) => onStartJourney({ roadmap, compressedSyllabus, initialEntry: startEntry })
+              : undefined
+          }
         />
       </div>
     </div>

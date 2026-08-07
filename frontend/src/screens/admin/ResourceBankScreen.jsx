@@ -2,14 +2,14 @@ import { useState, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
 import {
   Plus, Trash2, Pencil, Pin, PinOff, Eye, EyeOff, Check, X,
-  Youtube, Sparkles, Loader2,
+  Youtube, Sparkles, Loader2, Undo2,
 } from "lucide-react";
 import { COLORS, GRADIENTS, GLASS_CARD } from "../../constants/theme";
 import {
   fetchResources, createResource, updateResource, deleteResource,
   setResourcePinned, setResourceEnabled,
   suggestResourcesViaAI, suggestResourcesViaYouTube,
-  fetchPendingResources, verifyResource, rejectResource,
+  fetchPendingResources, verifyResource, unverifyResource, rejectResource,
 } from "../../services/adminResourceService";
 
 const RESOURCE_TYPES = ["video", "documentation", "article", "pdf", "cheatsheet", "practice", "github"];
@@ -205,6 +205,17 @@ export default function ResourceBankScreen() {
       await loadResources();
     } catch (err) {
       setError(err.message || "Couldn't verify resource.");
+    }
+  };
+
+  const handleUnverify = async (resource) => {
+    if (!window.confirm(`Pull "${resource.title}" out of student view? It'll go back to Pending Review.`)) return;
+    try {
+      await unverifyResource(resource.id);
+      setResources((rs) => rs.filter((r) => r.id !== resource.id));
+      await loadPending();
+    } catch (err) {
+      setError(err.message || "Couldn't unverify resource.");
     }
   };
 
@@ -459,6 +470,11 @@ export default function ResourceBankScreen() {
                       <button onClick={() => handleToggleEnabled(r)} title={r.enabled === false ? "Enable" : "Disable"} style={{ background: "none", border: "none", cursor: "pointer", color: COLORS.textLight }}>
                         {r.enabled === false ? <EyeOff size={15} /> : <Eye size={15} />}
                       </button>
+                      {r.status === "verified" && (
+                        <button onClick={() => handleUnverify(r)} title="Unverify — remove from student view" style={{ background: "none", border: "none", cursor: "pointer", color: "#D4A017" }}>
+                          <Undo2 size={15} />
+                        </button>
+                      )}
                       <button onClick={() => openEditModal(r)} title="Edit" style={{ background: "none", border: "none", cursor: "pointer", color: COLORS.textLight }}>
                         <Pencil size={15} />
                       </button>

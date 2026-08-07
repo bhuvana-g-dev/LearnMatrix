@@ -84,6 +84,11 @@ export async function verifyResource(resourceId) {
   return data.data;
 }
 
+export async function unverifyResource(resourceId) {
+  const { data } = await apiClient.patch(ENDPOINTS.ADMIN.RESOURCES.UNVERIFY(resourceId));
+  return data.data;
+}
+
 export async function rejectResource(resourceId) {
   const { data } = await apiClient.patch(ENDPOINTS.ADMIN.RESOURCES.REJECT(resourceId));
   return data.data;

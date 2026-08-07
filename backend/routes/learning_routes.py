@@ -36,6 +36,7 @@ from services.resource_review_service import (
     generate_youtube_suggestions,
     get_pending_queue,
     verify_resource,
+    unverify_resource,
     reject_resource,
     edit_resource,
     pin_resource,
@@ -255,6 +256,21 @@ def verify_resource_route(resource_id):
     try:
         resource = verify_resource(resource_id)
         return success_response(data=resource, message="Resource verified and published.")
+    except Exception as exc:  # noqa: BLE001
+        return error_response(str(exc), status_code=500)
+
+
+@learning_bp.route("/admin/learning-resources/<resource_id>/unverify", methods=["PATCH"])
+def unverify_resource_route(resource_id):
+    """
+    Pulls a verified resource back out of student view (status ->
+    "pending") without marking it rejected — e.g. an admin decides a
+    video isn't the right fit anymore but it isn't "wrong" either. Back
+    in the review queue afterward, easy to re-verify later.
+    """
+    try:
+        resource = unverify_resource(resource_id)
+        return success_response(data=resource, message="Resource unverified and removed from student view.")
     except Exception as exc:  # noqa: BLE001
         return error_response(str(exc), status_code=500)
 

@@ -71,7 +71,13 @@ export const ENDPOINTS = {
       SUGGEST_YOUTUBE: "/admin/learning-resources/suggest-youtube", // POST {skill, topic, count} — real YouTube search
       PENDING: "/admin/learning-resources/pending", // GET, supports ?skill=&topic=
       VERIFY: (resourceId) => `/admin/learning-resources/${resourceId}/verify`, // PATCH
+      UNVERIFY: (resourceId) => `/admin/learning-resources/${resourceId}/unverify`, // PATCH — verified -> pending, hidden from students
       REJECT: (resourceId) => `/admin/learning-resources/${resourceId}/reject`, // PATCH
+    },
+    // Student Records — backend: routes/admin_student_routes.py
+    STUDENTS: {
+      LIST: "/admin/students", // GET
+      EXPORT: "/admin/students/export", // GET, .xlsx file download
     },
   },
 };

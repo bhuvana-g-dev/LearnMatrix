@@ -111,6 +111,22 @@ def verify_resource(resource_id: str) -> dict:
     return update_resource_status(db, resource_id, "verified")
 
 
+def unverify_resource(resource_id: str) -> dict:
+    """
+    Pulls an already-verified resource back OUT of student view without
+    marking it "rejected" (rejected implies the link is bad/wrong — this
+    is for "this is fine, I just don't want it live right now"). Moves
+    status back to "pending", which is enough on its own: student-facing
+    routes (services/learning_content_service.py) only ever read
+    status="verified", so a "pending" resource is immediately invisible
+    to students. It also lands back in the review queue
+    (get_pending_queue() below), so it's easy to re-verify later instead
+    of being lost.
+    """
+    db = get_firestore_client()
+    return update_resource_status(db, resource_id, "pending")
+
+
 def reject_resource(resource_id: str) -> dict:
     """
     Admin confirmed this link is bad (broken, wrong, low quality).

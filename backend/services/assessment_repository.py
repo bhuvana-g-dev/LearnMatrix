@@ -68,3 +68,15 @@ def get_assessment_result(db, uid: str) -> dict | None:
     flow", not an error."""
     snap = _doc_ref(db, uid).get()
     return snap.to_dict() if snap.exists else None
+
+
+def list_all_assessment_results(db) -> list[dict]:
+    """
+    Every student's saved assessment result — used ONLY by the admin
+    Student Records export (services/student_records_service.py), never
+    by student-facing routes (those always look up a single uid via
+    get_assessment_result). One document per student (see module
+    docstring), so this is naturally already deduplicated to each
+    student's latest/active attempt.
+    """
+    return [doc.to_dict() for doc in db.collection(settings.ASSESSMENT_RESULTS_COLLECTION).stream()]

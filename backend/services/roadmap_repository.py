@@ -93,3 +93,11 @@ def get_roadmap(db, uid: str) -> dict | None:
     callers should treat that as "take the assessment first", not an error."""
     snap = _doc_ref(db, uid).get()
     return snap.to_dict() if snap.exists else None
+
+
+def list_all_roadmaps(db) -> list[dict]:
+    """Every student's saved roadmap — used ONLY by the admin Student
+    Records export (services/student_records_service.py), never by
+    student-facing routes (those always look up a single uid via
+    get_roadmap)."""
+    return [doc.to_dict() for doc in db.collection(settings.ROADMAP_COLLECTION).stream()]

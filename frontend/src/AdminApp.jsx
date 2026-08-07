@@ -7,6 +7,7 @@ import QuestionBankScreen from "./screens/admin/QuestionBankScreen";
 import QuestionUploadScreen from "./screens/admin/QuestionUploadScreen";
 import QuestionPreviewScreen from "./screens/admin/QuestionPreviewScreen";
 import ResourceBankScreen from "./screens/admin/ResourceBankScreen";
+import StudentRecordsScreen from "./screens/admin/StudentRecordsScreen";
 import { useAdminAuth } from "./hooks/useAdminAuth";
 
 /**
@@ -89,6 +90,8 @@ export default function AdminApp() {
     content = <QuestionPreviewScreen question={previewQuestion} onBack={backToQuestionBank} />;
   } else if (activeKey === "resource-bank") {
     content = <ResourceBankScreen />;
+  } else if (activeKey === "student-records") {
+    content = <StudentRecordsScreen />;
   }
 
   return (

@@ -1,4 +1,4 @@
-import { LayoutDashboard, ListChecks } from "lucide-react";
+import { LayoutDashboard, ListChecks, Users } from "lucide-react";
 
 /**
  * Admin sidebar structure. Same shape as constants/navigation.js
@@ -20,5 +20,11 @@ export const ADMIN_NAV_SECTIONS = [
       { key: "question-bank", label: "Question Bank" },
       { key: "resource-bank", label: "Resource Bank" },
     ],
+  },
+  {
+    key: "people",
+    title: "People",
+    icon: Users,
+    children: [{ key: "student-records", label: "Student Records" }],
   },
 ];

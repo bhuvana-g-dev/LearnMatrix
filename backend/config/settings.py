@@ -138,6 +138,13 @@ class Settings:
     # optional — nothing breaks if you only ever set one key.
     GEMINI_API_KEY_ASSESSMENT: str = os.getenv("GEMINI_API_KEY_ASSESSMENT", "") or os.getenv("GEMINI_API_KEY", "")
 
+    # Optional SEPARATE key for the AI Study Assistant / Chat only
+    # (agents/chat_agent.py) — chat traffic is high-volume/conversational
+    # and was competing with assessment + every other agent on one key's
+    # quota. Falls back to GEMINI_API_KEY when unset, so nothing breaks
+    # if this isn't configured yet.
+    GEMINI_API_KEY_CHAT: str = os.getenv("GEMINI_API_KEY_CHAT", "") or os.getenv("GEMINI_API_KEY", "")
+
     # --- LLM Provider Fallback Chain (utils/gemini_client.py) ---
     # Comma-separated, tried in order. If the first provider fails (rate
     # limit, overload, timeout), the next one is tried automatically —

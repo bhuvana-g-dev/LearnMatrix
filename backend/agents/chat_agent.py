@@ -69,7 +69,7 @@ class ChatAgent(BaseAgent):
         last_error: Exception | None = None
         for attempt in range(settings.AI_GENERATION_MAX_RETRIES + 1):
             try:
-                raw = generate_json(prompt, temperature=0.6)
+                raw = generate_json(prompt, temperature=0.6, gemini_api_key=settings.GEMINI_API_KEY_CHAT)
                 self._validate(raw)
                 return raw
             except (GeminiClientError, ChatAgentError) as exc:

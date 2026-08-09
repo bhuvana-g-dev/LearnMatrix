@@ -50,6 +50,21 @@ def list_active_questions(db, skill: str | None = None) -> list[dict]:
     return [doc.to_dict() for doc in query.stream()]
 
 
+def list_active_questions_by_topic(db, skill: str, topic: str) -> list[dict]:
+    """Active questions for one exact Skill+Topic pair — what
+    services/topic_quiz_service.py reads first before falling back to AI
+    generation (same hybrid-priority pattern as
+    services/youtube_service.py: admin-curated bank first, AI fills the
+    gap only when the bank doesn't have enough)."""
+    query = (
+        _collection(db)
+        .where("Status", "==", settings.STATUS_ACTIVE)
+        .where("Skill", "==", skill)
+        .where("Topic", "==", topic)
+    )
+    return [doc.to_dict() for doc in query.stream()]
+
+
 def list_distinct_skills(db) -> list[str]:
     """Active skills currently present in Firestore (for a /skills-style listing)."""
     docs = _collection(db).where("Status", "==", settings.STATUS_ACTIVE).stream()

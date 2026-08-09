@@ -206,5 +206,39 @@ class Settings:
     FLASHCARD_SETS_COLLECTION: str = os.getenv("FLASHCARD_SETS_COLLECTION", "flashcard_sets")
     FLASHCARD_DEFAULT_COUNT: int = int(os.getenv("FLASHCARD_DEFAULT_COUNT", 10))
 
+    # --- Post-Topic Quiz + Adaptive Revision (Objectives 3 & 4) ---
+    # topic_quiz_attempts/{auto-id}   — one immutable doc per quiz taken,
+    #     the training data source for services/learner_classifier.py.
+    # topic_quiz_progress/{uid}__{skill}__{topic} — ONE doc per learner
+    #     per topic, holding the latest classification + next_review_date.
+    #     This is what the dashboard's "Due Today" / "Upcoming Revisions"
+    #     card queries — a running attempts log would make that a
+    #     full-collection scan per learner.
+    TOPIC_QUIZ_ATTEMPTS_COLLECTION: str = os.getenv(
+        "TOPIC_QUIZ_ATTEMPTS_COLLECTION", "topic_quiz_attempts"
+    )
+    TOPIC_QUIZ_PROGRESS_COLLECTION: str = os.getenv(
+        "TOPIC_QUIZ_PROGRESS_COLLECTION", "topic_quiz_progress"
+    )
+
+    # Fixed count per abstract ("quiz after each topic (10 questions)") —
+    # same fixed-spread reasoning as assessment_planner.QUESTIONS_PER_DIFFICULTY,
+    # kept constant so every topic quiz is comparable.
+    TOPIC_QUIZ_QUESTION_COUNT: int = int(os.getenv("TOPIC_QUIZ_QUESTION_COUNT", 10))
+    TOPIC_QUIZ_DIFFICULTY_SPREAD: dict[str, int] = {"Easy": 3, "Medium": 4, "Hard": 3}
+
+    # Fast/Moderate/Slow -> next retest in N days. Values from the
+    # abstract's Objective 4 exactly — do not change without updating
+    # the abstract, since this is graded against it.
+    REVISION_INTERVAL_DAYS: dict[str, int] = {"Fast": 7, "Moderate": 5, "Slow": 3}
+
+    # Where the trained Scikit-Learn model is cached on disk (relative to
+    # backend/). Missing file = services/learner_classifier.py trains a
+    # fresh one from bootstrap data on first use and writes it here, so
+    # a clean checkout never hard-fails for lack of a committed .pkl.
+    CLASSIFIER_MODEL_PATH: str = os.getenv(
+        "CLASSIFIER_MODEL_PATH", "models/learner_classifier.pkl"
+    )
+
 
 settings = Settings()

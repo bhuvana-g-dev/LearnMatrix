@@ -48,7 +48,7 @@ class TopicQuizAgent(BaseAgent):
         last_error: Exception | None = None
         for attempt in range(settings.AI_GENERATION_MAX_RETRIES + 1):
             try:
-                raw = generate_json(prompt, gemini_api_key=settings.GEMINI_API_KEY_ASSESSMENT)
+                raw = generate_json(prompt, gemini_api_key=settings.GEMINI_API_KEY_TOPIC_QUIZ)
                 rows = self._extract_rows(raw)
                 self._validate_rows(rows, count_needed)
                 return [

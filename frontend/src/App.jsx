@@ -234,8 +234,8 @@ export default function App() {
           // skill name itself when no topic-level data exists for this
           // skill (role/skill not topic-seeded yet) — same "one learning
           // session per roadmap week" behavior as before in that case.
-          const topic = entry.currentTopic || entry.skill;
-          setLearningSession({ skill: entry.skill, topic, focusBand: entry.focusBand });
+         const topic = entry.currentTopic || entry.skill;
+setLearningSession({ skill: entry.skill, topic, focusBand: entry.focusBand || "application" });
           setActiveKey("learning-session");
         }}
         onStartJourney={(context) => {

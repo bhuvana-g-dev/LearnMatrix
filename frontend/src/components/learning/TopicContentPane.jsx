@@ -6,7 +6,6 @@ import {
 } from "lucide-react";
 import { COLORS, GRADIENTS, GLASS_CARD } from "../../constants/theme";
 import { getTopicPackage } from "../../services/learningContentService";
-import TopicQuizModal from "./TopicQuizModal";
 
 const RESOURCE_ICONS = { documentation: FileText, github: Github };
 
@@ -78,22 +77,20 @@ function formatPublishedDate(iso) {
  * disables anything — every topic renders identically regardless of
  * this value.
  *
- * `onNext` here is NOT called directly by the Next button anymore —
- * clicking Next opens TopicQuizModal (Objective 3's post-topic quiz)
- * first; the modal calls the real onNext only after the learner
- * submits. Same "never a locking mechanism" philosophy as topicStatus
- * above: closing the modal (X) cancels back to this pane without
- * advancing, it doesn't force completion.
+ * The post-topic quiz (Objective 3) is NOT launched from here anymore —
+ * it's its own "Test" heading next to "Learning Resources" in
+ * CourseWorkspaceScreen's topic list (Coursera-style item list, one row
+ * per learning item type), opened via TopicQuizModal from that screen
+ * directly. Next/Previous here just move between topics.
  */
 export default function TopicContentPane({
-  skill, topic, focusBand, topicStatus, uid,
+  skill, topic, focusBand, topicStatus,
   onNext, onPrevious, hasNext = false, hasPrevious = false,
 }) {
   const [state, setState] = useState("loading"); // loading | error | ready
   const [errorMessage, setErrorMessage] = useState("");
   const [pkg, setPkg] = useState(null);
   const [showMoreVideos, setShowMoreVideos] = useState(false);
-  const [quizOpen, setQuizOpen] = useState(false);
 
   const fetchContent = useCallback(async () => {
     setState("loading");
@@ -418,7 +415,7 @@ export default function TopicContentPane({
             <ChevronLeft size={16} /> Previous
           </motion.button>
           <motion.button
-            onClick={() => setQuizOpen(true)}
+            onClick={onNext}
             disabled={!hasNext}
             whileHover={hasNext ? { x: 2 } : {}}
             className="flex items-center gap-1.5 text-sm font-bold px-5 py-3"
@@ -430,19 +427,6 @@ export default function TopicContentPane({
             Next <ChevronRight size={16} />
           </motion.button>
         </div>
-      )}
-
-      {quizOpen && (
-        <TopicQuizModal
-          skill={skill}
-          topic={topic}
-          uid={uid}
-          onClose={() => setQuizOpen(false)}
-          onComplete={() => {
-            setQuizOpen(false);
-            onNext?.();
-          }}
-        />
       )}
     </div>
   );

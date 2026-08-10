@@ -242,6 +242,14 @@ setLearningSession({ skill: entry.skill, topic, focusBand: entry.focusBand || "a
           setWorkspaceContext(context);
           setActiveKey("course-workspace");
         }}
+        onRoleQuit={() => {
+          // Backend already wiped the saved assessment + roadmap
+          // (RoadmapScreen -> quitRole()) — reset in-memory career path
+          // state too, so RoleSelectionScreen doesn't show the just-quit
+          // role as still "Selected", then send them to Role Selection.
+          careerPath.selectRole(null);
+          setActiveKey("role");
+        }}
       />
     );
   } else if (activeKey === "course-workspace" && workspaceContext) {

@@ -468,9 +468,15 @@ export default function AIStudyAssistantScreen({ uid }) {
           </div>
         </div>
 
-        <div className={`grid grid-cols-1 gap-4 ${historyCollapsed ? "lg:grid-cols-[56px_220px_1fr_280px]" : "lg:grid-cols-[190px_220px_1fr_280px]"}`}>
+        <div
+          className={`grid grid-cols-1 rounded-2xl overflow-hidden ${historyCollapsed ? "lg:grid-cols-[56px_220px_1fr_280px]" : "lg:grid-cols-[190px_220px_1fr_280px]"}`}
+          style={{ ...GLASS_CARD }}
+        >
           {/* ---------------- HISTORY (permanent, collapsible sidebar) ---------------- */}
-          <div className="rounded-2xl p-3 flex flex-col" style={{ ...GLASS_CARD, height: 600 }}>
+          <div
+            className="p-3 flex flex-col border-b lg:border-b-0 lg:border-r"
+            style={{ height: 600, borderColor: COLORS.border }}
+          >
             <div className={`flex items-center gap-1.5 mb-3 ${historyCollapsed ? "flex-col" : ""}`}>
               <button
                 type="button"
@@ -547,7 +553,10 @@ export default function AIStudyAssistantScreen({ uid }) {
           </div>
 
           {/* ---------------- SOURCES ---------------- */}
-          <div className="rounded-2xl p-4 flex flex-col" style={{ ...GLASS_CARD, height: 600 }}>
+          <div
+            className="p-4 flex flex-col border-b lg:border-b-0 lg:border-r"
+            style={{ height: 600, borderColor: COLORS.border }}
+          >
             <div className="flex items-center justify-between mb-3">
               <p className="text-xs font-semibold" style={{ color: COLORS.textDark }}>
                 Sources
@@ -603,7 +612,10 @@ export default function AIStudyAssistantScreen({ uid }) {
           </div>
 
           {/* ---------------- CHAT ---------------- */}
-          <div className="rounded-2xl p-4 flex flex-col" style={{ ...GLASS_CARD, height: 600 }}>
+          <div
+            className="p-4 flex flex-col border-b lg:border-b-0 lg:border-r"
+            style={{ height: 600, borderColor: COLORS.border }}
+          >
             <p className="text-xs font-semibold mb-3" style={{ color: COLORS.textDark }}>
               {activeSessionId ? sessions.find((s) => s.id === activeSessionId)?.title || "Chat" : "New Chat"}
             </p>
@@ -696,7 +708,7 @@ export default function AIStudyAssistantScreen({ uid }) {
           </div>
 
           {/* ---------------- STUDIO ---------------- */}
-          <div className="rounded-2xl p-4 flex flex-col gap-3" style={{ ...GLASS_CARD, height: 600, overflowY: "auto" }}>
+          <div className="p-4 flex flex-col gap-3" style={{ height: 600, overflowY: "auto" }}>
             <p className="text-xs font-semibold" style={{ color: COLORS.textDark }}>
               Studio
             </p>

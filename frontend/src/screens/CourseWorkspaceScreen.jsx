@@ -29,7 +29,7 @@ import { buildFlatTopicList, findStartingIndex } from "../utils/buildCourseNavig
  * regardless of its Verified/Current/Locked status — that status only
  * changes the small subtitle text and whether a checkmark shows.
  */
-export default function CourseWorkspaceScreen({ roadmap, compressedSyllabus, initialEntry, onBack }) {
+export default function CourseWorkspaceScreen({ roadmap, compressedSyllabus, initialEntry, uid, onBack }) {
   const flatTopics = useMemo(() => buildFlatTopicList(roadmap, compressedSyllabus), [roadmap, compressedSyllabus]);
   const [activeIndex, setActiveIndex] = useState(() => findStartingIndex(flatTopics, initialEntry));
   const active = flatTopics[activeIndex] || null;
@@ -163,6 +163,7 @@ export default function CourseWorkspaceScreen({ roadmap, compressedSyllabus, ini
                 topic={active.topic}
                 focusBand={active.focusBand}
                 topicStatus={active.topicStatus}
+                uid={uid}
                 onNext={() => openTopic(activeIndex + 1)}
                 onPrevious={() => openTopic(activeIndex - 1)}
                 hasNext={activeIndex < flatTopics.length - 1}

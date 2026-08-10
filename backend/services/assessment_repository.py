@@ -70,6 +70,17 @@ def get_assessment_result(db, uid: str) -> dict | None:
     return snap.to_dict() if snap.exists else None
 
 
+def delete_assessment_result(db, uid: str) -> None:
+    """
+    Removes this user's saved assessment entirely — used by the
+    "Quit Role" flow (Learning Hub) so a student who deliberately
+    abandons their current role/course is treated as never having
+    taken the diagnostic, and Role Selection unlocks again on their
+    next visit. Safe to call even if no document exists.
+    """
+    _doc_ref(db, uid).delete()
+
+
 def list_all_assessment_results(db) -> list[dict]:
     """
     Every student's saved assessment result — used ONLY by the admin

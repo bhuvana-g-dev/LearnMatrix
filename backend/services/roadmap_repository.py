@@ -95,6 +95,15 @@ def get_roadmap(db, uid: str) -> dict | None:
     return snap.to_dict() if snap.exists else None
 
 
+def delete_roadmap(db, uid: str) -> None:
+    """
+    Removes this user's saved roadmap entirely — paired with
+    delete_assessment_result() by the "Quit Role" flow. Safe to call
+    even if no document exists.
+    """
+    _doc_ref(db, uid).delete()
+
+
 def list_all_roadmaps(db) -> list[dict]:
     """Every student's saved roadmap — used ONLY by the admin Student
     Records export (services/student_records_service.py), never by

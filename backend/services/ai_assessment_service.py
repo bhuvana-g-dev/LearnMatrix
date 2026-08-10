@@ -195,3 +195,18 @@ def load_saved_assessment_result(uid: str) -> dict | None:
 
     db = get_firestore_client()
     return get_assessment_result(db, uid)
+
+
+def quit_role(uid: str) -> None:
+    """
+    "Quit Role" (Learning Hub): wipes this student's saved assessment
+    AND saved roadmap so Role Selection unlocks again — deliberately
+    both, since a leftover roadmap with no matching assessment (or vice
+    versa) would leave the app in a half-quit, inconsistent state.
+    """
+    from services.assessment_repository import delete_assessment_result
+    from services.roadmap_repository import delete_roadmap
+
+    db = get_firestore_client()
+    delete_assessment_result(db, uid)
+    delete_roadmap(db, uid)

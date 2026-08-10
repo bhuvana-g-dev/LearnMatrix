@@ -295,7 +295,12 @@ setLearningSession({ skill: entry.skill, topic, focusBand: entry.focusBand || "a
   };
 
   return (
-    <DashboardLayout activeKey={activeKey} onNavigate={setActiveKey} onLogout={handleLogout}>
+    <DashboardLayout
+      activeKey={activeKey}
+      onNavigate={setActiveKey}
+      onLogout={handleLogout}
+      profileName={auth.user?.displayName}
+    >
       <AnimatePresence mode="wait">
         <motion.div
           key={activeKey}

@@ -179,3 +179,18 @@ export async function loadSavedRoadmap(uid) {
   }
   return data.data; // null if none saved yet
 }
+
+/**
+ * quitRole — "Quit Role" (Learning Hub). Deletes the saved assessment
+ * AND saved roadmap for this uid so Role Selection unlocks again. This
+ * is the ONLY way back to Role Selection once a role has been chosen —
+ * there's no other "change course" shortcut left in the app.
+ *
+ * @param {string} uid
+ */
+export async function quitRole(uid) {
+  const { data } = await apiClient.delete(ENDPOINTS.ASSESSMENT.QUIT_ROLE(uid));
+  if (!data.success) {
+    throw new Error(data.error || data.message || "Failed to quit role.");
+  }
+}

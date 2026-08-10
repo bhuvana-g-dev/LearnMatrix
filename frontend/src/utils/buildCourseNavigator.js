@@ -47,7 +47,10 @@ export function buildFlatTopicList(roadmap, compressedSyllabus) {
           ? syllabusTopics
           : [{ title: entry.skill, status: entry.status === "mastered" ? "Verified" : "Locked", order: 0 }];
 
-      const focusBand = entry.status === "upcoming" ? entry.focusBand : DEFAULT_FOCUS_BAND;
+     const focusBand =
+  entry.status === "upcoming" && entry.focusBand
+    ? entry.focusBand
+    : DEFAULT_FOCUS_BAND;
 
       for (const t of topics) {
         flat.push({

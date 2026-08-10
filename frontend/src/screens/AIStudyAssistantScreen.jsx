@@ -1110,12 +1110,57 @@ function MindMapView({ map }) {
     setCollapsed(new Set());
   }
 
+  const NODE_COLORS = {
+    root: { bg: COLORS.sky, text: COLORS.white },
+    branch: { bg: COLORS.textMid, text: COLORS.white },
+    leaf: { bg: COLORS.purple, text: COLORS.white },
+  };
+
+  function escapeXml(str) {
+    return String(str ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&apos;" }[c]));
+  }
+
+  // Builds a fully self-contained SVG (background + connector lines +
+  // node rectangles + text) — the on-screen version splits nodes into
+  // real HTML <div>s (for click-to-collapse), which a plain
+  // XMLSerializer of the <svg> alone would NOT capture, so the export
+  // has to redraw everything as SVG shapes from scratch.
   function handleDownload() {
-    const svgEl = svgRef.current;
-    if (!svgEl) return;
-    const serializer = new XMLSerializer();
-    const source = serializer.serializeToString(svgEl);
-    const blob = new Blob([`<?xml version="1.0" standalone="no"?>\r\n${source}`], { type: "image/svg+xml;charset=utf-8" });
+    const bg = "#151B2C";
+    const linkMarkup = links
+      .map((link) => {
+        const from = byId[link.from];
+        const to = byId[link.to];
+        if (!from || !to) return "";
+        const x1 = from.x + from.w;
+        const y1 = from.y;
+        const x2 = to.x;
+        const y2 = to.y;
+        const midX = (x1 + x2) / 2;
+        return `<path d="M ${x1} ${y1} C ${midX} ${y1}, ${midX} ${y2}, ${x2} ${y2}" fill="none" stroke="rgba(232,185,61,0.5)" stroke-width="1.5" />`;
+      })
+      .join("\n");
+
+    const nodeMarkup = nodes
+      .map((n) => {
+        const palette = n.depth === 0 ? NODE_COLORS.root : n.hasChildren ? NODE_COLORS.branch : NODE_COLORS.leaf;
+        const rx = n.x;
+        const ry = n.y - n.h / 2;
+        return `<g>
+          <rect x="${rx}" y="${ry}" width="${n.w}" height="${n.h}" rx="8" fill="${palette.bg}" />
+          <text x="${rx + n.w / 2}" y="${n.y}" text-anchor="middle" dominant-baseline="middle" font-size="11" font-weight="600" font-family="Arial, sans-serif" fill="${palette.text}">${escapeXml(n.label)}</text>
+        </g>`;
+      })
+      .join("\n");
+
+    const svgMarkup = `<?xml version="1.0" standalone="no"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
+  <rect x="0" y="0" width="${width}" height="${height}" fill="${bg}" />
+  ${linkMarkup}
+  ${nodeMarkup}
+</svg>`;
+
+    const blob = new Blob([svgMarkup], { type: "image/svg+xml;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -1123,12 +1168,6 @@ function MindMapView({ map }) {
     a.click();
     URL.revokeObjectURL(url);
   }
-
-  const NODE_COLORS = {
-    root: { bg: COLORS.sky, text: COLORS.white },
-    branch: { bg: COLORS.textMid, text: COLORS.white },
-    leaf: { bg: COLORS.purple, text: COLORS.white },
-  };
 
   return (
     <div>

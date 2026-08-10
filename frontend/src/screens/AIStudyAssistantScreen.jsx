@@ -766,7 +766,7 @@ export default function AIStudyAssistantScreen({ uid }) {
 
       <AnimatePresence>
         {studioModal && (
-          <StudioModal onClose={closeStudioModal}>
+          <StudioModal onClose={closeStudioModal} wide={studioModal === "mindmap" && !studioLoading && !studioError}>
             {studioModal === "custom-input" ? (
               <CustomInputBody
                 target={customTarget}
@@ -873,7 +873,7 @@ function ModeChip({ label, onClick, disabled }) {
   );
 }
 
-function StudioModal({ children, onClose }) {
+function StudioModal({ children, onClose, wide }) {
   return (
     <motion.div
       initial={{ opacity: 0 }}
@@ -888,11 +888,16 @@ function StudioModal({ children, onClose }) {
         animate={{ opacity: 1, scale: 1 }}
         exit={{ opacity: 0, scale: 0.96 }}
         onClick={(e) => e.stopPropagation()}
-        className="rounded-2xl p-6 w-full max-w-lg relative"
-        style={{ background: COLORS.white, maxHeight: "85vh", overflowY: "auto" }}
+        className={`rounded-2xl w-full relative ${wide ? "max-w-4xl p-4" : "max-w-lg p-6"}`}
+        style={{ background: COLORS.white, maxHeight: "85vh", overflowY: wide ? "hidden" : "auto" }}
       >
-        <button type="button" onClick={onClose} className="absolute top-4 right-4" style={{ color: COLORS.textLight, cursor: "pointer" }}>
-          <X size={18} />
+        <button
+          type="button"
+          onClick={onClose}
+          className="absolute top-4 right-4 z-10 flex items-center justify-center rounded-full"
+          style={{ width: 26, height: 26, color: COLORS.white, background: "rgba(13,27,61,0.6)", cursor: "pointer" }}
+        >
+          <X size={15} />
         </button>
         {children}
       </motion.div>
@@ -1014,79 +1019,229 @@ function FlashcardModalBody({ set, index, flipped, onFlip, onNext, onPrev }) {
   );
 }
 
+// ---------------- Mind Map: horizontal collapsible tree ----------------
+// Layout constants (px). Node x = depth * (NODE_W + LEVEL_GAP).
+const MM_NODE_W = 168;
+const MM_NODE_H = 34;
+const MM_ROW_GAP = 12;
+const MM_LEVEL_GAP = 56;
+const MM_ROOT_W = 148;
+const MM_ROOT_H = 44;
+const MM_PAD = 24;
+
+// Normalizes legacy flat {branches:[{label,detail}]} responses into the
+// nested {children:[{label,children:[]}]} shape the tree layout expects,
+// so older saved/cached results still render.
+function normalizeMindMapTree(map) {
+  if (Array.isArray(map?.children)) return map;
+  const branches = map?.branches || [];
+  return {
+    title: map?.title || "Mind Map",
+    children: branches.map((b) => ({
+      label: b.label,
+      children: b.detail ? [{ label: b.detail, children: [] }] : [],
+    })),
+  };
+}
+
+// Recursively assigns {x, y, depth} to every node (post-order, so a
+// parent's y is the vertical center of its (expanded) children), and
+// collects the flat node list + parent->child link list for rendering.
+function layoutMindMap(root, collapsed) {
+  const nodes = [];
+  const links = [];
+  let cursorY = MM_PAD;
+  let maxDepth = 0;
+
+  function visit(node, depth, id) {
+    maxDepth = Math.max(maxDepth, depth);
+    const kids = node.children || [];
+    const isOpen = kids.length > 0 && !collapsed.has(id);
+    const h = depth === 0 ? MM_ROOT_H : MM_NODE_H;
+    let y;
+
+    if (!isOpen) {
+      y = cursorY + h / 2;
+      cursorY += h + MM_ROW_GAP;
+    } else {
+      const childYs = kids.map((child, i) => visit(child, depth + 1, `${id}-${i}`));
+      y = (childYs[0] + childYs[childYs.length - 1]) / 2;
+    }
+
+    const x = MM_PAD + depth * (MM_NODE_W + MM_LEVEL_GAP);
+    nodes.push({ id, label: node.label, depth, x, y, w: depth === 0 ? MM_ROOT_W : MM_NODE_W, h, hasChildren: kids.length > 0, open: isOpen });
+    if (isOpen) {
+      kids.forEach((_, i) => {
+        links.push({ from: id, to: `${id}-${i}`, parentDepth: depth });
+      });
+    }
+    return y;
+  }
+
+  visit(root, 0, "r");
+  const height = Math.max(cursorY, MM_ROOT_H + MM_PAD * 2);
+  const width = MM_PAD * 2 + (maxDepth + 1) * MM_NODE_W + maxDepth * MM_LEVEL_GAP + (maxDepth > 0 ? 20 : 0);
+  return { nodes, links, width, height };
+}
+
 function MindMapView({ map }) {
-  const branches = map.branches || [];
-  const size = 320;
-  const radius = 122;
-  const center = size / 2;
+  const tree = normalizeMindMapTree(map);
+  const [collapsed, setCollapsed] = useState(() => new Set());
+  const [zoom, setZoom] = useState(1);
+  const svgRef = useRef(null);
+
+  const { nodes, links, width, height } = layoutMindMap({ label: tree.title, children: tree.children }, collapsed);
+
+  const byId = Object.fromEntries(nodes.map((n) => [n.id, n]));
+
+  function toggle(id) {
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function collapseAll() {
+    setCollapsed(new Set(nodes.filter((n) => n.hasChildren).map((n) => n.id)));
+  }
+  function expandAll() {
+    setCollapsed(new Set());
+  }
+
+  function handleDownload() {
+    const svgEl = svgRef.current;
+    if (!svgEl) return;
+    const serializer = new XMLSerializer();
+    const source = serializer.serializeToString(svgEl);
+    const blob = new Blob([`<?xml version="1.0" standalone="no"?>\r\n${source}`], { type: "image/svg+xml;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${(tree.title || "mindmap").replace(/\s+/g, "_")}.svg`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  const NODE_COLORS = {
+    root: { bg: COLORS.sky, text: COLORS.white },
+    branch: { bg: COLORS.textMid, text: COLORS.white },
+    leaf: { bg: COLORS.purple, text: COLORS.white },
+  };
 
   return (
     <div>
       <p className="text-sm font-semibold mb-1 pr-6" style={{ color: COLORS.textDark }}>
         Mind Map
       </p>
-      <p className="text-xs mb-4" style={{ color: COLORS.textLight }}>
-        {map.title}
+      <p className="text-xs mb-3" style={{ color: COLORS.textLight }}>
+        {tree.title} · tap a node's circle to expand or collapse
       </p>
 
-      <div className="relative mx-auto" style={{ width: size, height: size }}>
-        <svg width={size} height={size} className="absolute inset-0">
-          {branches.map((_, i) => {
-            const angle = (2 * Math.PI * i) / Math.max(branches.length, 1) - Math.PI / 2;
-            const x = center + radius * Math.cos(angle);
-            const y = center + radius * Math.sin(angle);
-            return <line key={i} x1={center} y1={center} x2={x} y2={y} stroke={COLORS.border} strokeWidth={2} />;
-          })}
-        </svg>
-
-        <div
-          className="absolute flex items-center justify-center text-center rounded-full px-3"
-          style={{ width: 108, height: 108, left: center - 54, top: center - 54, background: GRADIENTS.purpleSky, color: COLORS.white, boxShadow: "0 6px 18px rgba(13,27,61,0.25)" }}
-        >
-          <p className="text-[11px] font-semibold leading-tight">{map.title}</p>
+      <div
+        className="relative rounded-xl overflow-auto"
+        style={{ height: 460, background: "#151B2C" }}
+      >
+        {/* zoom / view controls */}
+        <div className="absolute top-2 right-2 z-10 flex flex-col gap-1.5">
+          <button type="button" onClick={expandAll} title="Expand all" className="flex items-center justify-center rounded-full" style={mmControlBtnStyle}>
+            <ChevronsRight size={13} style={{ transform: "rotate(90deg)" }} />
+          </button>
+          <button type="button" onClick={collapseAll} title="Collapse all" className="flex items-center justify-center rounded-full" style={mmControlBtnStyle}>
+            <ChevronsLeft size={13} style={{ transform: "rotate(90deg)" }} />
+          </button>
+          <button type="button" onClick={() => setZoom((z) => Math.min(z + 0.15, 2))} title="Zoom in" className="flex items-center justify-center rounded-full" style={mmControlBtnStyle}>
+            <Plus size={13} />
+          </button>
+          <button type="button" onClick={() => setZoom((z) => Math.max(z - 0.15, 0.4))} title="Zoom out" className="flex items-center justify-center rounded-full" style={mmControlBtnStyle}>
+            <span style={{ fontSize: 15, lineHeight: 1, fontWeight: 700 }}>–</span>
+          </button>
+          <button type="button" onClick={handleDownload} title="Download as SVG" className="flex items-center justify-center rounded-full" style={mmControlBtnStyle}>
+            <FileText size={12} />
+          </button>
         </div>
 
-        {branches.map((branch, i) => {
-          const angle = (2 * Math.PI * i) / Math.max(branches.length, 1) - Math.PI / 2;
-          const x = center + radius * Math.cos(angle);
-          const y = center + radius * Math.sin(angle);
-          return (
-            <div
-              key={i}
-              className="absolute flex items-center justify-center text-center rounded-xl px-2"
-              style={{
-                width: 92,
-                minHeight: 56,
-                left: x - 46,
-                top: y - 28,
-                background: COLORS.white,
-                border: `1px solid ${COLORS.border}`,
-                boxShadow: "0 3px 10px rgba(13,27,61,0.08)",
-              }}
-            >
-              <p className="text-[10px] font-semibold leading-tight" style={{ color: COLORS.textDark }}>
-                {branch.label}
-              </p>
-            </div>
-          );
-        })}
+        <div style={{ width: width * zoom, height: height * zoom, position: "relative" }}>
+          <div style={{ width, height, transform: `scale(${zoom})`, transformOrigin: "0 0", position: "absolute", top: 0, left: 0 }}>
+            <svg ref={svgRef} width={width} height={height} className="absolute inset-0">
+              {links.map((link, i) => {
+                const from = byId[link.from];
+                const to = byId[link.to];
+                if (!from || !to) return null;
+                const x1 = from.x + from.w;
+                const y1 = from.y;
+                const x2 = to.x;
+                const y2 = to.y;
+                const midX = (x1 + x2) / 2;
+                return (
+                  <path
+                    key={i}
+                    d={`M ${x1} ${y1} C ${midX} ${y1}, ${midX} ${y2}, ${x2} ${y2}`}
+                    fill="none"
+                    stroke="rgba(232,185,61,0.35)"
+                    strokeWidth={1.5}
+                  />
+                );
+              })}
+            </svg>
+
+            {nodes.map((n) => {
+              const palette = n.depth === 0 ? NODE_COLORS.root : n.hasChildren ? NODE_COLORS.branch : NODE_COLORS.leaf;
+              return (
+                <div
+                  key={n.id}
+                  className="absolute flex items-center rounded-lg px-2.5 text-center"
+                  style={{
+                    left: n.x,
+                    top: n.y - n.h / 2,
+                    width: n.w,
+                    height: n.h,
+                    background: palette.bg,
+                    boxShadow: "0 3px 10px rgba(0,0,0,0.35)",
+                  }}
+                >
+                  <p className="text-[11px] font-semibold leading-tight w-full truncate" style={{ color: palette.text }} title={n.label}>
+                    {n.label}
+                  </p>
+                  {n.hasChildren && (
+                    <button
+                      type="button"
+                      onClick={() => toggle(n.id)}
+                      className="absolute flex items-center justify-center rounded-full"
+                      style={{
+                        width: 16,
+                        height: 16,
+                        right: -8,
+                        top: "50%",
+                        transform: "translateY(-50%)",
+                        background: "#151B2C",
+                        border: `1.5px solid ${palette.bg}`,
+                        color: COLORS.white,
+                        cursor: "pointer",
+                      }}
+                    >
+                      {n.open ? <ChevronLeft size={9} /> : <ChevronRight size={9} />}
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
       </div>
-
-      {branches.length > 0 && (
-        <div className="flex flex-col gap-2 mt-6">
-          {branches.map((b, i) => (
-            <div key={i} className="text-xs px-3 py-2 rounded-lg" style={{ background: COLORS.lavender }}>
-              <span className="font-semibold" style={{ color: COLORS.sky }}>
-                {b.label}
-              </span>
-              <span style={{ color: COLORS.textDark }}> — {b.detail}</span>
-            </div>
-          ))}
-        </div>
-      )}
     </div>
   );
 }
+
+const mmControlBtnStyle = {
+  width: 26,
+  height: 26,
+  background: "rgba(255,255,255,0.1)",
+  color: COLORS.white,
+  border: "1px solid rgba(255,255,255,0.15)",
+  cursor: "pointer",
+};
 
 function AudioOverviewBody({ notes, isPlaying, isPaused, onPlay, onPause, onStop }) {
   return (

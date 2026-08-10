@@ -32,6 +32,19 @@ function FadeLabel({ show, children }) {
     </AnimatePresence>
   );
 }
+// Small static label shown under the icon in collapsed (narrow-rail)
+// mode — unlike FadeLabel, it doesn't animate width/opacity since the
+// whole row is already vertical and fixed-width.
+function MiniLabel({ children }) {
+  return (
+    <span
+      className="text-center leading-tight"
+      style={{ fontSize: 10, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "100%" }}
+    >
+      {children}
+    </span>
+  );
+}
 /**
  * SidebarContent — reused by both the persistent (tablet/desktop) sidebar
  * and the mobile off-canvas drawer.
@@ -143,19 +156,22 @@ export default function SidebarContent({
               >
                 <button
                   onClick={() => (isLocked ? onLoginRequired?.() : onNavigate(section.key))}
-                  title={collapsed ? section.title : isLocked ? "Login to unlock" : undefined}
-                  className="flex-1 flex items-center gap-2.5 px-3 py-2.5 text-left"
+                  title={isLocked ? "Login to unlock" : undefined}
+                  className={`flex-1 flex ${
+                    collapsed
+                      ? "flex-col items-center gap-1 py-2.5 px-1"
+                      : "items-center gap-2.5 px-3 py-2.5 text-left"
+                  }`}
                   style={{
                     background: "transparent",
                     border: "none",
                     cursor: "pointer",
                     color: "inherit",
                     font: "inherit",
-                    justifyContent: collapsed ? "center" : "flex-start",
                   }}
                 >
                   <SectionIcon size={16} color={isActive ? "#fff" : isLocked ? COLORS.textLight : COLORS.purple} />
-                  <FadeLabel show={!collapsed}>{section.title}</FadeLabel>
+                  {collapsed ? <MiniLabel>{section.title}</MiniLabel> : <FadeLabel show>{section.title}</FadeLabel>}
                 </button>
 
                 {!collapsed && isLocked && (
@@ -213,19 +229,22 @@ export default function SidebarContent({
               >
                 <button
                   onClick={handleHeaderClick}
-                  title={collapsed ? displayTitle : isLocked ? "Login to unlock" : undefined}
-                  className="flex-1 flex items-center gap-2.5 px-3 py-2.5 text-left"
+                  title={isLocked ? "Login to unlock" : undefined}
+                  className={`flex-1 flex ${
+                    collapsed
+                      ? "flex-col items-center gap-1 py-2.5 px-1"
+                      : "items-center gap-2.5 px-3 py-2.5 text-left"
+                  }`}
                   style={{
                     background: "transparent",
                     border: "none",
                     cursor: "pointer",
                     color: "inherit",
                     font: "inherit",
-                    justifyContent: collapsed ? "center" : "flex-start",
                   }}
                 >
                   <SectionIcon size={16} color={isHeaderActive ? "#fff" : isLocked ? COLORS.textLight : COLORS.purple} />
-                  <FadeLabel show={!collapsed}>{displayTitle}</FadeLabel>
+                  {collapsed ? <MiniLabel>{displayTitle}</MiniLabel> : <FadeLabel show>{displayTitle}</FadeLabel>}
                 </button>
 
                 {!collapsed && isLocked && (
@@ -300,33 +319,35 @@ export default function SidebarContent({
           <button
             onClick={onLoginRequired}
             title={collapsed ? "Login" : undefined}
-            className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-semibold mt-2"
+            className={`w-full flex rounded-xl text-sm font-semibold mt-2 ${
+              collapsed ? "flex-col items-center gap-1 py-2.5 px-1" : "items-center gap-2.5 px-3 py-2.5"
+            }`}
             style={{
               color: "#fff",
               background: GRADIENTS.purpleSky,
               border: "none",
               cursor: "pointer",
-              justifyContent: collapsed ? "center" : "flex-start",
             }}
           >
             <LogIn size={16} />
-            <FadeLabel show={!collapsed}>Login</FadeLabel>
+            {collapsed ? <MiniLabel>Login</MiniLabel> : <FadeLabel show>Login</FadeLabel>}
           </button>
         ) : (
           <button
             onClick={onLogout}
             title={collapsed ? "Logout" : undefined}
-            className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-semibold mt-2"
+            className={`w-full flex rounded-xl text-sm font-semibold mt-2 ${
+              collapsed ? "flex-col items-center gap-1 py-2.5 px-1" : "items-center gap-2.5 px-3 py-2.5"
+            }`}
             style={{
               color: "#E4568A",
               background: "rgba(240,171,252,0.15)",
               border: "none",
               cursor: "pointer",
-              justifyContent: collapsed ? "center" : "flex-start",
             }}
           >
             <LogOut size={16} />
-            <FadeLabel show={!collapsed}>Logout</FadeLabel>
+            {collapsed ? <MiniLabel>Logout</MiniLabel> : <FadeLabel show>Logout</FadeLabel>}
           </button>
         )}
       </div>

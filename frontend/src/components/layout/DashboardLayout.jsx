@@ -6,14 +6,13 @@ import SidebarContent from "./SidebarContent";
 import Logo from "../common/Logo";
 import { COLORS, GLASS_CARD } from "../../constants/theme";
 const EXPANDED_WIDTH = 280;
-const COLLAPSED_WIDTH = 70;
+const COLLAPSED_WIDTH = 84;
 
-// Tablet (768–1023px) starts collapsed by default; desktop (≥1024px)
-// starts expanded. Read once at mount — the user's manual toggle takes
-// over from there, so resizing the window later doesn't fight them.
+// Sidebar now starts in the narrow, icon+label rail by default on every
+// screen size — full 280px width is opt-in (the collapse/expand chevron),
+// not the default, so it doesn't eat horizontal space out of the box.
 function getInitialCollapsed() {
-  if (typeof window === "undefined") return false;
-  return window.innerWidth >= 768 && window.innerWidth < 1024;
+  return true;
 }
 
 export default function DashboardLayout({ activeKey, onNavigate, onLogout, children, locked = false, onLoginRequired, profileName }) {
@@ -113,7 +112,7 @@ export default function DashboardLayout({ activeKey, onNavigate, onLogout, child
             smoothly (no gap, no horizontal scroll) as it collapses. */}
         <div
           className={`min-w-0 transition-[margin-left] duration-300 ease-in-out ${
-            collapsed ? "md:ml-[70px]" : "md:ml-[280px]"
+            collapsed ? "md:ml-[84px]" : "md:ml-[280px]"
           }`}
         >
           {/* Sticky mobile top bar — stays pinned at the top of the

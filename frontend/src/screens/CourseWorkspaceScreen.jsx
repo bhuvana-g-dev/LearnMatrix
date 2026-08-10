@@ -1,10 +1,11 @@
 import { useState, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  ChevronDown, CheckCircle2, PlayCircle, ArrowLeft, Circle,
+  ChevronDown, CheckCircle2, PlayCircle, ArrowLeft, Circle, BookOpen, ClipboardCheck,
 } from "lucide-react";
 import BackButton from "../components/common/BackButton";
 import TopicContentPane from "../components/learning/TopicContentPane";
+import TopicQuizModal from "../components/learning/TopicQuizModal";
 import { COLORS, GRADIENTS, GLASS_CARD } from "../constants/theme";
 import { buildFlatTopicList, findStartingIndex } from "../utils/buildCourseNavigator";
 
@@ -14,20 +15,26 @@ import { buildFlatTopicList, findStartingIndex } from "../utils/buildCourseNavig
  *     "Course Material" panel) — clicking a module switches the main
  *     pane's list view to that module's contents.
  *   - Main pane, "list" view: collapsible sections per SKILL within the
- *     active module (Coursera's "Welcome to the Course" style
- *     sections), each listing its TOPICS as rows with an icon, title,
- *     and status subtitle. The current topic gets a highlighted row +
- *     "Resume" button, matching the reference screenshot.
- *   - Main pane, "content" view: TopicContentPane for whichever topic
- *     was clicked, with a small back link to return to the list.
+ *     active module, each listing its TOPICS. Each topic is a small
+ *     header (icon + name + status, not itself clickable) followed by
+ *     TWO separate clickable items underneath — "Learning Resources"
+ *     and "Test" — matching Coursera's per-item list where each video/
+ *     reading/quiz under a module gets its own row. Clicking Learning
+ *     Resources opens the content view below; clicking Test opens
+ *     TopicQuizModal directly, independent of the content view.
+ *   - Main pane, "content" view: TopicContentPane for whichever topic's
+ *     Learning Resources was clicked, with a small back link to return
+ *     to the list. Next/Previous here just move between topics — the
+ *     quiz is reached via the list's Test item, not gated on Next.
  *
  * Same underlying data/logic as before (buildFlatTopicList +
  * TopicContentPane, both untouched) — this is a presentation-layer
  * rebuild only, no backend changes.
  *
- * Still never a locking mechanism: every topic row is clickable
- * regardless of its Verified/Current/Locked status — that status only
- * changes the small subtitle text and whether a checkmark shows.
+ * Still never a locking mechanism: every topic's two items are
+ * clickable regardless of its Verified/Current/Locked status — that
+ * status only changes the small subtitle text and whether a checkmark
+ * shows.
  */
 export default function CourseWorkspaceScreen({ roadmap, compressedSyllabus, initialEntry, uid, onBack }) {
   const flatTopics = useMemo(() => buildFlatTopicList(roadmap, compressedSyllabus), [roadmap, compressedSyllabus]);
@@ -55,6 +62,7 @@ export default function CourseWorkspaceScreen({ roadmap, compressedSyllabus, ini
   const [activeModuleName, setActiveModuleName] = useState(() => active?.module ?? modules[0]?.name ?? null);
   const [viewMode, setViewMode] = useState("content"); // "list" | "content"
   const [expandedSkills, setExpandedSkills] = useState(() => new Set(active ? [active.skill] : []));
+  const [quizTarget, setQuizTarget] = useState(null); // { skill, topic } | null — Coursera-style "Test" item, opened from the list
 
   if (!roadmap || flatTopics.length === 0) {
     return (
@@ -163,7 +171,6 @@ export default function CourseWorkspaceScreen({ roadmap, compressedSyllabus, ini
                 topic={active.topic}
                 focusBand={active.focusBand}
                 topicStatus={active.topicStatus}
-                uid={uid}
                 onNext={() => openTopic(activeIndex + 1)}
                 onPrevious={() => openTopic(activeIndex - 1)}
                 hasNext={activeIndex < flatTopics.length - 1}
@@ -207,38 +214,70 @@ export default function CourseWorkspaceScreen({ roadmap, compressedSyllabus, ini
                           >
                             {sk.topics.map((t) => {
                               const flatIdx = flatTopics.indexOf(t);
-                              const isCurrent = flatIdx === activeIndex;
+                              const isCurrent = flatIdx === activeIndex && viewMode === "content";
                               return (
-                                <div
-                                  key={t.topic}
-                                  onClick={() => openTopic(flatIdx)}
-                                  className="flex items-center gap-3 px-5 py-3 cursor-pointer"
-                                  style={{ background: isCurrent ? "rgba(124,111,224,0.14)" : "transparent" }}
-                                >
-                                  {t.topicStatus === "Verified" ? (
-                                    <CheckCircle2 size={18} style={{ color: "#22C55E", flexShrink: 0 }} />
-                                  ) : (
-                                    <PlayCircle size={18} style={{ color: COLORS.textLight, flexShrink: 0 }} />
-                                  )}
-                                  <div className="flex-1 min-w-0">
-                                    <p
-                                      className="text-sm truncate"
-                                      style={{ color: isCurrent ? COLORS.purple : COLORS.textDark, fontWeight: isCurrent ? 700 : 500 }}
-                                    >
-                                      {t.topic}
-                                    </p>
-                                    <p className="text-[11px]" style={{ color: COLORS.textLight }}>
-                                      {STATUS_SUBTITLE[t.topicStatus] || "Topic"}
-                                    </p>
+                                <div key={t.topic} style={{ background: isCurrent ? "rgba(124,111,224,0.08)" : "transparent" }}>
+                                  {/* Topic header — label only, not itself clickable; the two
+                                      items below it (Learning Resources / Test) are the actual
+                                      navigation targets, matching Coursera's per-item list. */}
+                                  <div className="flex items-center gap-3 px-5 pt-3 pb-1">
+                                    {t.topicStatus === "Verified" ? (
+                                      <CheckCircle2 size={18} style={{ color: "#22C55E", flexShrink: 0 }} />
+                                    ) : (
+                                      <PlayCircle size={18} style={{ color: COLORS.textLight, flexShrink: 0 }} />
+                                    )}
+                                    <div className="flex-1 min-w-0">
+                                      <p
+                                        className="text-sm truncate"
+                                        style={{ color: isCurrent ? COLORS.purple : COLORS.textDark, fontWeight: isCurrent ? 700 : 600 }}
+                                      >
+                                        {t.topic}
+                                      </p>
+                                      <p className="text-[11px]" style={{ color: COLORS.textLight }}>
+                                        {STATUS_SUBTITLE[t.topicStatus] || "Topic"}
+                                      </p>
+                                    </div>
+                                    {isCurrent && (
+                                      <span
+                                        className="text-xs font-bold px-3.5 py-1.5 rounded-full flex-shrink-0"
+                                        style={{ background: GRADIENTS.purplePink, color: "#fff" }}
+                                      >
+                                        Resume
+                                      </span>
+                                    )}
                                   </div>
-                                  {isCurrent && (
-                                    <span
-                                      className="text-xs font-bold px-3.5 py-1.5 rounded-full flex-shrink-0"
-                                      style={{ background: GRADIENTS.purplePink, color: "#fff" }}
-                                    >
-                                      Resume
-                                    </span>
-                                  )}
+
+                                  {/* Item 1 — Learning Resources */}
+                                  <div
+                                    onClick={() => openTopic(flatIdx)}
+                                    className="flex items-center gap-3 pl-11 pr-5 py-2.5 cursor-pointer"
+                                  >
+                                    <BookOpen size={15} style={{ color: COLORS.purple, flexShrink: 0 }} />
+                                    <div className="flex-1 min-w-0">
+                                      <p className="text-sm font-semibold" style={{ color: COLORS.textDark }}>
+                                        Learning Resources
+                                      </p>
+                                      <p className="text-[11px]" style={{ color: COLORS.textLight }}>
+                                        Notes, videos &amp; articles for this topic
+                                      </p>
+                                    </div>
+                                  </div>
+
+                                  {/* Item 2 — Test */}
+                                  <div
+                                    onClick={() => setQuizTarget({ skill: t.skill, topic: t.topic })}
+                                    className="flex items-center gap-3 pl-11 pr-5 py-2.5 pb-3.5 cursor-pointer"
+                                  >
+                                    <ClipboardCheck size={15} style={{ color: COLORS.purple, flexShrink: 0 }} />
+                                    <div className="flex-1 min-w-0">
+                                      <p className="text-sm font-semibold" style={{ color: COLORS.textDark }}>
+                                        Test
+                                      </p>
+                                      <p className="text-[11px]" style={{ color: COLORS.textLight }}>
+                                        10-question quiz · sets your next revision date
+                                      </p>
+                                    </div>
+                                  </div>
                                 </div>
                               );
                             })}
@@ -253,6 +292,16 @@ export default function CourseWorkspaceScreen({ roadmap, compressedSyllabus, ini
           )}
         </div>
       </div>
+
+      {quizTarget && (
+        <TopicQuizModal
+          skill={quizTarget.skill}
+          topic={quizTarget.topic}
+          uid={uid}
+          onClose={() => setQuizTarget(null)}
+          onComplete={() => setQuizTarget(null)}
+        />
+      )}
     </div>
   );
 }

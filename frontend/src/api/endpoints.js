@@ -75,6 +75,15 @@ export const ENDPOINTS = {
     // Placeholder for the future Scikit-Learn recommendation endpoint.
     ROADMAP: "/recommendation/roadmap",
   },
+  TOPIC_QUIZ: {
+    // Post-topic quiz + adaptive revision (backend/routes/topic_quiz_routes.py).
+    // Fired when a learner hits "Next" on a topic in CourseWorkspaceScreen.
+    GET_QUIZ: (skill, topic) =>
+      `/topic-quiz/${encodeURIComponent(skill)}/${encodeURIComponent(topic)}`, // GET
+    SUBMIT: (skill, topic) =>
+      `/topic-quiz/${encodeURIComponent(skill)}/${encodeURIComponent(topic)}/submit`, // POST {uid, questions, answers, timeTakenSeconds}
+    DUE_REVISIONS: (uid) => `/revisions/${uid}`, // GET
+  },
   // ---- Admin Panel (new) ----
   // Backend: routes/admin_question_routes.py, registered under /api like
   // every other blueprint in app.py.

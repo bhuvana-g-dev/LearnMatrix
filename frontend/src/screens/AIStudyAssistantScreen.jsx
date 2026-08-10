@@ -1084,11 +1084,31 @@ function layoutMindMap(root, collapsed) {
   return { nodes, links, width, height };
 }
 
+// Walks the raw tree (ignoring any collapse state) assigning the same
+// "r-0-1..." id scheme used by layoutMindMap, and returns the set of
+// branch ids that should start collapsed — every node below the root
+// that has children, so the map opens with just the root + its direct
+// branches visible, and each deeper level only appears when the user
+// clicks that node's toggle.
+function collectDefaultCollapsed(node, depth, id, set) {
+  const kids = node.children || [];
+  if (depth >= 1 && kids.length > 0) set.add(id);
+  kids.forEach((child, i) => collectDefaultCollapsed(child, depth + 1, `${id}-${i}`, set));
+  return set;
+}
+
 function MindMapView({ map }) {
   const tree = normalizeMindMapTree(map);
-  const [collapsed, setCollapsed] = useState(() => new Set());
+  const [collapsed, setCollapsed] = useState(() => collectDefaultCollapsed(tree, 0, "r", new Set()));
   const [zoom, setZoom] = useState(1);
   const svgRef = useRef(null);
+
+  // A newly generated mind map re-uses this same modal/component — reset
+  // to the collapsed starting view whenever a different map arrives.
+  useEffect(() => {
+    setCollapsed(collectDefaultCollapsed(tree, 0, "r", new Set()));
+    setZoom(1);
+  }, [map]);
 
   const { nodes, links, width, height } = layoutMindMap({ label: tree.title, children: tree.children }, collapsed);
 
@@ -1175,7 +1195,7 @@ function MindMapView({ map }) {
         Mind Map
       </p>
       <p className="text-xs mb-3" style={{ color: COLORS.textLight }}>
-        {tree.title} · tap a node's circle to expand or collapse
+        {tree.title} · click a node's circle to expand that branch
       </p>
 
       <div

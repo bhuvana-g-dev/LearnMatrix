@@ -53,6 +53,7 @@ export default function SidebarContent({
   onClose,
   locked = false,
   onLoginRequired,
+  profileName,
 }) {
   const [openKey, setOpenKey] = useState(() => findSectionKeyForActiveKey(activeKey));
 
@@ -72,8 +73,12 @@ export default function SidebarContent({
 
   return (
     <div className="flex flex-col h-full">
-      <div className="px-4 pt-6 pb-4 flex items-center justify-between gap-2">
-        {!collapsed && <Logo />}
+      <div
+        className={`px-4 pt-6 pb-4 flex gap-2 ${
+          collapsed ? "flex-col items-center" : "items-center justify-between"
+        }`}
+      >
+        <Logo compact={collapsed} />
         {onToggleCollapse && (
           <button
             onClick={onToggleCollapse}
@@ -86,8 +91,6 @@ export default function SidebarContent({
               background: "rgba(255,255,255,0.5)",
               border: `1px solid ${COLORS.border}`,
               cursor: "pointer",
-              marginLeft: collapsed ? "auto" : 0,
-              marginRight: collapsed ? "auto" : 0,
             }}
           >
             {collapsed ? (
@@ -169,6 +172,11 @@ export default function SidebarContent({
           // separate from the chevron which just opens/closes the dropdown.
           const isHeaderActive = section.selfNavigable && activeKey === section.key;
 
+          // "My Profile" shows the person's actual name once we know it,
+          // instead of the generic section title — everything else
+          // (locked state, dropdown, tooltip) behaves exactly the same.
+          const displayTitle = section.key === "profile" && profileName ? profileName : section.title;
+
           // Pre-login landing page: everything except "Home" is locked —
           // clicking prompts login instead of navigating/expanding.
           const isLocked = locked && section.key !== "home";
@@ -205,7 +213,7 @@ export default function SidebarContent({
               >
                 <button
                   onClick={handleHeaderClick}
-                  title={collapsed ? section.title : isLocked ? "Login to unlock" : undefined}
+                  title={collapsed ? displayTitle : isLocked ? "Login to unlock" : undefined}
                   className="flex-1 flex items-center gap-2.5 px-3 py-2.5 text-left"
                   style={{
                     background: "transparent",
@@ -217,7 +225,7 @@ export default function SidebarContent({
                   }}
                 >
                   <SectionIcon size={16} color={isHeaderActive ? "#fff" : isLocked ? COLORS.textLight : COLORS.purple} />
-                  <FadeLabel show={!collapsed}>{section.title}</FadeLabel>
+                  <FadeLabel show={!collapsed}>{displayTitle}</FadeLabel>
                 </button>
 
                 {!collapsed && isLocked && (

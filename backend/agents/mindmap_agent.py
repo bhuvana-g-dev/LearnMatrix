@@ -2,16 +2,13 @@
 agents/mindmap_agent.py
 
 Turns any block of text — combined source content, a chat transcript,
-or a student-typed topic — into a proper multi-branch mind map: one
-short title plus 4-7 branches, each with a short label and a one-line
-detail. Same BaseAgent contract + generate_json() + retry pattern as
-every other agent.
+or a student-typed topic — into a proper NESTED mind map: one root
+title plus a tree of child nodes, up to 3 levels deep (main branches ->
+sub-branches -> leaf details), matching a real mind-mapping tool's
+output instead of a flat one-ring diagram.
 
-This replaces the earlier no-LLM approach (one node per source/message,
-or a single "Your Input" node for typed text) — that produced a flat,
-low-value diagram for anything that wasn't already pre-chunked into
-multiple sources. Routing everything through one agent gives a
-consistently useful breakdown regardless of where the text came from.
+Same BaseAgent contract + generate_json() + retry pattern as every
+other agent.
 """
 
 import time
@@ -20,9 +17,10 @@ from agents.base_agent import BaseAgent, AgentError
 from config.settings import settings
 from utils.gemini_client import generate_json, GeminiClientError
 
-REQUIRED_FIELDS = ["title", "branches"]
+REQUIRED_FIELDS = ["title", "children"]
 MIN_BRANCHES = 3
 MAX_BRANCHES = 8
+MAX_DEPTH = 3  # root (0) -> branch (1) -> sub-branch (2) -> leaf (3)
 
 
 class MindMapAgentError(AgentError):
@@ -56,34 +54,50 @@ class MindMapAgent(BaseAgent):
 
     def _build_prompt(self, text: str, label: str) -> str:
         # Truncated defensively — a long source dump or chat transcript
-        # doesn't need to be sent in full to extract 4-7 main ideas.
+        # doesn't need to be sent in full to extract the structure.
         trimmed = text[:12000]
 
         return f"""You are building a mind map from {label} for a
-computer science student.
+computer science student, in the style of a proper mind-mapping tool
+(like XMind or MindMeister) — a TREE, not a flat list.
 
 --- MATERIAL START ---
 {trimmed}
 --- MATERIAL END ---
 
-Identify the CORE topic and break it into its main branches — the key
-concepts, steps, or sub-topics a student would need to understand this
-material. Each branch needs a short label (2-5 words, like a diagram
-node) and a one-sentence plain-language detail.
+Identify the CORE topic (this becomes the root). Break it into 3-6 main
+branches (key concepts/categories). For EACH main branch, add 2-5
+sub-branches that break that concept down further. Where it genuinely
+helps (e.g. a sub-branch that is itself a short list — steps, examples,
+properties), give that sub-branch 2-4 leaf children too — but don't
+force a third level everywhere; only add it where the material actually
+has that much depth.
+
+Every node (branch, sub-branch, leaf) needs a short label (2-6 words,
+like a diagram node — no full sentences). Do not restate the parent's
+label or the root title in a child.
 
 Respond with ONLY a JSON object, no prose, no markdown fences, in this
-exact shape:
+exact recursive shape:
 {{
   "title": "<short overall topic title, 2-6 words>",
-  "branches": [
-    {{"label": "<short branch label>", "detail": "<one-sentence explanation>"}},
-    ...
+  "children": [
+    {{
+      "label": "<main branch label>",
+      "children": [
+        {{
+          "label": "<sub-branch label>",
+          "children": [
+            {{"label": "<leaf label>", "children": []}}
+          ]
+        }}
+      ]
+    }}
   ]
 }}
 
-Include between 4 and 7 branches — enough to be useful, not so many the
-diagram gets cluttered. Do not include a branch that just restates the
-title."""
+"children" is always an array (use [] for a leaf with no further
+breakdown). Keep the tree to at most 3 levels deep below the root."""
 
     def _validate(self, raw: dict) -> None:
         if not isinstance(raw, dict):
@@ -91,9 +105,21 @@ title."""
         missing = [f for f in REQUIRED_FIELDS if f not in raw]
         if missing:
             raise MindMapAgentError(f"Response missing required field(s): {missing}")
-        branches = raw["branches"]
-        if not isinstance(branches, list) or not (MIN_BRANCHES <= len(branches) <= MAX_BRANCHES + 2):
-            raise MindMapAgentError(f"'branches' must be a list of roughly {MIN_BRANCHES}-{MAX_BRANCHES} items.")
-        for i, b in enumerate(branches):
-            if not isinstance(b, dict) or "label" not in b or "detail" not in b:
-                raise MindMapAgentError(f"Branch at index {i} is missing 'label' or 'detail'.")
+        children = raw["children"]
+        if not isinstance(children, list) or not (MIN_BRANCHES <= len(children) <= MAX_BRANCHES + 2):
+            raise MindMapAgentError(f"'children' must be a list of roughly {MIN_BRANCHES}-{MAX_BRANCHES} items.")
+        self._validate_children(children, depth=1)
+
+    def _validate_children(self, children, depth: int) -> None:
+        if depth > MAX_DEPTH:
+            return
+        for i, node in enumerate(children):
+            if not isinstance(node, dict) or "label" not in node:
+                raise MindMapAgentError(f"Node at depth {depth}, index {i} is missing 'label'.")
+            sub = node.get("children", [])
+            if sub is None:
+                sub = []
+                node["children"] = sub
+            if not isinstance(sub, list):
+                raise MindMapAgentError(f"Node at depth {depth}, index {i} has non-list 'children'.")
+            self._validate_children(sub, depth=depth + 1)

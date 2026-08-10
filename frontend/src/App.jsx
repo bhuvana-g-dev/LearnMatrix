@@ -250,6 +250,7 @@ export default function App() {
         roadmap={workspaceContext.roadmap}
         compressedSyllabus={workspaceContext.compressedSyllabus}
         initialEntry={workspaceContext.initialEntry}
+        uid={auth.user?.uid}
         onBack={() => setActiveKey("roadmap")}
       />
     );

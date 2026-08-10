@@ -24,6 +24,14 @@ const PACE_STYLES = {
  * reset to null on every page refresh, falling back to a hardcoded
  * "Developer" default. The saved assessment's `role` field is the
  * actual source of truth and survives a refresh.
+ *
+ * ONE-WAY DOOR, ON PURPOSE: once a student has a saved assessment for a
+ * role, this screen only ever shows their status for THAT role — there's
+ * no "explore other courses" escape hatch here. Switching courses is a
+ * deliberate action gated behind "Quit Role" in the Learning Hub
+ * (RoadmapScreen.jsx), which requires typing a confirmation phrase.
+ * Role Selection (the `!hasAssessment` branch below) only opens back up
+ * after that quit succeeds and wipes the saved assessment/roadmap.
  */
 export default function CareerStatusScreen({
   uid, displayName, roles, rolesLoading, selectedRole, onSelectRole, onContinue, onNavigate,
@@ -34,7 +42,6 @@ export default function CareerStatusScreen({
   const [overallScore, setOverallScore] = useState(null);
   const [roadmap, setRoadmap] = useState(null);
   const [activeDates, setActiveDates] = useState([]);
-  const [exploring, setExploring] = useState(false);
 
   const check = useCallback(async () => {
     if (!uid) {
@@ -76,28 +83,15 @@ export default function CareerStatusScreen({
     );
   }
 
-  if (!hasAssessment || exploring) {
+  if (!hasAssessment) {
     return (
-      <div>
-        {hasAssessment && exploring && (
-          <div className="max-w-6xl mx-auto px-4 sm:px-8 pt-6">
-            <button
-              onClick={() => setExploring(false)}
-              className="text-sm font-semibold"
-              style={{ color: COLORS.textMid, background: "none", border: "none", cursor: "pointer" }}
-            >
-              ← Back to my status
-            </button>
-          </div>
-        )}
-        <RoleSelectionScreen
-          roles={roles}
-          rolesLoading={rolesLoading}
-          selectedRole={selectedRole}
-          onSelectRole={onSelectRole}
-          onContinue={onContinue}
-        />
-      </div>
+      <RoleSelectionScreen
+        roles={roles}
+        rolesLoading={rolesLoading}
+        selectedRole={selectedRole}
+        onSelectRole={onSelectRole}
+        onContinue={onContinue}
+      />
     );
   }
 
@@ -191,20 +185,6 @@ export default function CareerStatusScreen({
               }}
             >
               Continue to My Roadmap <ArrowRight size={16} />
-            </motion.button>
-
-            <motion.button
-              onClick={() => setExploring(true)}
-              whileHover={{ y: -2 }}
-              whileTap={{ scale: 0.97 }}
-              className="flex items-center justify-center gap-2 font-semibold"
-              style={{
-                padding: "14px 28px", borderRadius: 9999, color: COLORS.textDark,
-                border: `1px solid ${COLORS.border}`, background: "rgba(255,255,255,0.5)",
-                cursor: "pointer",
-              }}
-            >
-              <Compass size={16} /> Explore Other Courses
             </motion.button>
           </div>
         </motion.div>

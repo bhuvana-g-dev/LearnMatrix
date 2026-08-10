@@ -65,7 +65,13 @@ export default function AssessmentScreen({ selectedRole, selectedSkills, uid, on
   const [loadingRoadmap, setLoadingRoadmap] = useState(false);
   const [roadmapError, setRoadmapError] = useState("");
 
-  const roleTitle = ROLE_TITLES[selectedRole] || "General";
+  // No fallback to a generic "General" role/quiz here on purpose — a
+  // diagnostic assessment only ever makes sense for a role the student
+  // actually chose. If selectedRole is missing (e.g. this screen was
+  // reached before Role Selection, or selectedRole reset on a refresh),
+  // the "no role selected" state below sends them back instead of
+  // silently generating a generic quiz.
+  const roleTitle = ROLE_TITLES[selectedRole] || "";
   const skillsForAssessment = selectedSkills.length ? selectedSkills : [roleTitle];
 
   const fetchQuestions = useCallback(async () => {
@@ -88,6 +94,11 @@ export default function AssessmentScreen({ selectedRole, selectedSkills, uid, on
   }, [roleTitle, selectedSkills]);
 
   useEffect(() => {
+    // No role selected -> there's nothing valid to generate a diagnostic
+    // for. Stay in "checking" (renders the "no role selected" state
+    // below) instead of falling through to a generic quiz.
+    if (!selectedRole) return;
+
     // No uid (not logged in / auth not ready yet) -> can't check for a
     // saved result, just go straight to generating one.
     if (!uid) {
@@ -180,6 +191,26 @@ export default function AssessmentScreen({ selectedRole, selectedSkills, uid, on
       setLoadingRoadmap(false);
     }
   };
+
+  if (!selectedRole) {
+    return (
+      <div className="px-4 sm:px-8 pt-10 pb-20">
+        <BackButton onClick={onBack} label="Back" />
+        <div
+          className="max-w-lg mx-auto flex flex-col items-center text-center gap-4 py-16 px-8"
+          style={{ ...GLASS_CARD, borderRadius: 28 }}
+        >
+          <h3 className="text-lg font-bold" style={{ color: COLORS.textDark }}>
+            Choose a role first
+          </h3>
+          <p className="text-sm" style={{ color: COLORS.textMid }}>
+            The diagnostic assessment is built around a specific role's skills —
+            pick a role in My Career Path before taking it.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   if (fetchState === "checking" || fetchState === "loading") {
     const isChecking = fetchState === "checking";

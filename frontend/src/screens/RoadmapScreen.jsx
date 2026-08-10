@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
-import { Loader2, Map, ArrowRight, XCircle } from "lucide-react";
+import { Loader2, Map, ArrowRight, XCircle, LogOut } from "lucide-react";
 import { COLORS, GRADIENTS, GLASS_CARD } from "../constants/theme";
 import { ROLES } from "../constants/roles";
 import RoadmapDisplay from "../components/roadmap/RoadmapDisplay";
-import { loadSavedRoadmap, loadSavedAssessmentResult } from "../services/aiAssessmentService";
+import QuitRoleModal from "../components/roadmap/QuitRoleModal";
+import { loadSavedRoadmap, loadSavedAssessmentResult, quitRole } from "../services/aiAssessmentService";
 import { getCompressedRoleSyllabus } from "../services/syllabusService";
 
 /**
@@ -17,12 +18,19 @@ import { getCompressedRoleSyllabus } from "../services/syllabusService";
  *
  * "empty" is a normal, expected state for a brand-new user, not an error
  * — it just means they haven't taken the diagnostic assessment yet.
+ *
+ * "Quit Role" (top-right, "ready" state only) is the ONLY way back to
+ * Role Selection once a role has been chosen — see QuitRoleModal.jsx
+ * and services/aiAssessmentService.js's quitRole(). Confirming there
+ * deletes the saved assessment + roadmap and calls onRoleQuit (wired in
+ * App.jsx) to reset careerPath state and navigate to Role Selection.
  */
-export default function RoadmapScreen({ uid, onNavigate, onSelectTopic, onStartJourney }) {
+export default function RoadmapScreen({ uid, onNavigate, onSelectTopic, onStartJourney, onRoleQuit }) {
   const [state, setState] = useState("loading"); // loading | empty | error | ready
   const [roadmap, setRoadmap] = useState(null);
   const [errorMessage, setErrorMessage] = useState("");
   const [compressedSyllabus, setCompressedSyllabus] = useState(null);
+  const [showQuitModal, setShowQuitModal] = useState(false);
 
   const fetchRoadmap = useCallback(async () => {
     if (!uid) {
@@ -93,6 +101,15 @@ export default function RoadmapScreen({ uid, onNavigate, onSelectTopic, onStartJ
       cancelled = true;
     };
   }, [state, uid, roadmap]);
+
+  const handleQuitRole = async () => {
+    // Wipes the saved assessment + roadmap (backend) and resets
+    // careerPath state (App.jsx), then sends the student back to
+    // Role Selection — the ONLY path there once a role is chosen.
+    await quitRole(uid);
+    setShowQuitModal(false);
+    if (onRoleQuit) onRoleQuit();
+  };
 
   if (state === "loading") {
     return (
@@ -176,6 +193,20 @@ export default function RoadmapScreen({ uid, onNavigate, onSelectTopic, onStartJ
   return (
     <div className="px-4 sm:px-8 pt-10 pb-20">
       <div className="max-w-3xl mx-auto">
+        <div className="flex justify-end mb-4">
+          <button
+            onClick={() => setShowQuitModal(true)}
+            className="flex items-center gap-1.5 text-xs font-semibold"
+            style={{
+              padding: "9px 16px", borderRadius: 9999, color: "#E0559C",
+              border: "1px solid rgba(224,85,156,0.35)", background: "rgba(224,85,156,0.08)",
+              cursor: "pointer",
+            }}
+          >
+            <LogOut size={13} /> Quit Role
+          </button>
+        </div>
+
         <RoadmapDisplay
           roadmap={roadmap}
           showProgress
@@ -188,6 +219,14 @@ export default function RoadmapScreen({ uid, onNavigate, onSelectTopic, onStartJ
           }
         />
       </div>
+
+      {showQuitModal && (
+        <QuitRoleModal
+          roleTitle={roadmap.role || "this role"}
+          onClose={() => setShowQuitModal(false)}
+          onConfirm={handleQuitRole}
+        />
+      )}
     </div>
   );
 }

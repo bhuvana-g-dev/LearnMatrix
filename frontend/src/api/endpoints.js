@@ -31,6 +31,10 @@ export const ENDPOINTS = {
     GENERATE_DIAGNOSTIC_ASSESSMENT: "/ai/generate-diagnostic-assessment",
     EVALUATE_DIAGNOSTIC_ASSESSMENT: "/ai/evaluate-diagnostic-assessment",
     GENERATE_ROADMAP: "/ai/generate-roadmap",
+
+    // "Quit Role" (Learning Hub) — wipes the saved assessment + roadmap
+    // for this uid so Role Selection unlocks again.
+    QUIT_ROLE: (uid) => `/career-path/${uid}`,
   },
   AI_CHAT: {
     // AI Study Assistant chat (backend/routes/ai_chat_routes.py).

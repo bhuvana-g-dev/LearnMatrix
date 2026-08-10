@@ -766,7 +766,11 @@ export default function AIStudyAssistantScreen({ uid }) {
 
       <AnimatePresence>
         {studioModal && (
-          <StudioModal onClose={closeStudioModal} wide={studioModal === "mindmap" && !studioLoading && !studioError}>
+          <StudioModal
+            onClose={closeStudioModal}
+            wide={studioModal === "mindmap" && !studioLoading && !studioError}
+            fullScreen={studioModal === "mindmap" && !studioLoading && !studioError}
+          >
             {studioModal === "custom-input" ? (
               <CustomInputBody
                 target={customTarget}
@@ -873,13 +877,13 @@ function ModeChip({ label, onClick, disabled }) {
   );
 }
 
-function StudioModal({ children, onClose, wide }) {
+function StudioModal({ children, onClose, wide, fullScreen }) {
   return (
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 flex items-center justify-center p-4 z-50"
+      className={`fixed inset-0 flex items-center justify-center z-50 ${fullScreen ? "" : "p-4"}`}
       style={{ background: "rgba(13,27,61,0.45)" }}
       onClick={onClose}
     >
@@ -888,16 +892,16 @@ function StudioModal({ children, onClose, wide }) {
         animate={{ opacity: 1, scale: 1 }}
         exit={{ opacity: 0, scale: 0.96 }}
         onClick={(e) => e.stopPropagation()}
-        className={`rounded-2xl w-full relative ${wide ? "max-w-4xl p-4" : "max-w-lg p-6"}`}
-        style={{ background: COLORS.white, maxHeight: "85vh", overflowY: wide ? "hidden" : "auto" }}
+        className={`w-full relative ${fullScreen ? "h-full rounded-none" : wide ? "rounded-2xl max-w-4xl p-4" : "rounded-2xl max-w-lg p-6"}`}
+        style={{ background: COLORS.white, maxHeight: fullScreen ? "100vh" : "85vh", overflowY: wide || fullScreen ? "hidden" : "auto" }}
       >
         <button
           type="button"
           onClick={onClose}
-          className="absolute top-4 right-4 z-10 flex items-center justify-center rounded-full"
-          style={{ width: 26, height: 26, color: COLORS.white, background: "rgba(13,27,61,0.6)", cursor: "pointer" }}
+          className="absolute top-4 right-4 z-20 flex items-center justify-center rounded-full"
+          style={{ width: 30, height: 30, color: COLORS.white, background: "rgba(13,27,61,0.75)", cursor: "pointer" }}
         >
-          <X size={15} />
+          <X size={16} />
         </button>
         {children}
       </motion.div>
@@ -1190,34 +1194,35 @@ function MindMapView({ map }) {
   }
 
   return (
-    <div>
-      <p className="text-sm font-semibold mb-1 pr-6" style={{ color: COLORS.textDark }}>
-        Mind Map
-      </p>
-      <p className="text-xs mb-3" style={{ color: COLORS.textLight }}>
-        {tree.title} · click a node's circle to expand that branch
-      </p>
+    <div className="flex flex-col" style={{ height: "100vh" }}>
+      <div className="px-6 pt-5 pb-3" style={{ borderBottom: `1px solid ${COLORS.border}` }}>
+        <p className="text-base font-semibold mb-1 pr-8" style={{ color: COLORS.textDark }}>
+          Mind Map
+        </p>
+        <p className="text-xs" style={{ color: COLORS.textLight }}>
+          {tree.title} · click a node's circle to expand that branch
+        </p>
+      </div>
 
-      <div
-        className="relative rounded-xl overflow-auto"
-        style={{ height: 460, background: "#151B2C" }}
-      >
+      <div className="relative flex-1 overflow-auto" style={{ background: "#151B2C" }}>
         {/* zoom / view controls */}
-        <div className="absolute top-2 right-2 z-10 flex flex-col gap-1.5">
-          <button type="button" onClick={expandAll} title="Expand all" className="flex items-center justify-center rounded-full" style={mmControlBtnStyle}>
-            <ChevronsRight size={13} style={{ transform: "rotate(90deg)" }} />
+        <div className="absolute top-3 right-3 z-10 flex flex-col gap-1 p-1 rounded-xl" style={{ background: "rgba(0,0,0,0.35)", backdropFilter: "blur(2px)" }}>
+          <button type="button" onClick={expandAll} title="Expand all" className="flex items-center justify-center rounded-lg" style={mmControlBtnStyle}>
+            <ChevronsRight size={15} style={{ transform: "rotate(90deg)" }} />
           </button>
-          <button type="button" onClick={collapseAll} title="Collapse all" className="flex items-center justify-center rounded-full" style={mmControlBtnStyle}>
-            <ChevronsLeft size={13} style={{ transform: "rotate(90deg)" }} />
+          <button type="button" onClick={collapseAll} title="Collapse all" className="flex items-center justify-center rounded-lg" style={mmControlBtnStyle}>
+            <ChevronsLeft size={15} style={{ transform: "rotate(90deg)" }} />
           </button>
-          <button type="button" onClick={() => setZoom((z) => Math.min(z + 0.15, 2))} title="Zoom in" className="flex items-center justify-center rounded-full" style={mmControlBtnStyle}>
-            <Plus size={13} />
+          <div style={{ height: 1, background: "rgba(255,255,255,0.15)", margin: "2px 4px" }} />
+          <button type="button" onClick={() => setZoom((z) => Math.min(z + 0.15, 2))} title="Zoom in" className="flex items-center justify-center rounded-lg" style={mmControlBtnStyle}>
+            <Plus size={16} />
           </button>
-          <button type="button" onClick={() => setZoom((z) => Math.max(z - 0.15, 0.4))} title="Zoom out" className="flex items-center justify-center rounded-full" style={mmControlBtnStyle}>
-            <span style={{ fontSize: 15, lineHeight: 1, fontWeight: 700 }}>–</span>
+          <button type="button" onClick={() => setZoom((z) => Math.max(z - 0.15, 0.4))} title="Zoom out" className="flex items-center justify-center rounded-lg" style={mmControlBtnStyle}>
+            <span style={{ fontSize: 18, lineHeight: 1, fontWeight: 700 }}>–</span>
           </button>
-          <button type="button" onClick={handleDownload} title="Download as SVG" className="flex items-center justify-center rounded-full" style={mmControlBtnStyle}>
-            <FileText size={12} />
+          <div style={{ height: 1, background: "rgba(255,255,255,0.15)", margin: "2px 4px" }} />
+          <button type="button" onClick={handleDownload} title="Download as SVG" className="flex items-center justify-center rounded-lg" style={mmControlBtnStyle}>
+            <FileText size={15} />
           </button>
         </div>
 
@@ -1294,11 +1299,11 @@ function MindMapView({ map }) {
 }
 
 const mmControlBtnStyle = {
-  width: 26,
-  height: 26,
-  background: "rgba(255,255,255,0.1)",
+  width: 32,
+  height: 32,
+  background: "rgba(255,255,255,0.14)",
   color: COLORS.white,
-  border: "1px solid rgba(255,255,255,0.15)",
+  border: "1px solid rgba(255,255,255,0.25)",
   cursor: "pointer",
 };
 

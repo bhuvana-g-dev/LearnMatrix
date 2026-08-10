@@ -24,6 +24,7 @@ from services.ai_assessment_service import (
     evaluate_assessment,
     evaluate_and_save_assessment,
     load_saved_assessment_result,
+    quit_role,
     AIAssessmentError,
 )
 from services.roadmap_service import generate_and_save_roadmap, generate_roadmap_preview
@@ -188,6 +189,23 @@ def get_assessment_result_route(uid):
                 message="No completed assessment found for this user yet.",
             )
         return success_response(data=result, message="Assessment result loaded.")
+    except Exception as exc:  # noqa: BLE001
+        return error_response(str(exc), status_code=500)
+
+
+@ai_assessment_bp.route("/career-path/<uid>", methods=["DELETE"])
+def quit_role_route(uid):
+    """
+    "Quit Role" (Learning Hub -> Quit Role, after the student types the
+    "I am quitting <role>" confirmation phrase in the UI). Deletes the
+    saved assessment_results/{uid} and roadmaps/{uid} documents so Role
+    Selection unlocks again the next time this student opens
+    "My Career Path". Idempotent — calling it with nothing saved is not
+    an error.
+    """
+    try:
+        quit_role(uid)
+        return success_response(data=None, message="Role quit — Role Selection is unlocked again.")
     except Exception as exc:  # noqa: BLE001
         return error_response(str(exc), status_code=500)
 

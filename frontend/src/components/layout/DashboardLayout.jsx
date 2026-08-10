@@ -6,7 +6,7 @@ import SidebarContent from "./SidebarContent";
 import Logo from "../common/Logo";
 import { COLORS, GLASS_CARD } from "../../constants/theme";
 const EXPANDED_WIDTH = 280;
-const COLLAPSED_WIDTH = 84;
+const COLLAPSED_WIDTH = 92;
 
 // Sidebar now starts in the narrow, icon+label rail by default on every
 // screen size — full 280px width is opt-in (the collapse/expand chevron),
@@ -112,7 +112,7 @@ export default function DashboardLayout({ activeKey, onNavigate, onLogout, child
             smoothly (no gap, no horizontal scroll) as it collapses. */}
         <div
           className={`min-w-0 transition-[margin-left] duration-300 ease-in-out ${
-            collapsed ? "md:ml-[84px]" : "md:ml-[280px]"
+            collapsed ? "md:ml-[92px]" : "md:ml-[280px]"
           }`}
         >
           {/* Sticky mobile top bar — stays pinned at the top of the

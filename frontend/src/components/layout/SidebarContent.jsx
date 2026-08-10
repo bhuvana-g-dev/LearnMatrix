@@ -34,12 +34,22 @@ function FadeLabel({ show, children }) {
 }
 // Small static label shown under the icon in collapsed (narrow-rail)
 // mode — unlike FadeLabel, it doesn't animate width/opacity since the
-// whole row is already vertical and fixed-width.
+// whole row is already vertical and fixed-width. Wraps onto 2 lines
+// (rather than truncating to a single line) so names like "AI Study
+// Assistant" or a person's full name don't get cut off mid-word.
 function MiniLabel({ children }) {
   return (
     <span
       className="text-center leading-tight"
-      style={{ fontSize: 10, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "100%" }}
+      style={{
+        fontSize: 10,
+        display: "-webkit-box",
+        WebkitLineClamp: 2,
+        WebkitBoxOrient: "vertical",
+        overflow: "hidden",
+        maxWidth: "100%",
+        wordBreak: "break-word",
+      }}
     >
       {children}
     </span>
@@ -133,7 +143,7 @@ export default function SidebarContent({
       </div>
 
       <div className="flex-1 overflow-y-auto overflow-x-hidden px-3 pb-4">
-        {NAV_SECTIONS.map((section) => {
+        {NAV_SECTIONS.filter((s) => s.key !== "profile").map((section) => {
           const SectionIcon = section.icon;
           const hasChildren = section.children && section.children.length > 0;
 
@@ -315,6 +325,130 @@ export default function SidebarContent({
       </div>
 
       <div className="px-3 pb-5 pt-2" style={{ borderTop: `1px solid ${COLORS.border}` }}>
+        {/* Profile lives here, grouped with Logout, rather than inside
+            the main nav list above — keeps identity/account actions
+            visually separate from the page-navigation sections. */}
+        {(() => {
+          const section = NAV_SECTIONS.find((s) => s.key === "profile");
+          if (!section) return null;
+          const SectionIcon = section.icon;
+          const isOpen = !collapsed && openKey === section.key;
+          const isHeaderActive = activeKey === section.key;
+          const displayTitle = profileName || section.title;
+          const isLocked = locked;
+
+          const handleHeaderClick = () => {
+            if (isLocked) {
+              onLoginRequired?.();
+              return;
+            }
+            if (collapsed) {
+              onNavigate(section.key);
+              expandAndOpen(section.key);
+              return;
+            }
+            onNavigate(section.key);
+            setOpenKey(section.key);
+          };
+
+          return (
+            <div className="mb-1.5">
+              <div
+                className="w-full flex items-center justify-between rounded-xl text-sm font-semibold transition-all"
+                style={{
+                  color: isHeaderActive ? "#fff" : isLocked ? COLORS.textLight : COLORS.textDark,
+                  background: isHeaderActive ? GRADIENTS.purplePink : "transparent",
+                  borderLeft: isHeaderActive ? "3px solid #fff" : "3px solid transparent",
+                  boxShadow: isHeaderActive ? "0 4px 12px rgba(192,132,252,0.4)" : "none",
+                  opacity: isLocked ? 0.6 : 1,
+                }}
+              >
+                <button
+                  onClick={handleHeaderClick}
+                  title={isLocked ? "Login to unlock" : undefined}
+                  className={`flex-1 flex ${
+                    collapsed
+                      ? "flex-col items-center gap-1 py-2.5 px-1"
+                      : "items-center gap-2.5 px-3 py-2.5 text-left"
+                  }`}
+                  style={{
+                    background: "transparent",
+                    border: "none",
+                    cursor: "pointer",
+                    color: "inherit",
+                    font: "inherit",
+                  }}
+                >
+                  <SectionIcon size={16} color={isHeaderActive ? "#fff" : isLocked ? COLORS.textLight : COLORS.purple} />
+                  {collapsed ? <MiniLabel>{displayTitle}</MiniLabel> : <FadeLabel show>{displayTitle}</FadeLabel>}
+                </button>
+
+                {!collapsed && isLocked && (
+                  <span className="px-3 py-2.5 flex items-center">
+                    <Lock size={13} color={COLORS.textLight} />
+                  </span>
+                )}
+
+                {!collapsed && !isLocked && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleSection(section.key);
+                    }}
+                    aria-label={isOpen ? "Collapse section" : "Expand section"}
+                    className="px-3 py-2.5"
+                    style={{ background: "transparent", border: "none", cursor: "pointer" }}
+                  >
+                    <motion.span
+                      animate={{ rotate: isOpen ? 180 : 0 }}
+                      transition={{ duration: 0.2 }}
+                      style={{ display: "flex" }}
+                    >
+                      <ChevronDown size={14} color={isHeaderActive ? "#fff" : COLORS.textLight} />
+                    </motion.span>
+                  </button>
+                )}
+              </div>
+
+              <AnimatePresence initial={false}>
+                {isOpen && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: "auto", opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={{ duration: 0.2 }}
+                    style={{ overflow: "hidden" }}
+                  >
+                    <div className="pl-9 pr-1 py-1 flex flex-col gap-0.5">
+                      {section.children.map((child) => {
+                        const isActive = activeKey === child.key;
+                        return (
+                          <button
+                            key={child.key}
+                            onClick={() => onNavigate(child.key)}
+                            className="text-left text-xs sm:text-sm py-2 px-3 rounded-lg transition-all"
+                            style={{
+                              color: isActive ? "#fff" : COLORS.textMid,
+                              background: isActive ? GRADIENTS.purplePink : "transparent",
+                              fontWeight: isActive ? 600 : 500,
+                              border: "none",
+                              borderLeft: isActive ? "3px solid #fff" : "3px solid transparent",
+                              cursor: "pointer",
+                              boxShadow: isActive ? "0 4px 12px rgba(192,132,252,0.4)" : "none",
+                            }}
+                          >
+                            {child.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+          );
+        })()}
+
         {locked ? (
           <button
             onClick={onLoginRequired}

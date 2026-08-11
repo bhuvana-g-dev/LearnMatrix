@@ -70,6 +70,20 @@ export async function suggestResourcesViaYouTube(skill, topic, count = 6) {
   return data.data;
 }
 
+/** One-click "fill this topic in" — generates AND immediately verifies
+ * both non-video and video resources, skipping the pending queue.
+ * verifiedBy is the logged-in admin's identity (see hooks/useAdminAuth.js),
+ * recorded on every resource created for the audit trail. */
+export async function bulkGenerateAndVerify(skill, topic, verifiedBy, { articleCount = 5, videoCount = 4 } = {}) {
+  const { data } = await apiClient.post(
+    ENDPOINTS.ADMIN.RESOURCES.BULK_GENERATE_AND_VERIFY,
+    { skill, topic, verifiedBy, articleCount, videoCount },
+    { timeout: 60000 }
+  );
+  if (!data.success) throw new Error(data.error || data.message || "Bulk generation failed.");
+  return data.data; // { skill, topic, articles: [...], videos: [...], errors: [...] }
+}
+
 export async function fetchPendingResources(filters = {}) {
   const params = {};
   if (filters.skill) params.skill = filters.skill;
@@ -79,8 +93,8 @@ export async function fetchPendingResources(filters = {}) {
   return data.data;
 }
 
-export async function verifyResource(resourceId) {
-  const { data } = await apiClient.patch(ENDPOINTS.ADMIN.RESOURCES.VERIFY(resourceId));
+export async function verifyResource(resourceId, verifiedBy) {
+  const { data } = await apiClient.patch(ENDPOINTS.ADMIN.RESOURCES.VERIFY(resourceId), { verifiedBy });
   return data.data;
 }
 

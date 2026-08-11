@@ -60,6 +60,14 @@ export const ENDPOINTS = {
     DOWNLOAD_SOURCES_PDF: (uid) => `/study-summary/sources/${uid}/pdf`,
     DOWNLOAD_CHAT_PDF: (uid, sessionId) => `/study-summary/chat/${uid}/${sessionId}/pdf`,
     DOWNLOAD_CUSTOM_PDF: "/study-summary/custom/pdf", // POST {text}
+    // "from-content" — builds a file from an already-generated deck (see SLIDEDECK.GENERATE
+    // below) with no further AI call, so the download always matches what was previewed.
+    DOWNLOAD_CUSTOM_PPTX_FROM_CONTENT: "/study-summary/custom/pptx-from-content", // POST {notes}
+    DOWNLOAD_CUSTOM_PDF_FROM_CONTENT: "/study-summary/custom/pdf-from-content", // POST {notes}
+  },
+  SLIDEDECK: {
+    // backend/routes/slidedeck_routes.py — AI-expands a typed prompt into full deck content
+    GENERATE: "/slidedeck/generate", // POST {text, label?} -> {title, summary, sections, keyTakeaways}
   },
   MINDMAP: {
     // backend/routes/mindmap_routes.py — stateless, structures text into a mind map

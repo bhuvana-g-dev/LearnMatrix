@@ -29,6 +29,7 @@ from services.ppt_service import (
     generate_sources_summary_pptx,
     generate_chat_summary_pptx,
     generate_custom_text_pptx,
+    build_pptx_from_deck_content,
     PptServiceError,
 )
 from services.pdf_service import (
@@ -36,6 +37,7 @@ from services.pdf_service import (
     generate_sources_summary_pdf,
     generate_chat_summary_pdf,
     generate_custom_text_pdf,
+    build_pdf_from_deck_content,
     PdfServiceError,
 )
 from utils.response_helper import error_response
@@ -137,3 +139,42 @@ def download_custom_pdf_route():
     except PdfServiceError as exc:
         return error_response(str(exc), status_code=422)
     return _send_pdf(file_bytes, filename)
+
+
+# ---------------------------------------------------------------------------
+# "From content" — builds a file directly from an already-generated deck
+# (the same {title, summary, sections, keyTakeaways} JSON
+# routes/slidedeck_routes.py returned for the in-app preview) with no
+# further LLM call, so the downloaded file always matches exactly what
+# the student previewed on screen.
+# ---------------------------------------------------------------------------
+
+def _safe_filename_from_notes(notes: dict) -> str:
+    from services.ppt_service import _safe_filename
+    return _safe_filename(notes.get("title") or "custom")
+
+
+@ppt_bp.route("/study-summary/custom/pptx-from-content", methods=["POST"])
+def download_custom_pptx_from_content_route():
+    payload = request.get_json(silent=True) or {}
+    notes = payload.get("notes")
+    if not notes or not isinstance(notes, dict):
+        return error_response("Request body must include a 'notes' object.", status_code=400)
+    try:
+        file_bytes = build_pptx_from_deck_content(notes, subtitle="Study Summary")
+    except Exception as exc:  # pragma: no cover — build step has no domain-specific error type
+        return error_response(f"Couldn't build the slide deck: {exc}", status_code=422)
+    return _send_pptx(file_bytes, f"{_safe_filename_from_notes(notes)}_study_summary.pptx")
+
+
+@ppt_bp.route("/study-summary/custom/pdf-from-content", methods=["POST"])
+def download_custom_pdf_from_content_route():
+    payload = request.get_json(silent=True) or {}
+    notes = payload.get("notes")
+    if not notes or not isinstance(notes, dict):
+        return error_response("Request body must include a 'notes' object.", status_code=400)
+    try:
+        file_bytes = build_pdf_from_deck_content(notes, subtitle="Study Summary")
+    except Exception as exc:  # pragma: no cover
+        return error_response(f"Couldn't build the slide deck: {exc}", status_code=422)
+    return _send_pdf(file_bytes, f"{_safe_filename_from_notes(notes)}_study_summary.pdf")

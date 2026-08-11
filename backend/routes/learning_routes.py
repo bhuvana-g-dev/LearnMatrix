@@ -34,6 +34,7 @@ from services.resource_repository import add_resource, list_resources, delete_re
 from services.resource_review_service import (
     generate_pending_suggestions,
     generate_youtube_suggestions,
+    generate_and_auto_verify,
     get_pending_queue,
     verify_resource,
     unverify_resource,
@@ -240,6 +241,47 @@ def suggest_youtube_resources_route():
         return error_response(str(exc), status_code=500)
 
 
+@learning_bp.route("/admin/learning-resources/bulk-generate-and-verify", methods=["POST"])
+def bulk_generate_and_verify_route():
+    """
+    One-click 'fill this topic in' for the Resource Bank — generates
+    AND immediately verifies both article/GitHub/practice-type
+    resources and real YouTube videos for one (skill, topic) in a
+    single call, skipping the pending-review queue entirely (see
+    resource_review_service.generate_and_auto_verify()'s docstring for
+    why that trade-off is deliberate here).
+
+    Body: {skill, topic, verifiedBy, articleCount?, videoCount?}
+    verifiedBy is whatever identity string the admin panel has for the
+    logged-in admin (see hooks/useAdminAuth.js — currently admin.email)
+    — required, since an empty verifiedBy would make the audit trail
+    meaningless.
+    """
+    payload = request.get_json(silent=True) or {}
+    skill = payload.get("skill")
+    topic = payload.get("topic")
+    verified_by = payload.get("verifiedBy")
+    article_count = payload.get("articleCount", 5)
+    video_count = payload.get("videoCount", 4)
+
+    missing = [k for k, v in [("skill", skill), ("topic", topic), ("verifiedBy", verified_by)] if not v]
+    if missing:
+        return error_response(f"Missing required field(s): {missing}", status_code=400)
+
+    try:
+        result = generate_and_auto_verify(
+            skill=skill, topic=topic, verified_by=verified_by,
+            article_count=int(article_count), video_count=int(video_count),
+        )
+        total = len(result["articles"]) + len(result["videos"])
+        return success_response(
+            data=result,
+            message=f"Generated and verified {total} resource(s) for {skill} / {topic}.",
+        )
+    except Exception as exc:  # noqa: BLE001
+        return error_response(str(exc), status_code=500)
+
+
 @learning_bp.route("/admin/learning-resources/pending", methods=["GET"])
 def list_pending_resources_route():
     """The admin review queue — everything awaiting a verify/reject decision."""
@@ -253,8 +295,9 @@ def list_pending_resources_route():
 @learning_bp.route("/admin/learning-resources/<resource_id>/verify", methods=["PATCH"])
 def verify_resource_route(resource_id):
     """Admin confirmed this link is real and good — now visible to students."""
+    payload = request.get_json(silent=True) or {}
     try:
-        resource = verify_resource(resource_id)
+        resource = verify_resource(resource_id, verified_by=payload.get("verifiedBy", ""))
         return success_response(data=resource, message="Resource verified and published.")
     except Exception as exc:  # noqa: BLE001
         return error_response(str(exc), status_code=500)

@@ -112,11 +112,19 @@ def generate_chat_summary_pptx(uid: str, session_id: str) -> tuple[BytesIO, str]
 
 
 def generate_custom_text_pptx(text: str) -> tuple[BytesIO, str]:
+    """AI-expands the student's short prompt/notes into a full deck
+    (see services/slide_deck_service.py) rather than dumping the raw
+    text onto a single slide — same idea as Gamma/NotebookLM turning a
+    one-line prompt into a real presentation."""
     if not text or not text.strip():
         raise PptServiceError("Type something first.")
-    title = text.strip().split("\n")[0][:60] or "Your Topic"
-    notes = {"title": title, "summary": "", "sections": [{"heading": "Your Input", "content": text.strip()}], "keyTakeaways": []}
-    return _build_pptx_from_notes(notes, subtitle="Study Summary"), "custom_study_summary.pptx"
+    from services.slide_deck_service import generate_deck_content, SlideDeckServiceError
+
+    try:
+        notes = generate_deck_content(text.strip())
+    except SlideDeckServiceError as exc:
+        raise PptServiceError(str(exc)) from exc
+    return build_pptx_from_deck_content(notes, subtitle="Study Summary"), f"{_safe_filename(notes.get('title') or 'custom')}_study_summary.pptx"
 
 
 # ---------------------------------------------------------------------------
@@ -145,6 +153,16 @@ def build_deck_sections(notes: dict) -> list[dict]:
 
 
 def _build_pptx_from_notes(notes: dict, subtitle: str) -> BytesIO:
+    return build_pptx_from_deck_content(notes, subtitle)
+
+
+def build_pptx_from_deck_content(notes: dict, subtitle: str) -> BytesIO:
+    """Public entry point used both by the generate_*_pptx functions
+    above (which fetch/produce `notes` themselves) and by
+    routes/ppt_routes.py's "from-content" endpoint, which receives an
+    already-generated deck (e.g. from the AI slide-deck preview the
+    student already looked at) and just needs it rendered — no second
+    LLM call, so the downloaded file always matches what was previewed."""
     prs = Presentation()
     prs.slide_width = SLIDE_W
     prs.slide_height = SLIDE_H

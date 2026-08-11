@@ -11,6 +11,7 @@ import HomeScreen from "./screens/HomeScreen";
 import RoleSelectionScreen from "./screens/RoleSelectionScreen";
 import CareerStatusScreen from "./screens/CareerStatusScreen";
 import SkillSelectionScreen from "./screens/SkillSelectionScreen";
+import SkillProgressScreen from "./screens/SkillProgressScreen";
 import AssessmentScreen from "./screens/AssessmentScreen";
 import RoadmapScreen from "./screens/RoadmapScreen";
 import CourseWorkspaceScreen from "./screens/CourseWorkspaceScreen";
@@ -25,6 +26,7 @@ import { useCareerPath } from "./hooks/useCareerPath";
 import { useProfileCompletion } from "./hooks/useProfileCompletion";
 import { pingActivity } from "./services/activityService";
 import { saveUserProfileDoc } from "./services/userProfileService";
+import { loadSavedRoadmap } from "./services/aiAssessmentService";
 import { ROLE_TITLES } from "./constants/roles";
 import { NAV_SECTIONS } from "./constants/navigation";
 import { COLORS } from "./constants/theme";
@@ -54,6 +56,35 @@ export default function App() {
   const [showLanding, setShowLanding] = useState(true);
   const [learningSession, setLearningSession] = useState(null); // { skill, topic, focusBand }
   const [workspaceContext, setWorkspaceContext] = useState(null); // { roadmap, compressedSyllabus, initialEntry }
+
+  // "Skill Selection" (My Career Path submenu) means two different things
+  // depending on whether a role is locked in: the initial "what do you
+  // already know" picker (SkillSelectionScreen) before any roadmap
+  // exists, or a live mastered/in-progress skills view (
+  // SkillProgressScreen) once one does. Re-checked every time this page
+  // is opened so it reflects a just-finished assessment or a just-quit
+  // role without needing a full reload.
+  const [skillsPageCheck, setSkillsPageCheck] = useState({ checking: true, locked: false });
+
+  useEffect(() => {
+    if (activeKey !== "skills") return;
+    let active = true;
+    setSkillsPageCheck({ checking: true, locked: false });
+    if (!auth.user?.uid) {
+      setSkillsPageCheck({ checking: false, locked: false });
+      return;
+    }
+    loadSavedRoadmap(auth.user.uid)
+      .then((roadmap) => {
+        if (active) setSkillsPageCheck({ checking: false, locked: !!roadmap });
+      })
+      .catch(() => {
+        if (active) setSkillsPageCheck({ checking: false, locked: false });
+      });
+    return () => {
+      active = false;
+    };
+  }, [activeKey, auth.user?.uid]);
 
   useEffect(() => {
     window.scrollTo({ top: 0, left: 0, behavior: "smooth" });
@@ -183,34 +214,54 @@ export default function App() {
       />
     );
   } else if (activeKey === "skills") {
-    content = (
-      <SkillSelectionScreen
-        skillCategories={careerPath.skillCategories}
-        skillsLoading={careerPath.skillsLoading}
-        selectedSkills={careerPath.selectedSkills}
-        onToggleSkill={careerPath.toggleSkill}
-        onFinish={async () => {
-          await careerPath.finishSkillSelection();
+    if (skillsPageCheck.checking) {
+      content = (
+        <div className="px-4 sm:px-8 pt-24 flex justify-center">
+          <p className="text-sm" style={{ color: COLORS.textMid }}>Loading…</p>
+        </div>
+      );
+    } else if (skillsPageCheck.locked) {
+      content = (
+        <SkillProgressScreen
+          uid={auth.user?.uid}
+          onNavigate={setActiveKey}
+          onSelectSkill={(entry) => {
+            const topic = entry.currentTopic || entry.skill;
+            setLearningSession({ skill: entry.skill, topic, focusBand: entry.focusBand || "application" });
+            setActiveKey("learning-session");
+          }}
+        />
+      );
+    } else {
+      content = (
+        <SkillSelectionScreen
+          skillCategories={careerPath.skillCategories}
+          skillsLoading={careerPath.skillsLoading}
+          selectedSkills={careerPath.selectedSkills}
+          onToggleSkill={careerPath.toggleSkill}
+          onFinish={async () => {
+            await careerPath.finishSkillSelection();
 
-          // Save the chosen role onto the Firestore profile doc so
-          // ProfileScreen's "Career Path" field reflects the real choice
-          // instead of the USER_PROFILE mock default.
-          if (auth.user && careerPath.selectedRole) {
-            try {
-              await saveUserProfileDoc(auth.user.uid, {
-                careerPath: ROLE_TITLES[careerPath.selectedRole] || careerPath.selectedRole,
-              });
-            } catch {
-              // Non-fatal — profile page just keeps showing the previous value.
+            // Save the chosen role onto the Firestore profile doc so
+            // ProfileScreen's "Career Path" field reflects the real choice
+            // instead of the USER_PROFILE mock default.
+            if (auth.user && careerPath.selectedRole) {
+              try {
+                await saveUserProfileDoc(auth.user.uid, {
+                  careerPath: ROLE_TITLES[careerPath.selectedRole] || careerPath.selectedRole,
+                });
+              } catch {
+                // Non-fatal — profile page just keeps showing the previous value.
+              }
             }
-          }
 
-          setActiveKey("initial-assessment");
-        }}
-        onBack={() => setActiveKey("role")}
-        selectedRole={careerPath.selectedRole}
-      />
-    );
+            setActiveKey("initial-assessment");
+          }}
+          onBack={() => setActiveKey("role")}
+          selectedRole={careerPath.selectedRole}
+        />
+      );
+    }
   } else if (activeKey === "initial-assessment") {
     content = (
       <AssessmentScreen

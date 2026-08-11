@@ -1359,12 +1359,14 @@ function MindMapView({ map }) {
   );
 }
 
-const mmControlBtnStyle = {
-  width: 32,
-  height: 32,
-  background: "rgba(255,255,255,0.14)",
-  color: COLORS.white,
-  border: "1px solid rgba(255,255,255,0.25)",
+// Toolbar row sits on the (light) modal header, so controls need dark
+// icons/text rather than white-on-dark styling.
+const mmControlBtnStyleLight = {
+  width: 30,
+  height: 30,
+  background: "transparent",
+  color: COLORS.textDark,
+  border: "none",
   cursor: "pointer",
 };
 

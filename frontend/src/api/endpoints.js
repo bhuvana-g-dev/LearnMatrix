@@ -49,12 +49,17 @@ export const ENDPOINTS = {
     DELETE: (uid, setId) => `/flashcards/${uid}/${setId}`, // DELETE
   },
   STUDY_SUMMARY: {
-    // backend/routes/ppt_routes.py — each downloads a .pptx directly, not a JSON envelope
+    // backend/routes/ppt_routes.py — each downloads a file directly, not a JSON envelope
     DOWNLOAD_TOPIC_PPTX: (skill, topic, focusBand) =>
       `/study-summary/topic/${encodeURIComponent(skill)}/${encodeURIComponent(topic)}/${encodeURIComponent(focusBand)}/pptx`,
     DOWNLOAD_SOURCES_PPTX: (uid) => `/study-summary/sources/${uid}/pptx`,
     DOWNLOAD_CHAT_PPTX: (uid, sessionId) => `/study-summary/chat/${uid}/${sessionId}/pptx`,
     DOWNLOAD_CUSTOM_PPTX: "/study-summary/custom/pptx", // POST {text}
+    DOWNLOAD_TOPIC_PDF: (skill, topic, focusBand) =>
+      `/study-summary/topic/${encodeURIComponent(skill)}/${encodeURIComponent(topic)}/${encodeURIComponent(focusBand)}/pdf`,
+    DOWNLOAD_SOURCES_PDF: (uid) => `/study-summary/sources/${uid}/pdf`,
+    DOWNLOAD_CHAT_PDF: (uid, sessionId) => `/study-summary/chat/${uid}/${sessionId}/pdf`,
+    DOWNLOAD_CUSTOM_PDF: "/study-summary/custom/pdf", // POST {text}
   },
   MINDMAP: {
     // backend/routes/mindmap_routes.py — stateless, structures text into a mind map
@@ -74,14 +79,6 @@ export const ENDPOINTS = {
   RECOMMENDATION: {
     // Placeholder for the future Scikit-Learn recommendation endpoint.
     ROADMAP: "/recommendation/roadmap",
-  },
-  LESSONS: {
-    // Lessons layer (backend/routes/lesson_routes.py) — Topic -> ordered
-    // list of bite-sized Lessons. Lesson CONTENT itself is fetched via
-    // the existing learning/topic endpoint with a composite topic key
-    // (see services/lessonService.js), not a separate content route.
-    LIST: (skill, topic) =>
-      `/lessons/${encodeURIComponent(skill)}/${encodeURIComponent(topic)}`, // GET
   },
   TOPIC_QUIZ: {
     // Post-topic quiz + adaptive revision (backend/routes/topic_quiz_routes.py).
@@ -114,7 +111,6 @@ export const ENDPOINTS = {
       SET_ENABLED: (resourceId) => `/admin/learning-resources/${resourceId}/enabled`, // PATCH {enabled}
       SUGGEST_AI: "/admin/learning-resources/suggest", // POST {skill, topic, count} — non-video types
       SUGGEST_YOUTUBE: "/admin/learning-resources/suggest-youtube", // POST {skill, topic, count} — real YouTube search
-      BULK_GENERATE_AND_VERIFY: "/admin/learning-resources/bulk-generate-and-verify", // POST {skill, topic, verifiedBy, articleCount?, videoCount?} — generates AND publishes immediately, no review queue
       PENDING: "/admin/learning-resources/pending", // GET, supports ?skill=&topic=
       VERIFY: (resourceId) => `/admin/learning-resources/${resourceId}/verify`, // PATCH
       UNVERIFY: (resourceId) => `/admin/learning-resources/${resourceId}/unverify`, // PATCH — verified -> pending, hidden from students

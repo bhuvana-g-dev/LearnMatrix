@@ -43,6 +43,9 @@ import {
   downloadSourcesSummaryPptx,
   downloadChatSummaryPptx,
   downloadCustomTextPptx,
+  downloadSourcesSummaryPdf,
+  downloadChatSummaryPdf,
+  downloadCustomTextPdf,
 } from "../services/pptService";
 import { generateMindMap } from "../services/mindmapService";
 import { COLORS, GRADIENTS, GLASS_CARD } from "../constants/theme";
@@ -88,6 +91,7 @@ export default function AIStudyAssistantScreen({ uid }) {
   const [studioLoading, setStudioLoading] = useState(false);
   const [studioError, setStudioError] = useState("");
   const [pptLoading, setPptLoading] = useState(false);
+  const [pptFormat, setPptFormat] = useState("pptx"); // "pptx" | "pdf" — Slide Deck download format
 
   const [flashSet, setFlashSet] = useState(null);
   const [flashIndex, setFlashIndex] = useState(0);
@@ -230,9 +234,11 @@ export default function AIStudyAssistantScreen({ uid }) {
     try {
       if (mode === "chat") {
         if (!activeSessionId) throw new Error("Open or start a chat first.");
-        await downloadChatSummaryPptx(uid, activeSessionId);
+        if (pptFormat === "pdf") await downloadChatSummaryPdf(uid, activeSessionId);
+        else await downloadChatSummaryPptx(uid, activeSessionId);
       } else {
-        await downloadSourcesSummaryPptx(uid);
+        if (pptFormat === "pdf") await downloadSourcesSummaryPdf(uid);
+        else await downloadSourcesSummaryPptx(uid);
       }
     } catch (err) {
       setStudioError(err.message || "Couldn't generate the slide deck.");
@@ -394,7 +400,8 @@ export default function AIStudyAssistantScreen({ uid }) {
     } else if (customTarget === "slidedeck") {
       setPptLoading(true);
       try {
-        await downloadCustomTextPptx(text);
+        if (pptFormat === "pdf") await downloadCustomTextPdf(text);
+        else await downloadCustomTextPptx(text);
         setStudioModal(null);
       } catch (err) {
         setStudioError(err.message || "Couldn't generate the slide deck.");
@@ -724,6 +731,7 @@ export default function AIStudyAssistantScreen({ uid }) {
               label="Slide Deck"
               loading={pptLoading}
               onGenerate={handleDownloadPpt}
+              extra={<FormatToggle value={pptFormat} onChange={setPptFormat} />}
               modes={[
                 { key: "sources", label: "Sources", disabled: sources.length === 0 },
                 { key: "chat", label: "Chat", disabled: !activeSessionId },
@@ -779,6 +787,8 @@ export default function AIStudyAssistantScreen({ uid }) {
                 onGenerate={handleGenerateFromCustomText}
                 error={studioError}
                 loading={customTarget === "slidedeck" ? pptLoading : studioLoading}
+                pptFormat={pptFormat}
+                onPptFormatChange={setPptFormat}
               />
             ) : studioLoading ? (
               <div className="flex items-center justify-center py-16">
@@ -825,7 +835,7 @@ export default function AIStudyAssistantScreen({ uid }) {
 /** StudioActionGroup — one Studio card with N small mode buttons
  * (e.g. Topic/Chat/Sources for Slide Deck & Flashcards, or
  * Sources/Chat/Type for Mind Map & Audio Overview). */
-function StudioActionGroup({ icon: Icon, label, onGenerate, loading, modes }) {
+function StudioActionGroup({ icon: Icon, label, onGenerate, loading, modes, extra }) {
   return (
     <div
       style={{
@@ -847,11 +857,41 @@ function StudioActionGroup({ icon: Icon, label, onGenerate, loading, modes }) {
           {label}
         </p>
       </div>
+      {extra}
       <div className="flex gap-1.5">
         {modes.map((m) => (
           <ModeChip key={m.key} label={m.label} disabled={m.disabled || loading} onClick={() => onGenerate(m.key)} />
         ))}
       </div>
+    </div>
+  );
+}
+
+function FormatToggle({ value, onChange }) {
+  return (
+    <div className="flex gap-1.5 mb-2.5">
+      {[
+        { key: "pptx", label: "PPTX" },
+        { key: "pdf", label: "PDF" },
+      ].map((opt) => {
+        const active = value === opt.key;
+        return (
+          <button
+            key={opt.key}
+            type="button"
+            onClick={() => onChange(opt.key)}
+            className="text-[10px] font-semibold rounded-full"
+            style={{
+              padding: "3px 10px",
+              background: active ? GRADIENTS.purpleSky : COLORS.lavender,
+              color: active ? COLORS.white : COLORS.textMid,
+              cursor: "pointer",
+            }}
+          >
+            {opt.label}
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -909,7 +949,7 @@ function StudioModal({ children, onClose, wide, fullScreen }) {
   );
 }
 
-function CustomInputBody({ target, text, onChange, onGenerate, error, loading }) {
+function CustomInputBody({ target, text, onChange, onGenerate, error, loading, pptFormat, onPptFormatChange }) {
   const titles = {
     mindmap: "Type a topic for your Mind Map",
     audio: "Type a topic for your Audio Overview",
@@ -924,6 +964,7 @@ function CustomInputBody({ target, text, onChange, onGenerate, error, loading })
       <p className="text-xs mb-4" style={{ color: COLORS.textLight }}>
         Paste notes, or just describe what you want covered.
       </p>
+      {target === "slidedeck" && <FormatToggle value={pptFormat} onChange={onPptFormatChange} />}
       <textarea
         value={text}
         onChange={(e) => onChange(e.target.value)}

@@ -246,5 +246,18 @@ class Settings:
         "CLASSIFIER_MODEL_PATH", "models/learner_classifier.pkl"
     )
 
+    # --- Lessons layer (Topic -> multiple bite-sized Lessons) ---
+    # lesson_plans/{skill}__{topic} — ONE cached doc per topic holding
+    # its ordered lesson list, same "generate once on cache miss, reuse
+    # forever after" pattern as services/notes_repository.py's AI notes
+    # cache. A Lesson's actual content (theory + video + resources) is
+    # NOT stored here — it's fetched on demand from the EXISTING
+    # get_topic_package() pipeline by treating the lesson as its own
+    # composite topic key (see services/lesson_service.py), so no new
+    # content-generation machinery is needed for lesson content itself.
+    LESSON_PLANS_COLLECTION: str = os.getenv("LESSON_PLANS_COLLECTION", "lesson_plans")
+    LESSON_MIN_COUNT: int = int(os.getenv("LESSON_MIN_COUNT", 2))
+    LESSON_MAX_COUNT: int = int(os.getenv("LESSON_MAX_COUNT", 5))
+
 
 settings = Settings()

@@ -8,6 +8,8 @@ import QuestionUploadScreen from "./screens/admin/QuestionUploadScreen";
 import QuestionPreviewScreen from "./screens/admin/QuestionPreviewScreen";
 import ResourceBankScreen from "./screens/admin/ResourceBankScreen";
 import StudentRecordsScreen from "./screens/admin/StudentRecordsScreen";
+import Logo from "./components/common/Logo";
+import { COLORS } from "./constants/theme";
 import { useAdminAuth } from "./hooks/useAdminAuth";
 
 /**
@@ -26,6 +28,25 @@ export default function AdminApp() {
   const [editingQuestion, setEditingQuestion] = useState(null); // full question object, or null = Add mode
   const [prefillValues, setPrefillValues] = useState(null); // PDF-extracted candidate row
   const [previewQuestion, setPreviewQuestion] = useState(null);
+
+  // Wait for the saved admin session to be checked before deciding what
+  // to show — otherwise a refresh on the admin panel flashes the Login
+  // screen for a frame even when the admin is still logged in.
+  if (auth.initializing) {
+    return (
+      <div className="flex flex-col items-center justify-center gap-4" style={{ minHeight: "100vh" }}>
+        <motion.div
+          animate={{ scale: [1, 1.06, 1] }}
+          transition={{ duration: 1.4, repeat: Infinity, ease: "easeInOut" }}
+        >
+          <Logo />
+        </motion.div>
+        <p className="text-xs font-medium tracking-wide" style={{ color: COLORS.textMid }}>
+          Please Wait
+        </p>
+      </div>
+    );
+  }
 
   if (!auth.isAuthenticated) {
     return <AdminLoginScreen auth={auth} onSuccess={() => setActiveKey("admin-dashboard")} />;
@@ -89,7 +110,7 @@ export default function AdminApp() {
   } else if (activeKey === "question-preview") {
     content = <QuestionPreviewScreen question={previewQuestion} onBack={backToQuestionBank} />;
   } else if (activeKey === "resource-bank") {
-    content = <ResourceBankScreen admin={auth.admin} />;
+    content = <ResourceBankScreen />;
   } else if (activeKey === "student-records") {
     content = <StudentRecordsScreen />;
   }

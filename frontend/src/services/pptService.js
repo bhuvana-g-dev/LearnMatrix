@@ -2,12 +2,12 @@ import apiClient from "../api/axiosClient";
 import { ENDPOINTS } from "../api/endpoints";
 
 /**
- * pptService — downloads a generated .pptx as a blob (through
- * apiClient, so the auth interceptor still attaches) and triggers a
- * normal browser file download. The backend routes here do NOT return
- * the usual {success, data, message} JSON envelope on success — they
- * stream the file directly — so these functions skip the usual
- * `data.success` check on the happy path.
+ * pptService — downloads a generated .pptx or .pdf study summary as a
+ * blob (through apiClient, so the auth interceptor still attaches) and
+ * triggers a normal browser file download. The backend routes here do
+ * NOT return the usual {success, data, message} JSON envelope on
+ * success — they stream the file directly — so these functions skip
+ * the usual `data.success` check on the happy path.
  */
 async function downloadBlob(url, fallbackFilename) {
   const response = await apiClient.get(url, { responseType: "blob", timeout: 60000 });
@@ -22,7 +22,7 @@ async function downloadBlobPost(url, body, fallbackFilename) {
 async function triggerDownload(response, fallbackFilename) {
   // A failed request with responseType "blob" still resolves as a blob
   // (Flask's JSON error envelope arrives as blob bytes) — if the server
-  // sent JSON instead of a real pptx, surface that error message rather
+  // sent JSON instead of a real file, surface that error message rather
   // than downloading a broken file.
   if (response.data.type === "application/json") {
     const text = await response.data.text();
@@ -39,6 +39,8 @@ async function triggerDownload(response, fallbackFilename) {
   link.remove();
   URL.revokeObjectURL(blobUrl);
 }
+
+// ---------------- PPTX ----------------
 
 /** From an already-generated Learning Hub notes entry. */
 export async function downloadTopicSummaryPptx(skill, topic, focusBand) {
@@ -58,4 +60,23 @@ export async function downloadChatSummaryPptx(uid, sessionId) {
 /** From text the student typed directly into the "Type" mode box. */
 export async function downloadCustomTextPptx(text) {
   await downloadBlobPost(ENDPOINTS.STUDY_SUMMARY.DOWNLOAD_CUSTOM_PPTX, { text }, "custom_study_summary.pptx");
+}
+
+// ---------------- PDF ----------------
+// Same 4 sources as above, same LearnMatrix-branded design, .pdf instead.
+
+export async function downloadTopicSummaryPdf(skill, topic, focusBand) {
+  await downloadBlob(ENDPOINTS.STUDY_SUMMARY.DOWNLOAD_TOPIC_PDF(skill, topic, focusBand), `${topic}_study_summary.pdf`);
+}
+
+export async function downloadSourcesSummaryPdf(uid) {
+  await downloadBlob(ENDPOINTS.STUDY_SUMMARY.DOWNLOAD_SOURCES_PDF(uid), "sources_study_summary.pdf");
+}
+
+export async function downloadChatSummaryPdf(uid, sessionId) {
+  await downloadBlob(ENDPOINTS.STUDY_SUMMARY.DOWNLOAD_CHAT_PDF(uid, sessionId), "chat_study_summary.pdf");
+}
+
+export async function downloadCustomTextPdf(text) {
+  await downloadBlobPost(ENDPOINTS.STUDY_SUMMARY.DOWNLOAD_CUSTOM_PDF, { text }, "custom_study_summary.pdf");
 }

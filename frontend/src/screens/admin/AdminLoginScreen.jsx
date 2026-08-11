@@ -1,12 +1,12 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { Eye, EyeOff, Mail, Lock, ShieldCheck } from "lucide-react";
+import { Eye, EyeOff, User, Lock, ShieldCheck } from "lucide-react";
 import PageShell from "../../components/layout/PageShell";
 import Logo from "../../components/common/Logo";
 import { COLORS, GRADIENTS, GLASS_CARD } from "../../constants/theme";
 
 export default function AdminLoginScreen({ auth, onSuccess }) {
-  const [email, setEmail] = useState("");
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [showPw, setShowPw] = useState(false);
   const [focused, setFocused] = useState("");
@@ -26,7 +26,7 @@ export default function AdminLoginScreen({ auth, onSuccess }) {
 
   const handleLogin = async () => {
     try {
-      await auth.login({ email, password });
+      await auth.login({ username, password });
       onSuccess();
     } catch {
       // auth.error is already set by useAdminAuth and rendered below
@@ -57,16 +57,16 @@ export default function AdminLoginScreen({ auth, onSuccess }) {
 
           <div className="space-y-4">
             <div style={{ position: "relative" }}>
-              <Mail size={17} style={{ position: "absolute", left: 15, top: "50%", transform: "translateY(-50%)", color: COLORS.textLight }} />
+              <User size={17} style={{ position: "absolute", left: 15, top: "50%", transform: "translateY(-50%)", color: COLORS.textLight }} />
               <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="Admin Email"
-                onFocus={() => setFocused("email")}
+                type="text"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                placeholder="Admin Username"
+                onFocus={() => setFocused("username")}
                 onBlur={() => setFocused("")}
                 onKeyDown={(e) => e.key === "Enter" && handleLogin()}
-                style={inputStyle("email")}
+                style={inputStyle("username")}
               />
             </div>
 

@@ -99,16 +99,84 @@ def generate_youtube_suggestions(skill: str, topic: str, count: int = 6) -> list
     return saved
 
 
+def generate_and_auto_verify(
+    skill: str, topic: str, verified_by: str,
+    article_count: int = 5, video_count: int = 4,
+) -> dict:
+    """
+    The bulk-seeding counterpart to generate_pending_suggestions() +
+    generate_youtube_suggestions(): generates BOTH non-video resources
+    (via the AI agent) and videos (via real YouTube search) for one
+    (skill, topic), but saves every result straight to status="verified"
+    instead of "pending" — skipping the one-by-one manual review queue
+    entirely.
+
+    This is a deliberate, explicit trade: for ~150+ topics across a
+    role, requiring a human to click Verify on every single AI
+    suggestion isn't realistic, and video results are already a REAL
+    YouTube API result (not an LLM guessing a URL) with no factual
+    "does this exist" risk — only a taste/relevance risk, same as any
+    of YouTube's own search results. verified_by exists specifically so
+    every resource this creates is still attributable to whoever ran
+    the bulk job (see scripts/bulk_generate_resources.py), and every
+    one still goes through Resource Bank's normal
+    unverify/edit/disable/delete tools afterward — this trades "human
+    reviews before publish" for "human can review after publish",
+    it doesn't remove the ability to review at all.
+
+    Used by: scripts/bulk_generate_resources.py (whole-role CLI sweep)
+    and POST /api/admin/learning-resources/bulk-generate-and-verify
+    (single skill+topic, triggered from the Resource Bank UI).
+    """
+    db = get_firestore_client()
+    created = {"skill": skill, "topic": topic, "articles": [], "videos": [], "errors": []}
+
+    try:
+        agent = ResourceSuggestionAgent()
+        suggestions = agent.run(skill=skill, topic=topic, count=article_count)
+        for s in suggestions:
+            created["articles"].append(
+                add_resource(
+                    db, skill=skill, topic=topic, resource_type=s["type"],
+                    title=s["title"], url=s["url"],
+                    status="verified", source="ai_suggested", verified_by=verified_by,
+                )
+            )
+    except ResourceSuggestionError as exc:
+        created["errors"].append(f"article/github generation: {exc}")
+
+    try:
+        videos = search_videos(f"{topic} {skill} tutorial", max_results=video_count)
+        for v in videos:
+            created["videos"].append(
+                add_resource(
+                    db, skill=skill, topic=topic, resource_type="video",
+                    title=v["title"], url=v["url"],
+                    status="verified", source="youtube_api", verified_by=verified_by,
+                    thumbnail=v["thumbnail"], channel_name=v["channelName"],
+                    duration_seconds=v["durationSeconds"], view_count=v["viewCount"],
+                    published_at=v["publishedAt"],
+                )
+            )
+    except YouTubeServiceError as exc:
+        created["errors"].append(f"video search: {exc}")
+
+    return created
+
+
 def get_pending_queue(skill: str | None = None, topic: str | None = None) -> list[dict]:
     """The admin review queue — everything awaiting a human decision."""
     db = get_firestore_client()
     return list_resources(db, skill=skill, topic=topic, status="pending")
 
 
-def verify_resource(resource_id: str) -> dict:
-    """Admin confirmed this link is real and a good fit — now visible to students."""
+def verify_resource(resource_id: str, verified_by: str = "") -> dict:
+    """Admin confirmed this link is real and a good fit — now visible to
+    students. verified_by (email/username) is recorded for the audit
+    trail shown in the Resource Bank (see resource_repository.py's
+    module docstring)."""
     db = get_firestore_client()
-    return update_resource_status(db, resource_id, "verified")
+    return update_resource_status(db, resource_id, "verified", verified_by=verified_by)
 
 
 def unverify_resource(resource_id: str) -> dict:

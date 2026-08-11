@@ -26,14 +26,22 @@ re-review. Missing/None is treated as enabled=True everywhere this is
 read, so every resource created before this field existed keeps working
 exactly as before.
 
+`verifiedBy` — email/username of whoever is responsible for a
+"verified" resource being live: whoever clicked Verify in the review
+queue, or the identity passed to a bulk auto-verify run (see
+resource_review_service.generate_and_auto_verify() /
+scripts/bulk_generate_resources.py). Empty string for "pending"/
+"rejected" resources. Display/audit only, shown next to the Verified
+badge in the Resource Bank — nothing reads it to gate access.
+
     learning_resources/{resourceId}
         skill, topic, type ("video"|"documentation"|"article"|"pdf"|
         "cheatsheet"|"practice"|"github"), title, url, status, source
         ("ai_suggested"|"youtube_api"|"manual"), difficulty
         ("Beginner"|"Intermediate"|"Advanced"|None), description,
-        isPinned, enabled, thumbnail, channelName, durationSeconds,
-        viewCount, publishedAt (video-only metadata, "" / 0 / None for
-        non-video types), addedAt, reviewedAt, updatedAt
+        isPinned, enabled, verifiedBy, thumbnail, channelName,
+        durationSeconds, viewCount, publishedAt (video-only metadata,
+        "" / 0 / None for non-video types), addedAt, reviewedAt, updatedAt
 """
 
 from firebase_admin import firestore
@@ -51,7 +59,7 @@ def add_resource(
     status: str = "verified", source: str = "manual",
     difficulty: str | None = None, description: str = "", is_pinned: bool = False,
     thumbnail: str = "", channel_name: str = "", duration_seconds: int = 0,
-    view_count: int = 0, published_at: str = "",
+    view_count: int = 0, published_at: str = "", verified_by: str = "",
 ) -> dict:
     """
     Default status="verified" because a resource typed in directly by an
@@ -59,6 +67,15 @@ def add_resource(
     person adding it — only AI/YouTube-suggested resources
     (source="ai_suggested" / "youtube_api") should ever be saved as
     "pending".
+
+    verified_by: email/username of whoever is responsible for this
+    resource being live — an admin manually adding one (status=
+    "verified" default), or the identity passed by a bulk auto-verify
+    run (see services/resource_review_service.py's
+    generate_and_auto_verify()). Empty string for anything saved as
+    "pending" (nobody has verified it yet). Purely a display/audit
+    field — the Resource Bank shows "Verified by {verifiedBy}" next to
+    the badge; nothing reads this to make access decisions.
 
     The video-metadata params (thumbnail/channel_name/duration_seconds/
     view_count/published_at) are meaningless for non-video types and
@@ -91,6 +108,7 @@ def add_resource(
         "durationSeconds": duration_seconds,
         "viewCount": view_count,
         "publishedAt": published_at,
+        "verifiedBy": verified_by if status == "verified" else "",
         "addedAt": SERVER_TIMESTAMP,
         "reviewedAt": SERVER_TIMESTAMP if status != "pending" else None,
         "updatedAt": SERVER_TIMESTAMP,
@@ -152,12 +170,15 @@ def list_resources(
     return results
 
 
-def update_resource_status(db, resource_id: str, new_status: str) -> dict:
+def update_resource_status(db, resource_id: str, new_status: str, verified_by: str = "") -> dict:
     if new_status not in VALID_STATUSES:
         raise ValueError(f"status must be one of {VALID_STATUSES}, got '{new_status}'")
 
     doc_ref = db.collection(settings.LEARNING_RESOURCES_COLLECTION).document(resource_id)
-    doc_ref.update({"status": new_status, "reviewedAt": SERVER_TIMESTAMP, "updatedAt": SERVER_TIMESTAMP})
+    updates = {"status": new_status, "reviewedAt": SERVER_TIMESTAMP, "updatedAt": SERVER_TIMESTAMP}
+    if new_status == "verified":
+        updates["verifiedBy"] = verified_by
+    doc_ref.update(updates)
     saved = doc_ref.get().to_dict()
     saved["id"] = doc_ref.id
     return saved

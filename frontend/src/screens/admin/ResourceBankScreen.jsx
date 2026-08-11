@@ -2,13 +2,13 @@ import { useState, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
 import {
   Plus, Trash2, Pencil, Pin, PinOff, Eye, EyeOff, Check, X,
-  Youtube, Sparkles, Loader2, Undo2,
+  Youtube, Sparkles, Loader2, Undo2, Zap,
 } from "lucide-react";
 import { COLORS, GRADIENTS, GLASS_CARD } from "../../constants/theme";
 import {
   fetchResources, createResource, updateResource, deleteResource,
   setResourcePinned, setResourceEnabled,
-  suggestResourcesViaAI, suggestResourcesViaYouTube,
+  suggestResourcesViaAI, suggestResourcesViaYouTube, bulkGenerateAndVerify,
   fetchPendingResources, verifyResource, unverifyResource, rejectResource,
 } from "../../services/adminResourceService";
 
@@ -37,7 +37,7 @@ const EMPTY_FORM = { skill: "", topic: "", type: "video", title: "", url: "", di
  *     workflow (services/resource_review_service.py), now fed by BOTH
  *     the Gemini suggestion agent AND real YouTube search results.
  */
-export default function ResourceBankScreen() {
+export default function ResourceBankScreen({ admin }) {
   const [resources, setResources] = useState([]);
   const [pending, setPending] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -198,9 +198,40 @@ export default function ResourceBankScreen() {
     }
   };
 
+  const handleBulkGenerate = async () => {
+    setSuggestError("");
+    setSuggestMessage("");
+    if (!suggestSkill.trim() || !suggestTopic.trim()) {
+      setSuggestError("Enter both a skill and a topic first.");
+      return;
+    }
+    if (!admin?.email) {
+      setSuggestError("No logged-in admin identity found — please log back in.");
+      return;
+    }
+    setSuggesting("bulk");
+    try {
+      const result = await bulkGenerateAndVerify(suggestSkill.trim(), suggestTopic.trim(), admin.email);
+      const total = result.articles.length + result.videos.length;
+      setSuggestMessage(
+        total > 0
+          ? `Published ${total} resource(s) straight to students (${result.articles.length} article/doc/practice + ${result.videos.length} video) — verified by ${admin.email}.`
+          : "No resources could be generated for that skill/topic."
+      );
+      if (result.errors.length > 0) {
+        setSuggestError(result.errors.join(" · "));
+      }
+      await loadResources();
+    } catch (err) {
+      setSuggestError(err.message || "Bulk generation failed.");
+    } finally {
+      setSuggesting("");
+    }
+  };
+
   const handleVerify = async (resource) => {
     try {
-      await verifyResource(resource.id);
+      await verifyResource(resource.id, admin?.email || "");
       setPending((p) => p.filter((r) => r.id !== resource.id));
       await loadResources();
     } catch (err) {
@@ -294,6 +325,20 @@ export default function ResourceBankScreen() {
           >
             {suggesting === "ai" ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
             AI Suggest (docs/articles/github)
+          </motion.button>
+          <motion.button
+            onClick={handleBulkGenerate}
+            disabled={!!suggesting}
+            whileHover={{ y: -1 }}
+            title="Generates AI docs/articles/github AND a YouTube video, and publishes them immediately — no review queue."
+            className="flex items-center gap-1.5 text-sm font-semibold"
+            style={{
+              padding: "9px 16px", borderRadius: 9999, background: "#22C55E", color: "#fff",
+              border: "none", cursor: suggesting ? "default" : "pointer", opacity: suggesting ? 0.7 : 1,
+            }}
+          >
+            {suggesting === "bulk" ? <Loader2 size={14} className="animate-spin" /> : <Zap size={14} />}
+            Generate &amp; Publish Now
           </motion.button>
         </div>
         {suggestError && <p className="text-xs mt-2.5 font-medium" style={{ color: "#DC2626" }}>{suggestError}</p>}
@@ -459,6 +504,11 @@ export default function ResourceBankScreen() {
                     >
                       {r.status}
                     </span>
+                    {r.status === "verified" && r.verifiedBy && (
+                      <span className="block text-[10px] mt-1" style={{ color: COLORS.textLight }}>
+                        by {r.verifiedBy}
+                      </span>
+                    )}
                     {r.enabled === false && (
                       <span className="ml-1.5 px-2 py-0.5 text-[10px] font-bold rounded-full" style={{ color: "#fff", background: "#8A93A8" }}>
                         Hidden

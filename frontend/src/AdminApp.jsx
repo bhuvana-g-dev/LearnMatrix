@@ -89,7 +89,7 @@ export default function AdminApp() {
   } else if (activeKey === "question-preview") {
     content = <QuestionPreviewScreen question={previewQuestion} onBack={backToQuestionBank} />;
   } else if (activeKey === "resource-bank") {
-    content = <ResourceBankScreen />;
+    content = <ResourceBankScreen admin={auth.admin} />;
   } else if (activeKey === "student-records") {
     content = <StudentRecordsScreen />;
   }

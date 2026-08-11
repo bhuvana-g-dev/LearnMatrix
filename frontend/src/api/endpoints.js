@@ -31,10 +31,6 @@ export const ENDPOINTS = {
     GENERATE_DIAGNOSTIC_ASSESSMENT: "/ai/generate-diagnostic-assessment",
     EVALUATE_DIAGNOSTIC_ASSESSMENT: "/ai/evaluate-diagnostic-assessment",
     GENERATE_ROADMAP: "/ai/generate-roadmap",
-
-    // "Quit Role" (Learning Hub) — wipes the saved assessment + roadmap
-    // for this uid so Role Selection unlocks again.
-    QUIT_ROLE: (uid) => `/career-path/${uid}`,
   },
   AI_CHAT: {
     // AI Study Assistant chat (backend/routes/ai_chat_routes.py).
@@ -79,6 +75,14 @@ export const ENDPOINTS = {
     // Placeholder for the future Scikit-Learn recommendation endpoint.
     ROADMAP: "/recommendation/roadmap",
   },
+  LESSONS: {
+    // Lessons layer (backend/routes/lesson_routes.py) — Topic -> ordered
+    // list of bite-sized Lessons. Lesson CONTENT itself is fetched via
+    // the existing learning/topic endpoint with a composite topic key
+    // (see services/lessonService.js), not a separate content route.
+    LIST: (skill, topic) =>
+      `/lessons/${encodeURIComponent(skill)}/${encodeURIComponent(topic)}`, // GET
+  },
   TOPIC_QUIZ: {
     // Post-topic quiz + adaptive revision (backend/routes/topic_quiz_routes.py).
     // Fired when a learner hits "Next" on a topic in CourseWorkspaceScreen.
@@ -110,6 +114,7 @@ export const ENDPOINTS = {
       SET_ENABLED: (resourceId) => `/admin/learning-resources/${resourceId}/enabled`, // PATCH {enabled}
       SUGGEST_AI: "/admin/learning-resources/suggest", // POST {skill, topic, count} — non-video types
       SUGGEST_YOUTUBE: "/admin/learning-resources/suggest-youtube", // POST {skill, topic, count} — real YouTube search
+      BULK_GENERATE_AND_VERIFY: "/admin/learning-resources/bulk-generate-and-verify", // POST {skill, topic, verifiedBy, articleCount?, videoCount?} — generates AND publishes immediately, no review queue
       PENDING: "/admin/learning-resources/pending", // GET, supports ?skill=&topic=
       VERIFY: (resourceId) => `/admin/learning-resources/${resourceId}/verify`, // PATCH
       UNVERIFY: (resourceId) => `/admin/learning-resources/${resourceId}/unverify`, // PATCH — verified -> pending, hidden from students

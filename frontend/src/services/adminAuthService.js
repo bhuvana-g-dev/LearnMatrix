@@ -56,9 +56,15 @@ export async function loginAdmin(credentials) {
 }
 
 // Restores the session on page load/refresh (useAdminAuth's initial
-// state) — no network call in the current dummy layer, just checks the
-// token saved by loginAdmin().
-export function getSavedAdmin() {
+// state) — synchronous today (just a localStorage read), but kept
+// Promise-based so the FUTURE real-token-verification call slots in
+// here without changing how useAdminAuth calls it.
+export async function restoreAdminSession() {
+  // ---- FUTURE ----
+  // const { data } = await apiClient.get(ENDPOINTS.ADMIN.ME);
+  // return data.admin ? { admin: data.admin } : null;
+
+  // ---- CURRENT (dummy) ----
   const token = localStorage.getItem(ADMIN_TOKEN_KEY);
   const username = localStorage.getItem(ADMIN_USERNAME_KEY);
   if (!token || !username) return null;

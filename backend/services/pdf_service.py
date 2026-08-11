@@ -91,11 +91,19 @@ def generate_chat_summary_pdf(uid: str, session_id: str) -> tuple[BytesIO, str]:
 
 
 def generate_custom_text_pdf(text: str) -> tuple[BytesIO, str]:
+    """AI-expands the student's short prompt/notes into a full deck —
+    see ppt_service.py's generate_custom_text_pptx for why (same
+    SlideDeckAgent call, so the pptx and pdf downloads of a typed
+    prompt always contain the same generated content)."""
     if not text or not text.strip():
         raise PdfServiceError("Type something first.")
-    title = text.strip().split("\n")[0][:60] or "Your Topic"
-    notes = {"title": title, "summary": "", "sections": [{"heading": "Your Input", "content": text.strip()}], "keyTakeaways": []}
-    return _build_pdf_from_notes(notes, subtitle="Study Summary"), "custom_study_summary.pdf"
+    from services.slide_deck_service import generate_deck_content, SlideDeckServiceError
+
+    try:
+        notes = generate_deck_content(text.strip())
+    except SlideDeckServiceError as exc:
+        raise PdfServiceError(str(exc)) from exc
+    return build_pdf_from_deck_content(notes, subtitle="Study Summary"), f"{_safe_filename(notes.get('title') or 'custom')}_study_summary.pdf"
 
 
 # ---------------------------------------------------------------------------
@@ -103,6 +111,12 @@ def generate_custom_text_pdf(text: str) -> tuple[BytesIO, str]:
 # ---------------------------------------------------------------------------
 
 def _build_pdf_from_notes(notes: dict, subtitle: str) -> BytesIO:
+    return build_pdf_from_deck_content(notes, subtitle)
+
+
+def build_pdf_from_deck_content(notes: dict, subtitle: str) -> BytesIO:
+    """Public entry point — same "from-content" purpose as
+    ppt_service.py's build_pptx_from_deck_content."""
     buffer = BytesIO()
     c = canvas.Canvas(buffer, pagesize=(PAGE_W, PAGE_H))
 

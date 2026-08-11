@@ -1105,6 +1105,7 @@ function MindMapView({ map }) {
   const tree = normalizeMindMapTree(map);
   const [collapsed, setCollapsed] = useState(() => collectDefaultCollapsed(tree, 0, "r", new Set()));
   const [zoom, setZoom] = useState(1);
+  const [showDownloadMenu, setShowDownloadMenu] = useState(false);
   const svgRef = useRef(null);
 
   // A newly generated mind map re-uses this same modal/component — reset
@@ -1149,12 +1150,15 @@ function MindMapView({ map }) {
   // real HTML <div>s (for click-to-collapse), which a plain
   // XMLSerializer of the <svg> alone would NOT capture, so the export
   // has to redraw everything as SVG shapes from scratch.
-  function handleDownload() {
+  // Builds a self-contained SVG string from any layout result (either the
+  // currently visible/collapsed nodes, or a fully-expanded layout) and
+  // triggers the file download.
+  function downloadLayoutAsSvg(layoutNodes, layoutLinks, layoutById, layoutWidth, layoutHeight, suffix) {
     const bg = "#151B2C";
-    const linkMarkup = links
+    const linkMarkup = layoutLinks
       .map((link) => {
-        const from = byId[link.from];
-        const to = byId[link.to];
+        const from = layoutById[link.from];
+        const to = layoutById[link.to];
         if (!from || !to) return "";
         const x1 = from.x + from.w;
         const y1 = from.y;
@@ -1165,7 +1169,7 @@ function MindMapView({ map }) {
       })
       .join("\n");
 
-    const nodeMarkup = nodes
+    const nodeMarkup = layoutNodes
       .map((n) => {
         const palette = n.depth === 0 ? NODE_COLORS.root : n.hasChildren ? NODE_COLORS.branch : NODE_COLORS.leaf;
         const rx = n.x;
@@ -1178,8 +1182,8 @@ function MindMapView({ map }) {
       .join("\n");
 
     const svgMarkup = `<?xml version="1.0" standalone="no"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
-  <rect x="0" y="0" width="${width}" height="${height}" fill="${bg}" />
+<svg xmlns="http://www.w3.org/2000/svg" width="${layoutWidth}" height="${layoutHeight}" viewBox="0 0 ${layoutWidth} ${layoutHeight}">
+  <rect x="0" y="0" width="${layoutWidth}" height="${layoutHeight}" fill="${bg}" />
   ${linkMarkup}
   ${nodeMarkup}
 </svg>`;
@@ -1188,44 +1192,101 @@ function MindMapView({ map }) {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `${(tree.title || "mindmap").replace(/\s+/g, "_")}.svg`;
+    a.download = `${(tree.title || "mindmap").replace(/\s+/g, "_")}${suffix}.svg`;
     a.click();
     URL.revokeObjectURL(url);
   }
 
+  // Option 1: exactly what's on screen right now (respects collapsed branches).
+  function handleDownloadCurrentView() {
+    downloadLayoutAsSvg(nodes, links, byId, width, height, "_current_view");
+    setShowDownloadMenu(false);
+  }
+
+  // Option 2: the whole tree, fully expanded, regardless of what's collapsed on screen.
+  function handleDownloadFullMap() {
+    const full = layoutMindMap({ label: tree.title, children: tree.children }, new Set());
+    const fullById = Object.fromEntries(full.nodes.map((n) => [n.id, n]));
+    downloadLayoutAsSvg(full.nodes, full.links, fullById, full.width, full.height, "_full");
+    setShowDownloadMenu(false);
+  }
+
   return (
     <div className="flex flex-col" style={{ height: "100vh" }}>
-      <div className="px-6 pt-5 pb-3" style={{ borderBottom: `1px solid ${COLORS.border}` }}>
-        <p className="text-base font-semibold mb-1 pr-8" style={{ color: COLORS.textDark }}>
-          Mind Map
-        </p>
-        <p className="text-xs" style={{ color: COLORS.textLight }}>
-          {tree.title} · click a node's circle to expand that branch
-        </p>
+      <div className="flex items-start justify-between gap-4 px-6 pt-5 pb-3" style={{ borderBottom: `1px solid ${COLORS.border}` }}>
+        <div>
+          <p className="text-base font-semibold mb-1 pr-8" style={{ color: COLORS.textDark }}>
+            Mind Map
+          </p>
+          <p className="text-xs" style={{ color: COLORS.textLight }}>
+            {tree.title} · click a node's circle to expand that branch
+          </p>
+        </div>
+
+        {/* zoom / view controls — a toolbar row, not overlaid on the canvas, so it never covers node content */}
+        <div className="flex items-center gap-1 p-1 rounded-xl mr-8" style={{ background: COLORS.lavender }}>
+          <button type="button" onClick={expandAll} title="Expand all" className="flex items-center justify-center rounded-lg" style={mmControlBtnStyleLight}>
+            <ChevronsRight size={15} style={{ transform: "rotate(90deg)" }} />
+          </button>
+          <button type="button" onClick={collapseAll} title="Collapse all" className="flex items-center justify-center rounded-lg" style={mmControlBtnStyleLight}>
+            <ChevronsLeft size={15} style={{ transform: "rotate(90deg)" }} />
+          </button>
+          <div style={{ width: 1, height: 18, background: COLORS.border, margin: "0 2px" }} />
+          <button type="button" onClick={() => setZoom((z) => Math.min(z + 0.15, 2))} title="Zoom in" className="flex items-center justify-center rounded-lg" style={mmControlBtnStyleLight}>
+            <Plus size={16} />
+          </button>
+          <button type="button" onClick={() => setZoom((z) => Math.max(z - 0.15, 0.4))} title="Zoom out" className="flex items-center justify-center rounded-lg" style={mmControlBtnStyleLight}>
+            <span style={{ fontSize: 18, lineHeight: 1, fontWeight: 700 }}>–</span>
+          </button>
+          <div style={{ width: 1, height: 18, background: COLORS.border, margin: "0 2px" }} />
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setShowDownloadMenu((v) => !v)}
+              title="Download"
+              className="flex items-center justify-center rounded-lg"
+              style={mmControlBtnStyleLight}
+            >
+              <FileText size={15} />
+            </button>
+            {showDownloadMenu && (
+              <>
+                <div className="fixed inset-0 z-10" onClick={() => setShowDownloadMenu(false)} />
+                <div
+                  className="absolute right-0 top-full mt-1 rounded-xl overflow-hidden z-20"
+                  style={{ background: COLORS.white, boxShadow: "0 8px 24px rgba(13,27,61,0.18)", border: `1px solid ${COLORS.border}`, minWidth: 190 }}
+                >
+                  <button
+                    type="button"
+                    onClick={handleDownloadCurrentView}
+                    className="w-full text-left px-3 py-2.5 text-xs font-semibold"
+                    style={{ color: COLORS.textDark, cursor: "pointer" }}
+                  >
+                    Current view
+                    <span className="block text-[10px] font-normal mt-0.5" style={{ color: COLORS.textLight }}>
+                      Only what's expanded now
+                    </span>
+                  </button>
+                  <div style={{ height: 1, background: COLORS.border }} />
+                  <button
+                    type="button"
+                    onClick={handleDownloadFullMap}
+                    className="w-full text-left px-3 py-2.5 text-xs font-semibold"
+                    style={{ color: COLORS.textDark, cursor: "pointer" }}
+                  >
+                    Full mind map
+                    <span className="block text-[10px] font-normal mt-0.5" style={{ color: COLORS.textLight }}>
+                      Every branch, fully expanded
+                    </span>
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
       </div>
 
       <div className="relative flex-1 overflow-auto" style={{ background: "#151B2C" }}>
-        {/* zoom / view controls */}
-        <div className="absolute top-3 right-3 z-10 flex flex-col gap-1 p-1 rounded-xl" style={{ background: "rgba(0,0,0,0.35)", backdropFilter: "blur(2px)" }}>
-          <button type="button" onClick={expandAll} title="Expand all" className="flex items-center justify-center rounded-lg" style={mmControlBtnStyle}>
-            <ChevronsRight size={15} style={{ transform: "rotate(90deg)" }} />
-          </button>
-          <button type="button" onClick={collapseAll} title="Collapse all" className="flex items-center justify-center rounded-lg" style={mmControlBtnStyle}>
-            <ChevronsLeft size={15} style={{ transform: "rotate(90deg)" }} />
-          </button>
-          <div style={{ height: 1, background: "rgba(255,255,255,0.15)", margin: "2px 4px" }} />
-          <button type="button" onClick={() => setZoom((z) => Math.min(z + 0.15, 2))} title="Zoom in" className="flex items-center justify-center rounded-lg" style={mmControlBtnStyle}>
-            <Plus size={16} />
-          </button>
-          <button type="button" onClick={() => setZoom((z) => Math.max(z - 0.15, 0.4))} title="Zoom out" className="flex items-center justify-center rounded-lg" style={mmControlBtnStyle}>
-            <span style={{ fontSize: 18, lineHeight: 1, fontWeight: 700 }}>–</span>
-          </button>
-          <div style={{ height: 1, background: "rgba(255,255,255,0.15)", margin: "2px 4px" }} />
-          <button type="button" onClick={handleDownload} title="Download as SVG" className="flex items-center justify-center rounded-lg" style={mmControlBtnStyle}>
-            <FileText size={15} />
-          </button>
-        </div>
-
         <div style={{ width: width * zoom, height: height * zoom, position: "relative" }}>
           <div style={{ width, height, transform: `scale(${zoom})`, transformOrigin: "0 0", position: "absolute", top: 0, left: 0 }}>
             <svg ref={svgRef} width={width} height={height} className="absolute inset-0">

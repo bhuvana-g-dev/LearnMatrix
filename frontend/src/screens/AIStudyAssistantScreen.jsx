@@ -23,6 +23,7 @@ import {
   Loader2,
   Trash2,
   MessageSquare,
+  Download,
 } from "lucide-react";
 import {
   sendChatMessage,
@@ -42,12 +43,11 @@ import {
 import {
   downloadSourcesSummaryPptx,
   downloadChatSummaryPptx,
-  downloadCustomTextPptx,
   downloadSourcesSummaryPdf,
   downloadChatSummaryPdf,
-  downloadCustomTextPdf,
 } from "../services/pptService";
 import { generateMindMap } from "../services/mindmapService";
+import { generateSlideDeckPreview, downloadDeckContentPptx, downloadDeckContentPdf } from "../services/slideDeckService";
 import { COLORS, GRADIENTS, GLASS_CARD } from "../constants/theme";
 
 /**
@@ -92,6 +92,7 @@ export default function AIStudyAssistantScreen({ uid }) {
   const [studioError, setStudioError] = useState("");
   const [pptLoading, setPptLoading] = useState(false);
   const [pptFormat, setPptFormat] = useState("pptx"); // "pptx" | "pdf" — Slide Deck download format
+  const [slideDeckContent, setSlideDeckContent] = useState(null); // AI-generated {title, summary, sections, keyTakeaways} for the in-app preview
 
   const [flashSet, setFlashSet] = useState(null);
   const [flashIndex, setFlashIndex] = useState(0);
@@ -398,15 +399,14 @@ export default function AIStudyAssistantScreen({ uid }) {
         setStudioLoading(false);
       }
     } else if (customTarget === "slidedeck") {
-      setPptLoading(true);
+      setStudioLoading(true);
+      setStudioModal("slidedeck-preview");
       try {
-        if (pptFormat === "pdf") await downloadCustomTextPdf(text);
-        else await downloadCustomTextPptx(text);
-        setStudioModal(null);
+        setSlideDeckContent(await generateSlideDeckPreview(text));
       } catch (err) {
         setStudioError(err.message || "Couldn't generate the slide deck.");
       } finally {
-        setPptLoading(false);
+        setStudioLoading(false);
       }
     }
   }
@@ -417,6 +417,7 @@ export default function AIStudyAssistantScreen({ uid }) {
     setIsPaused(false);
     setStudioModal(null);
     setStudioError("");
+    setSlideDeckContent(null);
   }
 
   function buildAudioScript(notes) {
@@ -776,8 +777,8 @@ export default function AIStudyAssistantScreen({ uid }) {
         {studioModal && (
           <StudioModal
             onClose={closeStudioModal}
-            wide={studioModal === "mindmap" && !studioLoading && !studioError}
-            fullScreen={studioModal === "mindmap" && !studioLoading && !studioError}
+            wide={(studioModal === "mindmap" || studioModal === "slidedeck-preview") && !studioLoading && !studioError}
+            fullScreen={(studioModal === "mindmap" || studioModal === "slidedeck-preview") && !studioLoading && !studioError}
           >
             {studioModal === "custom-input" ? (
               <CustomInputBody
@@ -815,6 +816,25 @@ export default function AIStudyAssistantScreen({ uid }) {
               />
             ) : studioModal === "mindmap" && mindMapNotes ? (
               <MindMapView map={mindMapNotes} />
+            ) : studioModal === "slidedeck-preview" && slideDeckContent ? (
+              <SlideDeckPreview
+                deck={slideDeckContent}
+                format={pptFormat}
+                onFormatChange={setPptFormat}
+                downloading={pptLoading}
+                onDownload={async () => {
+                  setPptLoading(true);
+                  setStudioError("");
+                  try {
+                    if (pptFormat === "pdf") await downloadDeckContentPdf(slideDeckContent);
+                    else await downloadDeckContentPptx(slideDeckContent);
+                  } catch (err) {
+                    setStudioError(err.message || "Couldn't download the slide deck.");
+                  } finally {
+                    setPptLoading(false);
+                  }
+                }}
+              />
             ) : studioModal === "audio" && audioNotes ? (
               <AudioOverviewBody
                 notes={audioNotes}
@@ -1402,6 +1422,204 @@ function MindMapView({ map }) {
 
 // Toolbar row sits on the (light) modal header, so controls need dark
 // icons/text rather than white-on-dark styling.
+// ---------------- Slide Deck: Gamma/NotebookLM-style in-app preview ----------------
+// Flattens the AI-generated {title, summary, sections, keyTakeaways} deck into the
+// same slide sequence services/ppt_service.py's build_deck_sections() produces on
+// the backend, so the numbered thumbnails/preview here match the downloaded file
+// slide-for-slide.
+const SD_ACCENT_CYCLE = [COLORS.purple, COLORS.sky, COLORS.pink];
+
+function buildSlidesFromDeck(deck) {
+  const slides = [{ kind: "title", title: deck.title || "Study Summary", subtitle: "Study Summary" }];
+  if (deck.summary) slides.push({ kind: "text", heading: "Summary", body: deck.summary });
+  (deck.sections || []).forEach((s) => {
+    if (s.content) slides.push({ kind: "text", heading: s.heading || "Section", body: s.content });
+  });
+  if (deck.keyTakeaways?.length) slides.push({ kind: "bullets", heading: "Key Takeaways", items: deck.keyTakeaways });
+  return slides;
+}
+
+function SlideDeckPreview({ deck, format, onFormatChange, downloading, onDownload }) {
+  const slides = buildSlidesFromDeck(deck);
+  const [active, setActive] = useState(0);
+  const current = slides[active];
+
+  return (
+    <div className="flex flex-col" style={{ height: "100vh" }}>
+      <div className="flex items-start justify-between gap-4 px-6 pt-5 pb-3" style={{ borderBottom: `1px solid ${COLORS.border}` }}>
+        <div>
+          <p className="text-base font-semibold mb-1 pr-8" style={{ color: COLORS.textDark }}>
+            Slide Deck
+          </p>
+          <p className="text-xs" style={{ color: COLORS.textLight }}>
+            {deck.title} · {slides.length} slides
+          </p>
+        </div>
+
+        <div className="flex items-center gap-2 mr-8">
+          <FormatToggle value={format} onChange={onFormatChange} />
+          <button
+            type="button"
+            onClick={onDownload}
+            disabled={downloading}
+            className="flex items-center gap-1.5 text-xs font-semibold rounded-full disabled:opacity-60"
+            style={{ padding: "8px 16px", background: GRADIENTS.purplePink, color: COLORS.white, cursor: downloading ? "default" : "pointer" }}
+          >
+            {downloading ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
+            {downloading ? "Preparing..." : `Download ${format.toUpperCase()}`}
+          </button>
+        </div>
+      </div>
+
+      <div className="flex flex-1 min-h-0">
+        {/* numbered thumbnail list */}
+        <div className="flex flex-col gap-2 p-3 overflow-y-auto" style={{ width: 190, borderRight: `1px solid ${COLORS.border}`, background: COLORS.lavender }}>
+          {slides.map((s, i) => {
+            const isTitle = s.kind === "title";
+            const accent = isTitle ? COLORS.sky : SD_ACCENT_CYCLE[(i - 1) % SD_ACCENT_CYCLE.length];
+            const isActive = i === active;
+            return (
+              <button
+                key={i}
+                type="button"
+                onClick={() => setActive(i)}
+                className="text-left rounded-lg overflow-hidden shrink-0"
+                style={{
+                  outline: isActive ? `2px solid ${COLORS.purple}` : `1px solid ${COLORS.border}`,
+                  outlineOffset: 1,
+                  cursor: "pointer",
+                }}
+              >
+                <div
+                  className="flex flex-col justify-center px-2.5"
+                  style={{ height: 68, background: isTitle ? COLORS.sky : COLORS.white }}
+                >
+                  <span className="text-[9px] font-bold mb-0.5" style={{ color: isTitle ? COLORS.pink : accent }}>
+                    {i === 0 ? "TITLE" : String(i).padStart(2, "0")}
+                  </span>
+                  <span
+                    className="text-[10px] font-semibold leading-tight line-clamp-2"
+                    style={{ color: isTitle ? COLORS.white : COLORS.textDark }}
+                  >
+                    {isTitle ? s.title : s.heading}
+                  </span>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* main slide canvas */}
+        <div className="flex-1 flex flex-col items-center justify-center p-8" style={{ background: "#F4F5F8" }}>
+          <div className="w-full" style={{ maxWidth: 860, aspectRatio: "16 / 9" }}>
+            <SlideCanvas slide={current} index={active} />
+          </div>
+
+          <div className="flex items-center gap-4 mt-4">
+            <button
+              type="button"
+              onClick={() => setActive((i) => Math.max(0, i - 1))}
+              disabled={active === 0}
+              className="flex items-center justify-center rounded-full disabled:opacity-30"
+              style={{ width: 32, height: 32, background: COLORS.white, border: `1px solid ${COLORS.border}`, cursor: active === 0 ? "default" : "pointer" }}
+            >
+              <ChevronLeft size={15} color={COLORS.textDark} />
+            </button>
+            <span className="text-xs font-semibold" style={{ color: COLORS.textMid }}>
+              {active + 1} / {slides.length}
+            </span>
+            <button
+              type="button"
+              onClick={() => setActive((i) => Math.min(slides.length - 1, i + 1))}
+              disabled={active === slides.length - 1}
+              className="flex items-center justify-center rounded-full disabled:opacity-30"
+              style={{ width: 32, height: 32, background: COLORS.white, border: `1px solid ${COLORS.border}`, cursor: active === slides.length - 1 ? "default" : "pointer" }}
+            >
+              <ChevronRight size={15} color={COLORS.textDark} />
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** SlideCanvas — renders one slide at full preview size, styled to match
+ * the actual downloaded pptx/pdf design (see services/ppt_service.py /
+ * services/pdf_service.py): navy title slide with decorative gold
+ * circles, or a white content slide with a colored left accent bar,
+ * numbered badge, heading rule, and body text or bullet markers. */
+function SlideCanvas({ slide, index }) {
+  if (slide.kind === "title") {
+    return (
+      <div className="relative w-full h-full rounded-xl overflow-hidden" style={{ background: COLORS.sky }}>
+        <div
+          className="absolute rounded-full"
+          style={{ width: "55%", aspectRatio: "1/1", right: "-15%", top: "-35%", background: COLORS.purple, opacity: 0.75 }}
+        />
+        <div
+          className="absolute rounded-full"
+          style={{ width: "26%", aspectRatio: "1/1", right: "4%", bottom: "-12%", background: COLORS.pink, opacity: 0.5 }}
+        />
+        <div className="relative h-full flex flex-col justify-center px-[6%]">
+          <div className="mb-3" style={{ width: 40, height: 3, background: COLORS.purple }} />
+          <p className="text-[11px] font-bold tracking-wide mb-2" style={{ color: COLORS.pink }}>
+            LEARNMATRIX
+          </p>
+          <p className="text-2xl font-bold leading-tight mb-3" style={{ color: COLORS.white, maxWidth: "70%" }}>
+            {slide.title}
+          </p>
+          <p className="text-sm" style={{ color: COLORS.lavender }}>
+            {slide.subtitle}
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  const accent = SD_ACCENT_CYCLE[(index - 1) % SD_ACCENT_CYCLE.length];
+  const badgeText = accent === COLORS.pink ? COLORS.sky : COLORS.white;
+
+  return (
+    <div className="relative w-full h-full rounded-xl overflow-hidden flex" style={{ background: COLORS.white, border: `1px solid ${COLORS.border}` }}>
+      <div style={{ width: 10, background: accent }} />
+      <div className="flex-1 px-[6%] py-[5%] overflow-hidden">
+        <div className="flex items-center gap-3 mb-2">
+          <div
+            className="flex items-center justify-center rounded-full shrink-0"
+            style={{ width: 34, height: 34, background: accent, color: badgeText }}
+          >
+            <span className="text-sm font-bold">{index}</span>
+          </div>
+          <p className="text-lg font-bold" style={{ color: COLORS.textDark }}>
+            {slide.heading}
+          </p>
+        </div>
+        <div style={{ width: 44, height: 3, background: accent, marginLeft: 46, marginBottom: 16 }} />
+
+        <div style={{ marginLeft: 46 }}>
+          {slide.kind === "bullets" ? (
+            <div className="flex flex-col gap-3">
+              {slide.items.map((item, i) => (
+                <div key={i} className="flex items-start gap-2.5">
+                  <div className="rounded-full shrink-0 mt-1.5" style={{ width: 8, height: 8, background: accent }} />
+                  <p className="text-sm" style={{ color: COLORS.textMid }}>
+                    {item}
+                  </p>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm leading-relaxed" style={{ color: COLORS.textMid }}>
+              {slide.body}
+            </p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 const mmControlBtnStyleLight = {
   width: 30,
   height: 30,

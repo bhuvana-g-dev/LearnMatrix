@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   ChevronDown, CheckCircle2, PlayCircle, ArrowLeft, Circle, BookOpen, ClipboardCheck,
@@ -6,30 +6,36 @@ import {
 import BackButton from "../components/common/BackButton";
 import TopicContentPane from "../components/learning/TopicContentPane";
 import TopicQuizModal from "../components/learning/TopicQuizModal";
+import LessonListPane from "../components/learning/LessonListPane";
 import { COLORS, GRADIENTS, GLASS_CARD } from "../constants/theme";
 import { buildFlatTopicList, findStartingIndex } from "../utils/buildCourseNavigator";
+import { getLessons, compositeTopicKey } from "../services/lessonService";
 
 /**
- * CourseWorkspaceScreen — Coursera-style layout:
- *   - Left sidebar: just the MODULE list (flat, like Coursera's
- *     "Course Material" panel) — clicking a module switches the main
- *     pane's list view to that module's contents.
+ * CourseWorkspaceScreen — Coursera-style layout, THREE-level main pane:
+ *   - Left sidebar: just the MODULE list — clicking a module switches
+ *     the main pane's list view to that module's contents.
  *   - Main pane, "list" view: collapsible sections per SKILL within the
  *     active module, each listing its TOPICS. Each topic is a small
- *     header (icon + name + status, not itself clickable) followed by
- *     TWO separate clickable items underneath — "Learning Resources"
- *     and "Test" — matching Coursera's per-item list where each video/
- *     reading/quiz under a module gets its own row. Clicking Learning
- *     Resources opens the content view below; clicking Test opens
- *     TopicQuizModal directly, independent of the content view.
- *   - Main pane, "content" view: TopicContentPane for whichever topic's
- *     Learning Resources was clicked, with a small back link to return
- *     to the list. Next/Previous here just move between topics — the
- *     quiz is reached via the list's Test item, not gated on Next.
+ *     header (not itself clickable) followed by TWO clickable items —
+ *     "Learning Resources" and "Test" — matching Coursera's per-item
+ *     list. Test opens TopicQuizModal directly. Learning Resources
+ *     opens...
+ *   - Main pane, "lessons" view (NEW): the topic's ordered Lesson
+ *     breakdown (services/lesson_service.py, generated + cached on
+ *     first visit — see LessonListPane.jsx). Selecting a lesson opens...
+ *   - Main pane, "content" view: TopicContentPane, now scoped to ONE
+ *     LESSON — its `topic` prop is a composite "{topic} — {lessonTitle}"
+ *     key (lessonService.compositeTopicKey()), which the backend's
+ *     existing get_topic_package() treats as just another topic string
+ *     for AI-notes caching + resource lookup, so no new content-fetching
+ *     code was needed. Next/Previous move between LESSONS of the same
+ *     topic (not between topics) — running off either end returns to
+ *     the lessons list.
  *
- * Same underlying data/logic as before (buildFlatTopicList +
- * TopicContentPane, both untouched) — this is a presentation-layer
- * rebuild only, no backend changes.
+ * Same underlying roadmap/syllabus data as before (buildFlatTopicList,
+ * unchanged) — the Lessons layer sits ENTIRELY between the existing
+ * Topic list and the existing TopicContentPane, touching neither.
  *
  * Still never a locking mechanism: every topic's two items are
  * clickable regardless of its Verified/Current/Locked status — that
@@ -60,9 +66,39 @@ export default function CourseWorkspaceScreen({ roadmap, compressedSyllabus, ini
   }, [flatTopics]);
 
   const [activeModuleName, setActiveModuleName] = useState(() => active?.module ?? modules[0]?.name ?? null);
-  const [viewMode, setViewMode] = useState("content"); // "list" | "content"
+  const [viewMode, setViewMode] = useState("lessons"); // "list" | "lessons" | "content"
   const [expandedSkills, setExpandedSkills] = useState(() => new Set(active ? [active.skill] : []));
   const [quizTarget, setQuizTarget] = useState(null); // { skill, topic } | null — Coursera-style "Test" item, opened from the list
+
+  // Lessons layer: Topic -> ordered list of bite-sized Lessons -> content
+  // per lesson. Owned here (not inside LessonListPane) because the
+  // "content" view that follows a lesson selection also needs the
+  // lesson's Title (composite topic key) and the full list (Next/
+  // Previous between lessons) — see LessonListPane.jsx's docstring.
+  const [lessonState, setLessonState] = useState("loading"); // loading | error | ready
+  const [lessonErrorMessage, setLessonErrorMessage] = useState("");
+  const [lessons, setLessons] = useState([]);
+  const [activeLessonIndex, setActiveLessonIndex] = useState(0);
+
+  const fetchLessonsForActiveTopic = useCallback(async () => {
+    if (!active) return;
+    setLessonState("loading");
+    setLessonErrorMessage("");
+    try {
+      const result = await getLessons(active.skill, active.topic);
+      setLessons(result);
+      setLessonState("ready");
+    } catch (err) {
+      setLessonErrorMessage(err.message || "Something went wrong loading the lesson breakdown.");
+      setLessonState("error");
+    }
+  }, [active]);
+
+  // Refetch whenever the ACTIVE TOPIC changes (not on every render, and
+  // not when only activeLessonIndex/viewMode change within the same topic).
+  useEffect(() => {
+    fetchLessonsForActiveTopic();
+  }, [active?.skill, active?.topic]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!roadmap || flatTopics.length === 0) {
     return (
@@ -95,6 +131,12 @@ export default function CourseWorkspaceScreen({ roadmap, compressedSyllabus, ini
 
   const openTopic = (flatIdx) => {
     setActiveIndex(flatIdx);
+    setActiveLessonIndex(0);
+    setViewMode("lessons");
+  };
+
+  const openLesson = (lessonIdx) => {
+    setActiveLessonIndex(lessonIdx);
     setViewMode("content");
   };
 
@@ -157,7 +199,7 @@ export default function CourseWorkspaceScreen({ roadmap, compressedSyllabus, ini
 
         {/* Main pane */}
         <div className="flex-1 min-w-0">
-          {viewMode === "content" && active ? (
+          {viewMode === "lessons" && active ? (
             <div>
               <button
                 onClick={() => setViewMode("list")}
@@ -166,15 +208,43 @@ export default function CourseWorkspaceScreen({ roadmap, compressedSyllabus, ini
               >
                 <ArrowLeft size={14} /> Back to {active.module || "Course"} Contents
               </button>
+              <div style={{ ...GLASS_CARD, borderRadius: 20, padding: 24 }}>
+                <LessonListPane
+                  topic={active.topic}
+                  state={lessonState}
+                  errorMessage={lessonErrorMessage}
+                  lessons={lessons}
+                  onSelectLesson={openLesson}
+                  onRetry={fetchLessonsForActiveTopic}
+                />
+              </div>
+            </div>
+          ) : viewMode === "content" && active && lessons[activeLessonIndex] ? (
+            <div>
+              <button
+                onClick={() => setViewMode("lessons")}
+                className="flex items-center gap-1.5 text-xs font-semibold mb-4"
+                style={{ background: "none", border: "none", cursor: "pointer", color: COLORS.textMid }}
+              >
+                <ArrowLeft size={14} /> Back to {active.topic} Lessons
+              </button>
               <TopicContentPane
                 skill={active.skill}
-                topic={active.topic}
+                topic={compositeTopicKey(active.topic, lessons[activeLessonIndex].Title)}
                 focusBand={active.focusBand}
                 topicStatus={active.topicStatus}
-                onNext={() => openTopic(activeIndex + 1)}
-                onPrevious={() => openTopic(activeIndex - 1)}
-                hasNext={activeIndex < flatTopics.length - 1}
-                hasPrevious={activeIndex > 0}
+                onNext={() =>
+                  activeLessonIndex < lessons.length - 1
+                    ? setActiveLessonIndex((i) => i + 1)
+                    : setViewMode("lessons")
+                }
+                onPrevious={() =>
+                  activeLessonIndex > 0
+                    ? setActiveLessonIndex((i) => i - 1)
+                    : setViewMode("lessons")
+                }
+                hasNext
+                hasPrevious
               />
             </div>
           ) : (
@@ -214,7 +284,7 @@ export default function CourseWorkspaceScreen({ roadmap, compressedSyllabus, ini
                           >
                             {sk.topics.map((t) => {
                               const flatIdx = flatTopics.indexOf(t);
-                              const isCurrent = flatIdx === activeIndex && viewMode === "content";
+                              const isCurrent = flatIdx === activeIndex && (viewMode === "lessons" || viewMode === "content");
                               return (
                                 <div key={t.topic} style={{ background: isCurrent ? "rgba(124,111,224,0.08)" : "transparent" }}>
                                   {/* Topic header — label only, not itself clickable; the two

@@ -42,6 +42,13 @@ export const ENDPOINTS = {
     SOURCE_FROM_NOTES: (uid) => `/ai/chat/${uid}/sources/from-notes`, // POST {skill, topic, focusBand}
     DELETE_SOURCE: (uid, sourceId) => `/ai/chat/${uid}/sources/${sourceId}`, // DELETE
   },
+  LESSONS: {
+    // backend/routes/lesson_routes.py
+    LIST: (skill, topic) =>
+      `/lessons/${encodeURIComponent(skill)}/${encodeURIComponent(topic)}`, // GET — ordered lesson list for a topic (cached on first call)
+    CONTENT: (skill, topic, lessonTitle, focusBand) =>
+      `/lessons/${encodeURIComponent(skill)}/${encodeURIComponent(topic)}/${encodeURIComponent(lessonTitle)}/${encodeURIComponent(focusBand)}`, // GET — one lesson's content
+  },
   FLASHCARDS: {
     // backend/routes/flashcard_routes.py
     GENERATE: "/flashcards/generate", // POST {uid, mode: "topic"|"chat"|"sources"|"custom", skill?, topic?, focusBand?, sessionId?, text?, count?}

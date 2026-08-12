@@ -131,6 +131,8 @@ def build_pdf_from_deck_content(notes: dict, subtitle: str) -> BytesIO:
             _draw_bullet_page(c, slide_data["heading"], slide_data["items"], i + 1, accent)
         elif kind == "list":
             _draw_list_page(c, slide_data["heading"], slide_data["items"], i + 1, accent)
+        elif kind == "process":
+            _draw_process_page(c, slide_data["heading"], slide_data["steps"], i + 1, accent)
         elif kind == "comparison":
             _draw_comparison_page(c, slide_data["heading"], slide_data["left"], slide_data["right"], i + 1)
         else:
@@ -162,6 +164,87 @@ def _wrap_text(text: str, font: str, size: float, max_width: float) -> list[str]
     if current:
         lines.append(current)
     return lines
+
+
+def _item_text_icon(item) -> tuple[str, str]:
+    """Same normalization as ppt_service.py's _item_text_icon — list
+    items / key takeaways are {"text","icon"} dicts, but a plain string
+    (e.g. an older cached deck) is also accepted."""
+    if isinstance(item, dict):
+        return item.get("text", ""), item.get("icon", "check")
+    return str(item), "check"
+
+
+def _draw_icon(c: canvas.Canvas, icon: str, cx: float, cy: float, r: float, color, text_color) -> None:
+    """Draws one icon badge centered at (cx, cy) with radius r, matching
+    ppt_service.py's ICON_SHAPE_MAP shape-per-icon approach (star,
+    triangle, hexagon, ...) — reportlab has no built-in autoshapes, so
+    each icon is a small hand-built polygon/path instead."""
+    c.setFillColor(color)
+
+    if icon == "check":
+        c.circle(cx, cy, r, fill=1, stroke=0)
+        c.setFillColor(text_color)
+        c.setFont("Helvetica-Bold", r * 1.15)
+        c.drawCentredString(cx, cy - r * 0.35, "\u2713")
+        return
+
+    if icon == "star":
+        _draw_polygon(c, _star_points(cx, cy, r, r * 0.42, 5))
+        return
+
+    if icon == "warning":
+        _draw_polygon(c, [(cx, cy + r), (cx - r * 0.95, cy - r * 0.8), (cx + r * 0.95, cy - r * 0.8)])
+        return
+
+    if icon == "network":
+        _draw_polygon(c, _regular_polygon_points(cx, cy, r, 6))
+        return
+
+    if icon == "shield":
+        _draw_polygon(c, _regular_polygon_points(cx, cy, r, 5, rotate_deg=-90))
+        return
+
+    if icon == "zap":
+        pts = [
+            (cx - r * 0.1, cy + r), (cx + r * 0.55, cy + r * 0.05), (cx + r * 0.1, cy + r * 0.05),
+            (cx + r * 0.35, cy - r), (cx - r * 0.5, cy - r * 0.05), (cx - r * 0.05, cy - r * 0.05),
+        ]
+        _draw_polygon(c, pts)
+        return
+
+    if icon == "gear":
+        _draw_polygon(c, _regular_polygon_points(cx, cy, r, 4, rotate_deg=45))  # diamond stand-in for a gear
+        return
+
+    # database, cloud, book, and anything unrecognized — a plain circle
+    # (still color-coded by accent, just not a distinct silhouette)
+    c.circle(cx, cy, r, fill=1, stroke=0)
+
+
+def _draw_polygon(c: canvas.Canvas, points: list[tuple[float, float]]) -> None:
+    p = c.beginPath()
+    p.moveTo(*points[0])
+    for pt in points[1:]:
+        p.lineTo(*pt)
+    p.close()
+    c.drawPath(p, fill=1, stroke=0)
+
+
+def _regular_polygon_points(cx: float, cy: float, r: float, sides: int, rotate_deg: float = -90) -> list[tuple[float, float]]:
+    import math
+    start = math.radians(rotate_deg)
+    return [(cx + r * math.cos(start + 2 * math.pi * i / sides), cy + r * math.sin(start + 2 * math.pi * i / sides)) for i in range(sides)]
+
+
+def _star_points(cx: float, cy: float, r_outer: float, r_inner: float, points: int) -> list[tuple[float, float]]:
+    import math
+    result = []
+    for i in range(points * 2):
+        r = r_outer if i % 2 == 0 else r_inner
+        angle = math.radians(-90 + i * 180 / points)
+        result.append((cx + r * math.cos(angle), cy + r * math.sin(angle)))
+    return result
 
 
 def _draw_title_page(c: canvas.Canvas, title: str, subtitle: str) -> None:
@@ -244,34 +327,33 @@ def _draw_text_page(c: canvas.Canvas, heading: str, body: str, index: int, accen
         y -= 0.16 * inch  # extra gap between sentences/paragraphs
 
 
-def _draw_bullet_page(c: canvas.Canvas, heading: str, bullets: list[str], index: int, accent) -> None:
-    """Key Takeaways — soft-tinted rounded cards with a checkmark badge,
-    matching ppt_service.py's _add_bullet_slide."""
+def _draw_bullet_page(c: canvas.Canvas, heading: str, bullets: list, index: int, accent) -> None:
+    """Key Takeaways — soft-tinted rounded cards with a per-item icon
+    badge, matching ppt_service.py's _add_bullet_slide."""
     _draw_chrome(c, heading, index, accent)
 
     y = PAGE_H - 1.85 * inch
     card_h = 0.72 * inch
+    text_color = WHITE if accent != GOLD_LIGHT else NAVY
     for b in bullets:
+        text, icon = _item_text_icon(b)
         c.setFillColor(CREAM)
         c.roundRect(1.55 * inch, y - card_h, 10.9 * inch, card_h, 8, fill=1, stroke=0)
 
-        badge_cx, badge_cy = 1.95 * inch, y - card_h / 2
-        c.setFillColor(accent)
-        c.circle(badge_cx, badge_cy, 0.2 * inch, fill=1, stroke=0)
-        c.setFillColor(WHITE if accent != GOLD_LIGHT else NAVY)
-        c.setFont("Helvetica-Bold", 12)
-        c.drawCentredString(badge_cx, badge_cy - 4, "\u2713")
+        _draw_icon(c, icon, 1.95 * inch, y - card_h / 2, 0.2 * inch, accent, text_color)
 
         c.setFillColor(NAVY)
         c.setFont("Helvetica-Bold", 14)
-        c.drawString(2.35 * inch, y - card_h / 2 - 5, b)
+        c.drawString(2.35 * inch, y - card_h / 2 - 5, text)
 
         y -= card_h + 0.18 * inch
 
 
-def _draw_list_page(c: canvas.Canvas, heading: str, items: list[str], index: int, accent) -> None:
+def _draw_list_page(c: canvas.Canvas, heading: str, items: list, index: int, accent) -> None:
     """Features/steps/examples — a grid of colored icon cards, matching
-    ppt_service.py's _add_list_slide."""
+    ppt_service.py's _add_list_slide. Each item's icon is picked per
+    its own meaning (see agents/slide_deck_agent.py) rather than a
+    generic sequence number."""
     _draw_chrome(c, heading, index, accent)
 
     cols = 2 if len(items) <= 4 else 3
@@ -280,8 +362,10 @@ def _draw_list_page(c: canvas.Canvas, heading: str, items: list[str], index: int
     area_w = PAGE_W - area_left - 0.6 * inch
     card_w = (area_w - gap * (cols - 1)) / cols
     card_h = 1.05 * inch
+    text_color = WHITE if accent != GOLD_LIGHT else NAVY
 
     for i, item in enumerate(items):
+        text, icon = _item_text_icon(item)
         r, col = divmod(i, cols)
         x = area_left + col * (card_w + gap)
         y_top = area_top - r * (card_h + gap)
@@ -291,20 +375,65 @@ def _draw_list_page(c: canvas.Canvas, heading: str, items: list[str], index: int
         c.setLineWidth(1)
         c.roundRect(x, y_top - card_h, card_w, card_h, 10, fill=1, stroke=1)
 
-        num_cx, num_cy = x + 0.36 * inch, y_top - 0.36 * inch
-        c.setFillColor(accent)
-        c.circle(num_cx, num_cy, 0.18 * inch, fill=1, stroke=0)
-        c.setFillColor(WHITE if accent != GOLD_LIGHT else NAVY)
-        c.setFont("Helvetica-Bold", 11)
-        c.drawCentredString(num_cx, num_cy - 4, str(i + 1))
+        _draw_icon(c, icon, x + 0.36 * inch, y_top - 0.36 * inch, 0.18 * inch, accent, text_color)
 
         c.setFillColor(NAVY)
         c.setFont("Helvetica-Bold", 12)
-        text_lines = _wrap_text(item, "Helvetica-Bold", 12, card_w - 0.85 * inch)
+        text_lines = _wrap_text(text, "Helvetica-Bold", 12, card_w - 0.85 * inch)
         ty = y_top - 0.42 * inch
         for line in text_lines[:3]:
             c.drawString(x + 0.65 * inch, ty, line)
             ty -= 0.2 * inch
+
+
+def _draw_process_page(c: canvas.Canvas, heading: str, steps: list, index: int, accent) -> None:
+    """"How it works" / ordered setup steps — a left-to-right chip flow
+    with numbered circles and arrow connectors, matching
+    ppt_service.py's _add_process_slide."""
+    _draw_chrome(c, heading, index, accent)
+
+    n = len(steps)
+    area_left = 1.55 * inch
+    area_top = PAGE_H - 2.7 * inch
+    area_w = PAGE_W - area_left - 0.6 * inch
+    arrow_w = 0.45 * inch
+    chip_h = 1.6 * inch
+    chip_w = (area_w - arrow_w * (n - 1)) / n
+    text_color = WHITE if accent != GOLD_LIGHT else NAVY
+
+    x = area_left
+    for i, step in enumerate(steps):
+        text = step.get("text", "") if isinstance(step, dict) else str(step)
+
+        c.setFillColor(accent)
+        c.roundRect(x, area_top - chip_h, chip_w, chip_h, 12, fill=1, stroke=0)
+
+        num_cx, num_cy = x + chip_w / 2, area_top + 0.02 * inch
+        c.setFillColor(WHITE)
+        c.circle(num_cx, num_cy, 0.22 * inch, fill=1, stroke=1)
+        c.setStrokeColor(NAVY)
+        c.setFillColor(NAVY)
+        c.setFont("Helvetica-Bold", 13)
+        c.drawCentredString(num_cx, num_cy - 4, str(i + 1))
+
+        c.setFillColor(text_color)
+        c.setFont("Helvetica-Bold", 12)
+        lines = _wrap_text(text, "Helvetica-Bold", 12, chip_w - 0.3 * inch)
+        ty = area_top - chip_h / 2 + (len(lines) - 1) * 0.09 * inch
+        for line in lines[:3]:
+            c.drawCentredString(x + chip_w / 2, ty, line)
+            ty -= 0.18 * inch
+
+        x += chip_w
+        if i < n - 1:
+            arrow_y = area_top - chip_h / 2
+            c.setFillColor(NAVY_MID)
+            _draw_polygon(c, [
+                (x, arrow_y + 0.12 * inch), (x + arrow_w * 0.55, arrow_y + 0.12 * inch), (x + arrow_w * 0.55, arrow_y + 0.2 * inch),
+                (x + arrow_w, arrow_y), (x + arrow_w * 0.55, arrow_y - 0.2 * inch), (x + arrow_w * 0.55, arrow_y - 0.12 * inch),
+                (x, arrow_y - 0.12 * inch),
+            ])
+            x += arrow_w
 
 
 def _draw_comparison_page(c: canvas.Canvas, heading: str, left: dict, right: dict, index: int) -> None:

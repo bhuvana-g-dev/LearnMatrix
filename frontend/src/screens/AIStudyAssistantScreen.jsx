@@ -25,6 +25,15 @@ import {
   MessageSquare,
   Download,
   Check,
+  Star,
+  AlertTriangle,
+  Settings,
+  Database,
+  Network,
+  Shield,
+  Zap,
+  Cloud,
+  BookOpen,
 } from "lucide-react";
 import {
   sendChatMessage,
@@ -1438,6 +1447,8 @@ function buildSlidesFromDeck(deck) {
     const layout = s.layout || "text";
     if (layout === "list" && Array.isArray(s.items) && s.items.length) {
       slides.push({ kind: "list", heading, items: s.items });
+    } else if (layout === "process" && Array.isArray(s.steps) && s.steps.length) {
+      slides.push({ kind: "process", heading, steps: s.steps });
     } else if (layout === "comparison" && s.left && s.right) {
       slides.push({ kind: "comparison", heading, left: s.left, right: s.right });
     } else if (s.content) {
@@ -1446,6 +1457,27 @@ function buildSlidesFromDeck(deck) {
   });
   if (deck.keyTakeaways?.length) slides.push({ kind: "bullets", heading: "Key Takeaways", items: deck.keyTakeaways });
   return slides;
+}
+
+// icon tag (see backend agents/slide_deck_agent.py's ICON_VOCAB) -> a real Lucide icon for
+// the in-app preview — richer than the pptx/pdf builders can safely do with shapes/glyphs,
+// since this only has to render in a browser, not survive round-tripping through PowerPoint.
+const SD_ICON_MAP = {
+  check: Check,
+  star: Star,
+  warning: AlertTriangle,
+  gear: Settings,
+  database: Database,
+  network: Network,
+  shield: Shield,
+  zap: Zap,
+  cloud: Cloud,
+  book: BookOpen,
+};
+
+function SlideItemIcon({ icon, size = 13, color }) {
+  const Icon = SD_ICON_MAP[icon] || Check;
+  return <Icon size={size} color={color} />;
 }
 
 function SlideDeckPreview({ deck, format, onFormatChange, downloading, onDownload }) {
@@ -1649,35 +1681,70 @@ function SlideCanvas({ slide, index }) {
         <div style={{ marginLeft: 46 }}>
           {slide.kind === "bullets" ? (
             <div className="flex flex-col gap-2.5">
-              {slide.items.map((item, i) => (
-                <div key={i} className="flex items-center gap-2.5 rounded-lg px-3 py-2" style={{ background: COLORS.lavender }}>
-                  <div
-                    className="flex items-center justify-center rounded-full shrink-0"
-                    style={{ width: 20, height: 20, background: accent, color: badgeText }}
-                  >
-                    <Check size={11} />
+              {slide.items.map((item, i) => {
+                const text = typeof item === "object" ? item.text : item;
+                const icon = typeof item === "object" ? item.icon : "check";
+                return (
+                  <div key={i} className="flex items-center gap-2.5 rounded-lg px-3 py-2" style={{ background: COLORS.lavender }}>
+                    <div
+                      className="flex items-center justify-center rounded-full shrink-0"
+                      style={{ width: 20, height: 20, background: accent, color: badgeText }}
+                    >
+                      <SlideItemIcon icon={icon} size={11} color={badgeText} />
+                    </div>
+                    <p className="text-sm font-semibold" style={{ color: COLORS.textDark }}>
+                      {text}
+                    </p>
                   </div>
-                  <p className="text-sm font-semibold" style={{ color: COLORS.textDark }}>
-                    {item}
-                  </p>
-                </div>
-              ))}
+                );
+              })}
             </div>
           ) : slide.kind === "list" ? (
             <div className="grid grid-cols-2 gap-2.5">
-              {slide.items.map((item, i) => (
-                <div key={i} className="rounded-lg px-3 py-2.5 flex items-start gap-2" style={{ background: COLORS.lavender, border: `1px solid ${accent}55` }}>
-                  <div
-                    className="flex items-center justify-center rounded-full shrink-0 mt-0.5"
-                    style={{ width: 18, height: 18, background: accent, color: badgeText }}
-                  >
-                    <span className="text-[10px] font-bold">{i + 1}</span>
+              {slide.items.map((item, i) => {
+                const text = typeof item === "object" ? item.text : item;
+                const icon = typeof item === "object" ? item.icon : "check";
+                return (
+                  <div key={i} className="rounded-lg px-3 py-2.5 flex items-start gap-2" style={{ background: COLORS.lavender, border: `1px solid ${accent}55` }}>
+                    <div
+                      className="flex items-center justify-center rounded-full shrink-0 mt-0.5"
+                      style={{ width: 18, height: 18, background: accent, color: badgeText }}
+                    >
+                      <SlideItemIcon icon={icon} size={10} color={badgeText} />
+                    </div>
+                    <p className="text-xs font-semibold leading-snug" style={{ color: COLORS.textDark }}>
+                      {text}
+                    </p>
                   </div>
-                  <p className="text-xs font-semibold leading-snug" style={{ color: COLORS.textDark }}>
-                    {item}
-                  </p>
-                </div>
-              ))}
+                );
+              })}
+            </div>
+          ) : slide.kind === "process" ? (
+            <div className="flex items-stretch gap-1.5 overflow-x-auto pb-1">
+              {slide.steps.map((step, i) => {
+                const text = typeof step === "object" ? step.text : step;
+                return (
+                  <div key={i} className="flex items-center gap-1.5 shrink-0">
+                    <div
+                      className="rounded-lg px-3 py-3 flex flex-col items-center text-center gap-1.5"
+                      style={{ background: accent, width: 108 }}
+                    >
+                      <div
+                        className="flex items-center justify-center rounded-full shrink-0"
+                        style={{ width: 22, height: 22, background: COLORS.white, border: `1.5px solid ${COLORS.textDark}` }}
+                      >
+                        <span className="text-[11px] font-bold" style={{ color: COLORS.textDark }}>
+                          {i + 1}
+                        </span>
+                      </div>
+                      <p className="text-[11px] font-bold leading-tight" style={{ color: badgeText }}>
+                        {text}
+                      </p>
+                    </div>
+                    {i < slide.steps.length - 1 && <ChevronRight size={16} color={COLORS.textLight} className="shrink-0" />}
+                  </div>
+                );
+              })}
             </div>
           ) : (
             <p className="text-sm leading-relaxed" style={{ color: COLORS.textMid }}>

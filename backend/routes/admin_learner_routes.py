@@ -19,12 +19,14 @@ reads the EXISTING topic_quiz_progress / topic_quiz_attempts collections
 from flask import Blueprint, request
 
 from services.learner_intelligence_service import get_student_profile, list_learners
+from utils.admin_auth import require_admin
 from utils.response_helper import error_response, success_response
 
 admin_learner_bp = Blueprint("admin_learners", __name__)
 
 
 @admin_learner_bp.route("/admin/learners", methods=["GET"])
+@require_admin
 def list_learners_route():
     try:
         rows = list_learners(
@@ -39,6 +41,7 @@ def list_learners_route():
 
 
 @admin_learner_bp.route("/admin/learners/profile", methods=["GET"])
+@require_admin
 def student_profile_route():
     email = request.args.get("email")
     if not email:

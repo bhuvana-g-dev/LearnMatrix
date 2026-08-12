@@ -13,12 +13,14 @@ learning_activity + Firebase Auth), never invented.
 from flask import Blueprint, send_file
 
 from services.student_records_service import get_student_summaries, build_export_workbook
+from utils.admin_auth import require_admin
 from utils.response_helper import success_response, error_response
 
 admin_student_bp = Blueprint("admin_student", __name__)
 
 
 @admin_student_bp.route("/admin/students", methods=["GET"])
+@require_admin
 def list_students_route():
     try:
         summaries = get_student_summaries()
@@ -28,6 +30,7 @@ def list_students_route():
 
 
 @admin_student_bp.route("/admin/students/export", methods=["GET"])
+@require_admin
 def export_students_route():
     try:
         workbook_buffer = build_export_workbook()

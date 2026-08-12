@@ -28,12 +28,14 @@ from services.admin_question_service import (
     set_question_status,
 )
 from utils.pdf_question_extractor import extract_questions_from_pdf, PdfExtractionError
+from utils.admin_auth import require_admin
 from utils.response_helper import success_response, error_response
 
 admin_question_bp = Blueprint("admin_questions", __name__)
 
 
 @admin_question_bp.route("/admin/questions", methods=["GET"])
+@require_admin
 def list_questions_route():
     try:
         questions = get_questions_for_admin(
@@ -48,6 +50,7 @@ def list_questions_route():
 
 
 @admin_question_bp.route("/admin/questions", methods=["POST"])
+@require_admin
 def create_question_route():
     payload = request.get_json(silent=True)
     if not payload:
@@ -63,6 +66,7 @@ def create_question_route():
 
 
 @admin_question_bp.route("/admin/questions/<question_id>", methods=["PUT"])
+@require_admin
 def update_question_route(question_id):
     payload = request.get_json(silent=True)
     if not payload:
@@ -78,6 +82,7 @@ def update_question_route(question_id):
 
 
 @admin_question_bp.route("/admin/questions/<question_id>/status", methods=["PATCH"])
+@require_admin
 def set_question_status_route(question_id):
     payload = request.get_json(silent=True) or {}
     status = payload.get("Status") or payload.get("status")
@@ -95,6 +100,7 @@ def set_question_status_route(question_id):
 
 
 @admin_question_bp.route("/admin/questions/extract-pdf", methods=["POST"])
+@require_admin
 def extract_pdf_route():
     """
     Accepts a multipart/form-data upload with a single file field named

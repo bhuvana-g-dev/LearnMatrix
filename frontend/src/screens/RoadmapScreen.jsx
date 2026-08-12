@@ -210,7 +210,11 @@ export default function RoadmapScreen({ uid, onNavigate, onSelectTopic, onStartJ
         <RoadmapDisplay
           roadmap={roadmap}
           showProgress
-          onSelectEntry={onSelectTopic}
+          onSelectEntry={
+            onStartJourney
+              ? (entry) => onStartJourney({ roadmap, compressedSyllabus, initialEntry: entry })
+              : onSelectTopic
+          }
           compressedSyllabus={compressedSyllabus}
           onStartJourney={
             onStartJourney

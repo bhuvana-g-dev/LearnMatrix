@@ -139,10 +139,11 @@ def build_deck_sections(notes: dict) -> list[dict]:
     """Turns a {title, summary, sections, keyTakeaways} notes dict into
     the flat list of slide dicts both the pptx and pdf builders render,
     so the two file formats never drift apart. Each slide's "kind" is
-    one of "text", "list", "comparison", or "bullets" (Key Takeaways) —
-    this is what gives the deck varied layouts instead of every slide
-    being a plain heading+paragraph (see agents/slide_deck_agent.py,
-    which tags each section's layout based on its content)."""
+    one of "text", "list", "comparison", "process", or "bullets" (Key
+    Takeaways) — this is what gives the deck varied layouts instead of
+    every slide being a plain heading+paragraph (see
+    agents/slide_deck_agent.py, which tags each section's layout and
+    per-item icon based on its content)."""
     slides = []
     if notes.get("summary"):
         slides.append({"kind": "text", "heading": "Summary", "body": notes["summary"]})
@@ -153,6 +154,8 @@ def build_deck_sections(notes: dict) -> list[dict]:
 
         if layout == "list" and isinstance(section.get("items"), list) and section["items"]:
             slides.append({"kind": "list", "heading": heading, "items": section["items"]})
+        elif layout == "process" and isinstance(section.get("steps"), list) and section["steps"]:
+            slides.append({"kind": "process", "heading": heading, "steps": section["steps"]})
         elif layout == "comparison" and isinstance(section.get("left"), dict) and isinstance(section.get("right"), dict):
             slides.append({"kind": "comparison", "heading": heading, "left": section["left"], "right": section["right"]})
         elif section.get("content"):
@@ -190,6 +193,8 @@ def build_pptx_from_deck_content(notes: dict, subtitle: str) -> BytesIO:
             _add_bullet_slide(prs, blank_layout, slide_data["heading"], slide_data["items"], i + 1, accent)
         elif kind == "list":
             _add_list_slide(prs, blank_layout, slide_data["heading"], slide_data["items"], i + 1, accent)
+        elif kind == "process":
+            _add_process_slide(prs, blank_layout, slide_data["heading"], slide_data["steps"], i + 1, accent)
         elif kind == "comparison":
             _add_comparison_slide(prs, blank_layout, slide_data["heading"], slide_data["left"], slide_data["right"], i + 1)
         else:
@@ -346,7 +351,57 @@ def _add_text_slide(prs: Presentation, layout, heading: str, body: str, index: i
         run.font.name = "Arial"
 
 
-def _add_bullet_slide(prs: Presentation, layout, heading: str, bullets: list[str], index: int, accent) -> None:
+# icon tag (see agents/slide_deck_agent.py's ICON_VOCAB) -> a built-in
+# python-pptx autoshape that reads as that icon at a glance, so list
+# items and key-takeaway cards vary by MEANING instead of every card
+# using the same numbered circle.
+ICON_SHAPE_MAP = {
+    "check": MSO_SHAPE.OVAL,
+    "star": MSO_SHAPE.STAR_5_POINT,
+    "warning": MSO_SHAPE.ISOSCELES_TRIANGLE,
+    "gear": MSO_SHAPE.GEAR_6,
+    "database": MSO_SHAPE.CAN,
+    "network": MSO_SHAPE.HEXAGON,
+    "shield": MSO_SHAPE.PENTAGON,
+    "zap": MSO_SHAPE.LIGHTNING_BOLT,
+    "cloud": MSO_SHAPE.CLOUD,
+    "book": MSO_SHAPE.OVAL,
+}
+
+
+def _icon_badge(slide, icon: str, x, y, size, fill_color):
+    """Adds one icon-shaped badge (see ICON_SHAPE_MAP) filled with
+    fill_color. "check" gets a checkmark glyph overlaid — every other
+    icon's shape alone (star, triangle, gear, hexagon, ...) is
+    recognizable without needing a text glyph on top, which sidesteps
+    relying on emoji/symbol font support in PowerPoint/LibreOffice."""
+    shape_type = ICON_SHAPE_MAP.get(icon, MSO_SHAPE.OVAL)
+    shape = slide.shapes.add_shape(shape_type, x, y, size, size)
+    _set_fill(shape, fill_color)
+    shape.shadow.inherit = False
+    if icon in ("check", "book"):
+        tf = shape.text_frame
+        tf.vertical_anchor = MSO_ANCHOR.MIDDLE
+        tf.text = "\u2713" if icon == "check" else ""
+        tf.paragraphs[0].alignment = PP_ALIGN.CENTER
+        if tf.paragraphs[0].runs:
+            run = tf.paragraphs[0].runs[0]
+            run.font.size = Pt(max(10, int(size.pt * 0.42)))
+            run.font.bold = True
+            run.font.color.rgb = WHITE if fill_color != GOLD_LIGHT else NAVY
+    return shape
+
+
+def _item_text_icon(item) -> tuple[str, str]:
+    """List items / key takeaways are {"text","icon"} dicts once past
+    the agent's normalization, but this also accepts a plain string
+    (e.g. an older cached deck) so nothing breaks on legacy content."""
+    if isinstance(item, dict):
+        return item.get("text", ""), item.get("icon", "check")
+    return str(item), "check"
+
+
+def _add_bullet_slide(prs: Presentation, layout, heading: str, bullets: list, index: int, accent) -> None:
     """Key Takeaways — each point in its own soft-tinted rounded card
     with a checkmark badge, instead of a plain circle+text bullet line."""
     slide = prs.slides.add_slide(layout)
@@ -355,28 +410,19 @@ def _add_bullet_slide(prs: Presentation, layout, heading: str, bullets: list[str
     top = Inches(1.85)
     card_h = Inches(0.72)
     for b in bullets:
+        text, icon = _item_text_icon(b)
         card = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, Inches(1.55), top, Inches(10.9), card_h)
         card.adjustments[0] = 0.18
         _set_fill(card, CREAM)
         card.shadow.inherit = False
 
-        badge = slide.shapes.add_shape(MSO_SHAPE.OVAL, Inches(1.75), top + Inches(0.16), Inches(0.4), Inches(0.4))
-        _set_fill(badge, accent)
-        badge.shadow.inherit = False
-        badge_tf = badge.text_frame
-        badge_tf.vertical_anchor = MSO_ANCHOR.MIDDLE
-        badge_tf.text = "\u2713"
-        badge_tf.paragraphs[0].alignment = PP_ALIGN.CENTER
-        badge_run = badge_tf.paragraphs[0].runs[0]
-        badge_run.font.size = Pt(15)
-        badge_run.font.bold = True
-        badge_run.font.color.rgb = WHITE if accent != GOLD_LIGHT else NAVY
+        _icon_badge(slide, icon, Inches(1.75), top + Inches(0.16), Inches(0.4), accent)
 
         text_box = slide.shapes.add_textbox(Inches(2.35), top + Inches(0.06), Inches(9.9), card_h - Inches(0.1))
         tf = text_box.text_frame
         tf.word_wrap = True
         tf.vertical_anchor = MSO_ANCHOR.MIDDLE
-        tf.text = b
+        tf.text = text
         run = tf.paragraphs[0].runs[0]
         run.font.size = Pt(16)
         run.font.bold = True
@@ -385,14 +431,15 @@ def _add_bullet_slide(prs: Presentation, layout, heading: str, bullets: list[str
         top += card_h + Inches(0.18)
 
 
-def _add_list_slide(prs: Presentation, layout, heading: str, items: list[str], index: int, accent) -> None:
+def _add_list_slide(prs: Presentation, layout, heading: str, items: list, index: int, accent) -> None:
     """Features/steps/examples — a grid of colored icon cards instead
-    of a plain bulleted paragraph, e.g. for a "Key Features" section."""
+    of a plain bulleted paragraph, e.g. for a "Key Features" section.
+    Each item's icon (see agents/slide_deck_agent.py) is picked per its
+    own meaning rather than a generic sequence number."""
     slide = prs.slides.add_slide(layout)
     _add_slide_chrome(prs, slide, heading, index, accent)
 
     cols = 2 if len(items) <= 4 else 3
-    rows = -(-len(items) // cols)  # ceil
     gap = Inches(0.3)
     area_left, area_top = Inches(1.55), Inches(1.85)
     area_w = prs.slide_width - area_left - Inches(0.6)
@@ -400,6 +447,7 @@ def _add_list_slide(prs: Presentation, layout, heading: str, items: list[str], i
     card_h = Inches(1.05)
 
     for i, item in enumerate(items):
+        text, icon = _item_text_icon(item)
         r, c = divmod(i, cols)
         x = area_left + c * (card_w + gap)
         y = area_top + r * (card_h + gap)
@@ -411,28 +459,76 @@ def _add_list_slide(prs: Presentation, layout, heading: str, items: list[str], i
         card.line.width = Pt(1)
         card.shadow.inherit = False
 
-        num = slide.shapes.add_shape(MSO_SHAPE.OVAL, x + Inches(0.18), y + Inches(0.18), Inches(0.36), Inches(0.36))
-        _set_fill(num, accent)
+        _icon_badge(slide, icon, x + Inches(0.18), y + Inches(0.18), Inches(0.4), accent)
+
+        text_box = slide.shapes.add_textbox(x + Inches(0.72), y + Inches(0.1), card_w - Inches(0.88), card_h - Inches(0.2))
+        tf = text_box.text_frame
+        tf.word_wrap = True
+        tf.vertical_anchor = MSO_ANCHOR.MIDDLE
+        tf.text = text
+        run = tf.paragraphs[0].runs[0]
+        run.font.size = Pt(13)
+        run.font.bold = True
+        run.font.color.rgb = NAVY
+        run.font.name = "Arial"
+
+
+def _add_process_slide(prs: Presentation, layout, heading: str, steps: list, index: int, accent) -> None:
+    """"How it works" / ordered setup steps — a left-to-right chip flow
+    with numbered circles and arrow connectors, instead of a bulleted
+    list that doesn't read as a sequence."""
+    slide = prs.slides.add_slide(layout)
+    _add_slide_chrome(prs, slide, heading, index, accent)
+
+    n = len(steps)
+    area_left = Inches(1.55)
+    area_top = Inches(2.7)
+    area_w = prs.slide_width - area_left - Inches(0.6)
+    arrow_w = Inches(0.45)
+    chip_h = Inches(1.6)
+    chip_w = (area_w - arrow_w * (n - 1)) / n
+
+    x = area_left
+    for i, step in enumerate(steps):
+        text = step.get("text", "") if isinstance(step, dict) else str(step)
+
+        chip = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, x, area_top, chip_w, chip_h)
+        chip.adjustments[0] = 0.15
+        _set_fill(chip, accent)
+        chip.shadow.inherit = False
+
+        num = slide.shapes.add_shape(MSO_SHAPE.OVAL, x + chip_w / 2 - Inches(0.22), area_top - Inches(0.22), Inches(0.44), Inches(0.44))
+        _set_fill(num, WHITE)
+        num.line.color.rgb = NAVY
+        num.line.width = Pt(1.5)
         num.shadow.inherit = False
         num_tf = num.text_frame
         num_tf.vertical_anchor = MSO_ANCHOR.MIDDLE
         num_tf.text = str(i + 1)
         num_tf.paragraphs[0].alignment = PP_ALIGN.CENTER
         num_run = num_tf.paragraphs[0].runs[0]
-        num_run.font.size = Pt(13)
+        num_run.font.size = Pt(14)
         num_run.font.bold = True
-        num_run.font.color.rgb = WHITE if accent != GOLD_LIGHT else NAVY
+        num_run.font.color.rgb = NAVY
 
-        text_box = slide.shapes.add_textbox(x + Inches(0.65), y + Inches(0.1), card_w - Inches(0.8), card_h - Inches(0.2))
+        text_box = slide.shapes.add_textbox(x + Inches(0.1), area_top + Inches(0.25), chip_w - Inches(0.2), chip_h - Inches(0.35))
         tf = text_box.text_frame
         tf.word_wrap = True
         tf.vertical_anchor = MSO_ANCHOR.MIDDLE
-        tf.text = item
-        run = tf.paragraphs[0].runs[0]
+        tf.text = text
+        p = tf.paragraphs[0]
+        p.alignment = PP_ALIGN.CENTER
+        run = p.runs[0]
         run.font.size = Pt(13)
         run.font.bold = True
-        run.font.color.rgb = NAVY
-        run.font.name = "Arial"
+        run.font.color.rgb = WHITE if accent != GOLD_LIGHT else NAVY
+
+        x += chip_w
+        if i < n - 1:
+            arrow = slide.shapes.add_shape(MSO_SHAPE.RIGHT_ARROW, x, area_top + chip_h / 2 - Inches(0.14), arrow_w, Inches(0.28))
+            _set_fill(arrow, NAVY_MID)
+            arrow.shadow.inherit = False
+            x += arrow_w
 
 
 def _add_comparison_slide(prs: Presentation, layout, heading: str, left: dict, right: dict, index: int) -> None:

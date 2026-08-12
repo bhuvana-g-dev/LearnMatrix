@@ -10,9 +10,10 @@ import { ENDPOINTS } from "../api/endpoints";
  * current dummy stub), since this is what TopicQuizModal.jsx runs on.
  */
 
-export async function getTopicQuiz(skill, topic) {
+export async function getTopicQuiz(skill, topic, uid) {
   const { data } = await apiClient.get(ENDPOINTS.TOPIC_QUIZ.GET_QUIZ(skill, topic), {
-    timeout: 60000, // a cache/bank miss means a live Gemini call may happen first
+    params: { uid }, // required now — the quiz cache is per-student, see backend/services/topic_quiz_bank_cache.py
+    timeout: 60000, // a cache miss means a live Gemini call may happen first
   });
   if (!data.success) {
     throw new Error(data.error || data.message || "Failed to load this topic's quiz.");

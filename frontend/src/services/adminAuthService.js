@@ -1,80 +1,64 @@
+import { onAuthStateChanged, signInWithEmailAndPassword, signOut } from "firebase/auth";
+import { auth as firebaseAuth } from "../firebase";
 import apiClient from "../api/axiosClient";
 import { ENDPOINTS } from "../api/endpoints";
 
-const ADMIN_TOKEN_KEY = "lm_admin_auth_token";
-const ADMIN_USERNAME_KEY = "lm_admin_username";
+const AUTH_TOKEN_KEY = "lm_auth_token";
 
-// Fixed admin credentials for the current (pre-Flask-admin-auth) dummy
-// layer. Previously ANY non-empty username/password combination was
-// accepted — this is the actual gate until real backend admin auth
-// (Flask + Firebase custom claims, see FUTURE block below) exists.
-// Override via .env (VITE_ADMIN_USERNAME / VITE_ADMIN_PASSWORD) so the
-// real values aren't hardcoded in the bundle for every deployment.
-const ADMIN_USERNAME = import.meta.env?.VITE_ADMIN_USERNAME || "admin";
-const ADMIN_PASSWORD = import.meta.env?.VITE_ADMIN_PASSWORD || "learnmatrix";
-
-/**
- * Admin auth service — separate from services/authService.js on purpose
- * (student vs admin are different actors/roles even though they may later
- * share the same Firebase project). Kept async/Promise-based, matching the
- * exact shape a real call will have, same convention as authService.js.
- */
 export async function loginAdmin(credentials) {
-  // ---- FUTURE (Flask + Firebase custom claims, e.g. role: "admin") ----
-  // const { data } = await apiClient.post(ENDPOINTS.ADMIN.LOGIN, credentials);
-  // localStorage.setItem(ADMIN_TOKEN_KEY, data.token);
-  // return data;
+  const email = (credentials?.email || credentials?.username || "").trim();
+  const password = credentials?.password || "";
 
-  // ---- CURRENT (dummy, but with a real credential check) ----
-  return new Promise((resolve, reject) => {
-    setTimeout(() => {
-      const username = (credentials?.username || "").trim();
-      const password = credentials?.password || "";
+  if (!email || !password) {
+    throw new Error("Email and password are required.");
+  }
 
-      if (!username || !password) {
-        reject(new Error("Username and password are required."));
-        return;
-      }
-      if (username.toLowerCase() !== ADMIN_USERNAME.toLowerCase() || password !== ADMIN_PASSWORD) {
-        reject(new Error("Invalid admin username or password."));
-        return;
-      }
+  const userCredential = await signInWithEmailAndPassword(firebaseAuth, email, password);
+  const idToken = await userCredential.user.getIdToken();
 
-      const token = "dummy-admin-token";
-      // Persisted so a page refresh doesn't bounce back to the login
-      // screen — useAdminAuth reads this on mount to restore the session.
-      localStorage.setItem(ADMIN_TOKEN_KEY, token);
-      localStorage.setItem(ADMIN_USERNAME_KEY, username);
+  try {
+    const { data } = await apiClient.post(ENDPOINTS.ADMIN.AUTH.SESSION, { idToken });
+    localStorage.setItem(AUTH_TOKEN_KEY, idToken);
+    return { success: true, token: idToken, admin: data.data };
+  } catch (err) {
+    await signOut(firebaseAuth);
+    localStorage.removeItem(AUTH_TOKEN_KEY);
+    throw new Error(err?.response?.data?.error || "You don't have admin access.");
+  }
+}
 
-      resolve({
-        success: true,
-        token,
-        admin: { username },
-      });
-    }, 250);
+function waitForFirebaseUser() {
+  return new Promise((resolve) => {
+    const unsubscribe = onAuthStateChanged(firebaseAuth, (user) => {
+      unsubscribe();
+      resolve(user);
+    });
   });
 }
 
-// Restores the session on page load/refresh (useAdminAuth's initial
-// state) — synchronous today (just a localStorage read), but kept
-// Promise-based so the FUTURE real-token-verification call slots in
-// here without changing how useAdminAuth calls it.
 export async function restoreAdminSession() {
-  // ---- FUTURE ----
-  // const { data } = await apiClient.get(ENDPOINTS.ADMIN.ME);
-  // return data.admin ? { admin: data.admin } : null;
+  const savedToken = localStorage.getItem(AUTH_TOKEN_KEY);
+  if (!savedToken) return null;
 
-  // ---- CURRENT (dummy) ----
-  const token = localStorage.getItem(ADMIN_TOKEN_KEY);
-  const username = localStorage.getItem(ADMIN_USERNAME_KEY);
-  if (!token || !username) return null;
-  return { admin: { username } };
+  const currentUser = firebaseAuth.currentUser || (await waitForFirebaseUser());
+  if (!currentUser) {
+    localStorage.removeItem(AUTH_TOKEN_KEY);
+    return null;
+  }
+
+  try {
+    const freshToken = await currentUser.getIdToken();
+    const { data } = await apiClient.post(ENDPOINTS.ADMIN.AUTH.SESSION, { idToken: freshToken });
+    localStorage.setItem(AUTH_TOKEN_KEY, freshToken);
+    return { admin: data.data };
+  } catch {
+    localStorage.removeItem(AUTH_TOKEN_KEY);
+    return null;
+  }
 }
 
 export async function logoutAdmin() {
-  // ---- FUTURE ----
-  // await apiClient.post(ENDPOINTS.ADMIN.LOGOUT);
-  localStorage.removeItem(ADMIN_TOKEN_KEY);
-  localStorage.removeItem(ADMIN_USERNAME_KEY);
-  return Promise.resolve({ success: true });
+  await signOut(firebaseAuth);
+  localStorage.removeItem(AUTH_TOKEN_KEY);
+  return { success: true };
 }

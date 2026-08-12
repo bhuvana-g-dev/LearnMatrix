@@ -30,7 +30,6 @@ read straight off the saved roadmap doc, not recomputed).
 
 from io import BytesIO
 
-from firebase_admin import auth as firebase_auth
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill
 from openpyxl.utils import get_column_letter
@@ -39,16 +38,7 @@ from firebase.firebase_config import get_firestore_client
 from services.assessment_repository import list_all_assessment_results
 from services.roadmap_repository import list_all_roadmaps
 from services.activity_repository import get_activity_dates
-
-
-def _email_for_uid(uid: str) -> str:
-    """Best-effort — a uid can outlive its Auth record (deleted account,
-    emulator data, etc.), so this never raises; '—' just means "not
-    resolvable right now", not an error in the export itself."""
-    try:
-        return firebase_auth.get_user(uid).email or "—"
-    except Exception:  # noqa: BLE001 — any Auth lookup failure degrades the same way
-        return "—"
+from utils.auth_lookup import email_for_uid as _email_for_uid
 
 
 def get_student_summaries() -> list[dict]:

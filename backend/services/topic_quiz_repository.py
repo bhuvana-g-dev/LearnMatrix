@@ -40,6 +40,24 @@ def get_progress(db, uid: str, skill: str, topic: str) -> dict | None:
     return snap.to_dict() if snap.exists else None
 
 
+def list_all_progress(db) -> list[dict]:
+    """Every topic_quiz_progress doc across all learners — the skill-wise
+    latest-classification view services/learner_intelligence_service.py
+    reads for the Admin Panel's Learner Intelligence screen. Bounded by
+    (students x topics attempted), not raw attempt volume, so a single
+    full read here is cheap even at real scale."""
+    return [doc.to_dict() for doc in _progress_collection(db).stream()]
+
+
+def list_attempts_by_uid(db, uid: str, limit: int = 500) -> list[dict]:
+    """Every topic_quiz_attempts row for ONE learner — a targeted query
+    for the admin Student Profile / classification-history view, instead
+    of the full-collection scan list_all_attempts() does for classifier
+    retraining."""
+    query = _attempts_collection(db).where("Uid", "==", uid).limit(limit)
+    return [doc.to_dict() for doc in query.stream()]
+
+
 def list_due_revisions(db, uid: str, as_of: str | None = None) -> list[dict]:
     """Every topic whose NextReviewDate <= as_of (default: today), for the
     dashboard's 'Due Today' / 'Upcoming Revisions' card.

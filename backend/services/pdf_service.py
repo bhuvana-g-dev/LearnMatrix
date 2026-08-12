@@ -126,8 +126,13 @@ def build_pdf_from_deck_content(notes: dict, subtitle: str) -> BytesIO:
     for i, slide_data in enumerate(deck_sections):
         c.showPage()
         accent = ACCENT_CYCLE[i % len(ACCENT_CYCLE)]
-        if slide_data["kind"] == "bullets":
+        kind = slide_data["kind"]
+        if kind == "bullets":
             _draw_bullet_page(c, slide_data["heading"], slide_data["items"], i + 1, accent)
+        elif kind == "list":
+            _draw_list_page(c, slide_data["heading"], slide_data["items"], i + 1, accent)
+        elif kind == "comparison":
+            _draw_comparison_page(c, slide_data["heading"], slide_data["left"], slide_data["right"], i + 1)
         else:
             _draw_text_page(c, slide_data["heading"], slide_data["body"], i + 1, accent)
 
@@ -240,19 +245,96 @@ def _draw_text_page(c: canvas.Canvas, heading: str, body: str, index: int, accen
 
 
 def _draw_bullet_page(c: canvas.Canvas, heading: str, bullets: list[str], index: int, accent) -> None:
+    """Key Takeaways — soft-tinted rounded cards with a checkmark badge,
+    matching ppt_service.py's _add_bullet_slide."""
     _draw_chrome(c, heading, index, accent)
 
-    c.setFillColor(NAVY_MID)
-    c.setFont("Helvetica", 14)
-
     y = PAGE_H - 1.85 * inch
+    card_h = 0.72 * inch
     for b in bullets:
+        c.setFillColor(CREAM)
+        c.roundRect(1.55 * inch, y - card_h, 10.9 * inch, card_h, 8, fill=1, stroke=0)
+
+        badge_cx, badge_cy = 1.95 * inch, y - card_h / 2
         c.setFillColor(accent)
-        c.circle(1.68 * inch, y + 0.06 * inch, 0.08 * inch, fill=1, stroke=0)
-        c.setFillColor(NAVY_MID)
-        lines = _wrap_text(b, "Helvetica", 14, 10.5 * inch)
-        line_y = y
-        for line in lines:
-            c.drawString(1.95 * inch, line_y, line)
-            line_y -= 0.26 * inch
-        y = line_y - 0.2 * inch
+        c.circle(badge_cx, badge_cy, 0.2 * inch, fill=1, stroke=0)
+        c.setFillColor(WHITE if accent != GOLD_LIGHT else NAVY)
+        c.setFont("Helvetica-Bold", 12)
+        c.drawCentredString(badge_cx, badge_cy - 4, "\u2713")
+
+        c.setFillColor(NAVY)
+        c.setFont("Helvetica-Bold", 14)
+        c.drawString(2.35 * inch, y - card_h / 2 - 5, b)
+
+        y -= card_h + 0.18 * inch
+
+
+def _draw_list_page(c: canvas.Canvas, heading: str, items: list[str], index: int, accent) -> None:
+    """Features/steps/examples — a grid of colored icon cards, matching
+    ppt_service.py's _add_list_slide."""
+    _draw_chrome(c, heading, index, accent)
+
+    cols = 2 if len(items) <= 4 else 3
+    gap = 0.3 * inch
+    area_left, area_top = 1.55 * inch, PAGE_H - 1.85 * inch
+    area_w = PAGE_W - area_left - 0.6 * inch
+    card_w = (area_w - gap * (cols - 1)) / cols
+    card_h = 1.05 * inch
+
+    for i, item in enumerate(items):
+        r, col = divmod(i, cols)
+        x = area_left + col * (card_w + gap)
+        y_top = area_top - r * (card_h + gap)
+
+        c.setFillColor(CREAM)
+        c.setStrokeColor(accent)
+        c.setLineWidth(1)
+        c.roundRect(x, y_top - card_h, card_w, card_h, 10, fill=1, stroke=1)
+
+        num_cx, num_cy = x + 0.36 * inch, y_top - 0.36 * inch
+        c.setFillColor(accent)
+        c.circle(num_cx, num_cy, 0.18 * inch, fill=1, stroke=0)
+        c.setFillColor(WHITE if accent != GOLD_LIGHT else NAVY)
+        c.setFont("Helvetica-Bold", 11)
+        c.drawCentredString(num_cx, num_cy - 4, str(i + 1))
+
+        c.setFillColor(NAVY)
+        c.setFont("Helvetica-Bold", 12)
+        text_lines = _wrap_text(item, "Helvetica-Bold", 12, card_w - 0.85 * inch)
+        ty = y_top - 0.42 * inch
+        for line in text_lines[:3]:
+            c.drawString(x + 0.65 * inch, ty, line)
+            ty -= 0.2 * inch
+
+
+def _draw_comparison_page(c: canvas.Canvas, heading: str, left: dict, right: dict, index: int) -> None:
+    """Pros/cons, before/after — two colored columns, matching
+    ppt_service.py's _add_comparison_slide."""
+    _draw_chrome(c, heading, index, GOLD)
+
+    col_top = PAGE_H - 1.85 * inch
+    col_h = 5.15 * inch
+    gap = 0.35 * inch
+    area_left = 1.55 * inch
+    area_w = PAGE_W - area_left - 0.6 * inch
+    col_w = (area_w - gap) / 2
+
+    for panel, color, x in [(left, NAVY, area_left), (right, GOLD, area_left + col_w + gap)]:
+        text_color = WHITE if color != GOLD else NAVY
+        c.setFillColor(color)
+        c.roundRect(x, col_top - col_h, col_w, col_h, 10, fill=1, stroke=0)
+
+        c.setFillColor(text_color)
+        c.setFont("Helvetica-Bold", 16)
+        c.drawCentredString(x + col_w / 2, col_top - 0.42 * inch, panel.get("label", ""))
+
+        item_y = col_top - 0.95 * inch
+        for item in panel.get("items", []):
+            c.setFillColor(text_color)
+            c.circle(x + 0.42 * inch, item_y + 0.04 * inch, 0.045 * inch, fill=1, stroke=0)
+            lines = _wrap_text(item, "Helvetica", 13, col_w - 0.9 * inch)
+            ty = item_y
+            for line in lines:
+                c.drawString(x + 0.62 * inch, ty, line)
+                ty -= 0.22 * inch
+            item_y = ty - 0.18 * inch

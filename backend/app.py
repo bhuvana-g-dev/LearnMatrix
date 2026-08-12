@@ -19,6 +19,7 @@ from flask import Flask
 from flask_cors import CORS
 
 from config.settings import settings
+
 from routes.health_routes import health_bp
 from routes.role_routes import role_bp
 from routes.skill_routes import skill_bp
@@ -30,6 +31,8 @@ from routes.learning_routes import learning_bp
 from routes.activity_routes import activity_bp
 from routes.skill_topic_routes import skill_topic_bp
 from routes.admin_student_routes import admin_student_bp
+from routes.admin_learner_routes import admin_learner_bp
+from routes.admin_auth_routes import admin_auth_bp
 from routes.ai_chat_routes import ai_chat_bp
 from routes.flashcard_routes import flashcard_bp
 from routes.ppt_routes import ppt_bp
@@ -60,6 +63,8 @@ def create_app() -> Flask:
     app.register_blueprint(activity_bp, url_prefix="/api")
     app.register_blueprint(skill_topic_bp, url_prefix="/api")
     app.register_blueprint(admin_student_bp, url_prefix="/api")
+    app.register_blueprint(admin_learner_bp, url_prefix="/api")
+    app.register_blueprint(admin_auth_bp, url_prefix="/api")
     app.register_blueprint(ai_chat_bp, url_prefix="/api")
     app.register_blueprint(flashcard_bp, url_prefix="/api")
     app.register_blueprint(ppt_bp, url_prefix="/api")

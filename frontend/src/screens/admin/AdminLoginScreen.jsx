@@ -1,12 +1,12 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { Eye, EyeOff, User, Lock, ShieldCheck } from "lucide-react";
+import { Eye, EyeOff, Mail, Lock, ShieldCheck } from "lucide-react";
 import PageShell from "../../components/layout/PageShell";
 import Logo from "../../components/common/Logo";
 import { COLORS, GRADIENTS, GLASS_CARD } from "../../constants/theme";
 
 export default function AdminLoginScreen({ auth, onSuccess }) {
-  const [username, setUsername] = useState("");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPw, setShowPw] = useState(false);
   const [focused, setFocused] = useState("");
@@ -26,7 +26,7 @@ export default function AdminLoginScreen({ auth, onSuccess }) {
 
   const handleLogin = async () => {
     try {
-      await auth.login({ username, password });
+      await auth.login({ email, password });
       onSuccess();
     } catch {
       // auth.error is already set by useAdminAuth and rendered below
@@ -52,21 +52,21 @@ export default function AdminLoginScreen({ auth, onSuccess }) {
             Admin Login
           </h1>
           <p className="text-center text-sm mt-2 mb-8" style={{ color: COLORS.textMid }}>
-            Sign in to manage the Question Bank
+            Sign in to manage LearnMatrix
           </p>
 
           <div className="space-y-4">
             <div style={{ position: "relative" }}>
-              <User size={17} style={{ position: "absolute", left: 15, top: "50%", transform: "translateY(-50%)", color: COLORS.textLight }} />
+              <Mail size={17} style={{ position: "absolute", left: 15, top: "50%", transform: "translateY(-50%)", color: COLORS.textLight }} />
               <input
-                type="text"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                placeholder="Admin Username"
-                onFocus={() => setFocused("username")}
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="Admin Email"
+                onFocus={() => setFocused("email")}
                 onBlur={() => setFocused("")}
                 onKeyDown={(e) => e.key === "Enter" && handleLogin()}
-                style={inputStyle("username")}
+                style={inputStyle("email")}
               />
             </div>
 

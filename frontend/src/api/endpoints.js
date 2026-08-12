@@ -98,10 +98,10 @@ export const ENDPOINTS = {
     DUE_REVISIONS: (uid) => `/revisions/${uid}`, // GET
   },
   // ---- Admin Panel (new) ----
-  // Backend: routes/admin_question_routes.py, registered under /api like
-  // every other blueprint in app.py.
+  // Backend: routes/admin_question_routes.py, routes/admin_student_routes.py,
+  // routes/admin_learner_routes.py, routes/admin_auth_routes.py, all
+  // registered under /api like every other blueprint in app.py.
   ADMIN: {
-    LOGIN: "/auth/login", // reuses the same dummy auth endpoint as the student side for now
     QUESTIONS: {
       LIST: "/admin/questions", // GET, supports ?skill=&role=&difficulty=&status=&search=
       CREATE: "/admin/questions", // POST
@@ -128,6 +128,19 @@ export const ENDPOINTS = {
     STUDENTS: {
       LIST: "/admin/students", // GET
       EXPORT: "/admin/students/export", // GET, .xlsx file download
+    },
+    // Learner Intelligence — backend: routes/admin_learner_routes.py
+    // Reads the real per-skill classification data (topic_quiz_progress
+    // / topic_quiz_attempts), not a separate mock dataset.
+    LEARNERS: {
+      LIST: "/admin/learners", // GET, supports ?email=&skill=&topic=&learnerType=
+      PROFILE: "/admin/learners/profile", // GET ?email= (required) — skill-wise WHY breakdown
+    },
+    // Admin auth — backend: routes/admin_auth_routes.py. Real Firebase
+    // login happens client-side (see services/adminAuthService.js); this
+    // is the server-side admin-role check that happens right after.
+    AUTH: {
+      SESSION: "/admin/session", // POST { idToken } — server-side admin-role check
     },
   },
 };

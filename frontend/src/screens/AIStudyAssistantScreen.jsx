@@ -24,6 +24,7 @@ import {
   Trash2,
   MessageSquare,
   Download,
+  Check,
 } from "lucide-react";
 import {
   sendChatMessage,
@@ -1433,7 +1434,15 @@ function buildSlidesFromDeck(deck) {
   const slides = [{ kind: "title", title: deck.title || "Study Summary", subtitle: "Study Summary" }];
   if (deck.summary) slides.push({ kind: "text", heading: "Summary", body: deck.summary });
   (deck.sections || []).forEach((s) => {
-    if (s.content) slides.push({ kind: "text", heading: s.heading || "Section", body: s.content });
+    const heading = s.heading || "Section";
+    const layout = s.layout || "text";
+    if (layout === "list" && Array.isArray(s.items) && s.items.length) {
+      slides.push({ kind: "list", heading, items: s.items });
+    } else if (layout === "comparison" && s.left && s.right) {
+      slides.push({ kind: "comparison", heading, left: s.left, right: s.right });
+    } else if (s.content) {
+      slides.push({ kind: "text", heading, body: s.content });
+    }
   });
   if (deck.keyTakeaways?.length) slides.push({ kind: "bullets", heading: "Key Takeaways", items: deck.keyTakeaways });
   return slides;
@@ -1580,6 +1589,46 @@ function SlideCanvas({ slide, index }) {
   const accent = SD_ACCENT_CYCLE[(index - 1) % SD_ACCENT_CYCLE.length];
   const badgeText = accent === COLORS.pink ? COLORS.sky : COLORS.white;
 
+  if (slide.kind === "comparison") {
+    const panels = [
+      { data: slide.left, bg: COLORS.sky, text: COLORS.white },
+      { data: slide.right, bg: COLORS.purple, text: COLORS.white },
+    ];
+    return (
+      <div className="relative w-full h-full rounded-xl overflow-hidden flex flex-col" style={{ background: COLORS.white, border: `1px solid ${COLORS.border}` }}>
+        <div className="px-[6%] pt-[5%] pb-2">
+          <div className="flex items-center gap-3 mb-2">
+            <div className="flex items-center justify-center rounded-full shrink-0" style={{ width: 34, height: 34, background: COLORS.purple, color: COLORS.white }}>
+              <span className="text-sm font-bold">{index}</span>
+            </div>
+            <p className="text-lg font-bold" style={{ color: COLORS.textDark }}>
+              {slide.heading}
+            </p>
+          </div>
+        </div>
+        <div className="flex-1 flex gap-3 px-[6%] pb-[5%] min-h-0">
+          {panels.map((p, pi) => (
+            <div key={pi} className="flex-1 rounded-lg p-3 overflow-hidden" style={{ background: p.bg }}>
+              <p className="text-xs font-bold text-center mb-2" style={{ color: p.text }}>
+                {p.data?.label}
+              </p>
+              <div className="flex flex-col gap-1.5">
+                {(p.data?.items || []).map((item, i) => (
+                  <div key={i} className="flex items-start gap-1.5">
+                    <div className="rounded-full shrink-0 mt-1" style={{ width: 5, height: 5, background: p.text }} />
+                    <p className="text-[11px] leading-snug" style={{ color: p.text }}>
+                      {item}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="relative w-full h-full rounded-xl overflow-hidden flex" style={{ background: COLORS.white, border: `1px solid ${COLORS.border}` }}>
       <div style={{ width: 10, background: accent }} />
@@ -1599,11 +1648,32 @@ function SlideCanvas({ slide, index }) {
 
         <div style={{ marginLeft: 46 }}>
           {slide.kind === "bullets" ? (
-            <div className="flex flex-col gap-3">
+            <div className="flex flex-col gap-2.5">
               {slide.items.map((item, i) => (
-                <div key={i} className="flex items-start gap-2.5">
-                  <div className="rounded-full shrink-0 mt-1.5" style={{ width: 8, height: 8, background: accent }} />
-                  <p className="text-sm" style={{ color: COLORS.textMid }}>
+                <div key={i} className="flex items-center gap-2.5 rounded-lg px-3 py-2" style={{ background: COLORS.lavender }}>
+                  <div
+                    className="flex items-center justify-center rounded-full shrink-0"
+                    style={{ width: 20, height: 20, background: accent, color: badgeText }}
+                  >
+                    <Check size={11} />
+                  </div>
+                  <p className="text-sm font-semibold" style={{ color: COLORS.textDark }}>
+                    {item}
+                  </p>
+                </div>
+              ))}
+            </div>
+          ) : slide.kind === "list" ? (
+            <div className="grid grid-cols-2 gap-2.5">
+              {slide.items.map((item, i) => (
+                <div key={i} className="rounded-lg px-3 py-2.5 flex items-start gap-2" style={{ background: COLORS.lavender, border: `1px solid ${accent}55` }}>
+                  <div
+                    className="flex items-center justify-center rounded-full shrink-0 mt-0.5"
+                    style={{ width: 18, height: 18, background: accent, color: badgeText }}
+                  >
+                    <span className="text-[10px] font-bold">{i + 1}</span>
+                  </div>
+                  <p className="text-xs font-semibold leading-snug" style={{ color: COLORS.textDark }}>
                     {item}
                   </p>
                 </div>

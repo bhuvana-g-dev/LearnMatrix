@@ -25,6 +25,9 @@ export const ADMIN_NAV_SECTIONS = [
     key: "people",
     title: "People",
     icon: Users,
-    children: [{ key: "student-records", label: "Student Records" }],
+    children: [
+      { key: "student-records", label: "Student Records" },
+      { key: "learner-intelligence", label: "Learner Intelligence" },
+    ],
   },
 ];

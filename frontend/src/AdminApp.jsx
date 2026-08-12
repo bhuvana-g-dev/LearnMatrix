@@ -8,6 +8,7 @@ import QuestionUploadScreen from "./screens/admin/QuestionUploadScreen";
 import QuestionPreviewScreen from "./screens/admin/QuestionPreviewScreen";
 import ResourceBankScreen from "./screens/admin/ResourceBankScreen";
 import StudentRecordsScreen from "./screens/admin/StudentRecordsScreen";
+import LearnerIntelligenceScreen from "./screens/admin/LearnerIntelligenceScreen";
 import Logo from "./components/common/Logo";
 import { COLORS } from "./constants/theme";
 import { useAdminAuth } from "./hooks/useAdminAuth";
@@ -113,6 +114,8 @@ export default function AdminApp() {
     content = <ResourceBankScreen />;
   } else if (activeKey === "student-records") {
     content = <StudentRecordsScreen />;
+  } else if (activeKey === "learner-intelligence") {
+    content = <LearnerIntelligenceScreen />;
   }
 
   return (

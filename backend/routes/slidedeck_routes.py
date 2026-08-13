@@ -1,20 +1,29 @@
 """
 routes/slidedeck_routes.py
 
-    POST /api/slidedeck/generate -> {text, label?} -> {title, summary, sections, keyTakeaways}
+    POST /api/slidedeck/generate -> {text, label?, uid?, sessionId?}
+        -> {title, summary, sections, keyTakeaways}
 
-Stateless — nothing is persisted, this just proxies to SlideDeckAgent.
-Used by the AI Study Assistant's Slide Deck "Type" mode to show an
-in-app preview (numbered slide list + slide canvas, Gamma/NotebookLM
-style) BEFORE the student downloads a file — the exact same JSON this
-route returns is what routes/ppt_routes.py's "from-content" pptx/pdf
-endpoints turn into a file, so what's previewed is exactly what
-downloads.
+Proxies to SlideDeckAgent. Used by the AI Study Assistant's Slide Deck
+"Type" mode to show an in-app preview (numbered slide list + slide
+canvas, Gamma/NotebookLM style) BEFORE the student downloads a file —
+the exact same JSON this route returns is what routes/ppt_routes.py's
+"from-content" pptx/pdf endpoints turn into a file, so what's
+previewed is exactly what downloads.
+
+When the request includes both `uid` and `sessionId` (i.e. generated
+from inside an open chat), the result is also saved as a studio
+artifact under that session (see services/studio_repository.py) so it
+shows up as an "already generated" card next time that chat is
+reopened — without `uid`/`sessionId` it's generated and returned but
+not saved, same as before.
 """
 
 from flask import Blueprint, request
 
+from firebase.firebase_config import get_firestore_client
 from services.slide_deck_service import generate_deck_content, SlideDeckServiceError
+from services import studio_repository
 from utils.response_helper import success_response, error_response
 
 slidedeck_bp = Blueprint("slidedeck", __name__)
@@ -33,6 +42,12 @@ def generate_slidedeck_route():
 
     try:
         result = generate_deck_content(text, label)
-        return success_response(data=result, message="Slide deck generated.")
     except SlideDeckServiceError as exc:
         return error_response(str(exc), status_code=422)
+
+    uid, session_id = payload.get("uid"), payload.get("sessionId")
+    if uid and session_id:
+        db = get_firestore_client()
+        studio_repository.save_artifact(db, uid, session_id, "slidedeck", result.get("title") or "Slide Deck", result)
+
+    return success_response(data=result, message="Slide deck generated.")

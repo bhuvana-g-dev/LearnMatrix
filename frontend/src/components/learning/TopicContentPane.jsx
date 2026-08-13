@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
 import {
   Loader2, XCircle, RotateCcw, BookOpen, Code2, CheckCircle2,
-  ExternalLink, Youtube, FileText, Github, ChevronDown, ChevronLeft, ChevronRight,
+  ExternalLink, Youtube, FileText, Github, ChevronDown, ChevronLeft, ChevronRight, ClipboardCheck,
 } from "lucide-react";
 import { COLORS, GRADIENTS, GLASS_CARD } from "../../constants/theme";
 import { getTopicPackage } from "../../services/learningContentService";
@@ -85,7 +85,7 @@ function formatPublishedDate(iso) {
  */
 export default function TopicContentPane({
   skill, topic, focusBand, topicStatus,
-  onNext, onPrevious, hasNext = false, hasPrevious = false,
+  onNext, onPrevious, hasNext = false, hasPrevious = false, onTakeTest,
 }) {
   const [state, setState] = useState("loading"); // loading | error | ready
   const [errorMessage, setErrorMessage] = useState("");
@@ -398,6 +398,37 @@ export default function TopicContentPane({
           </div>
         )}
       </div>
+
+      {onTakeTest && (
+        <motion.button
+          onClick={onTakeTest}
+          whileHover={{ y: -2 }}
+          whileTap={{ scale: 0.98 }}
+          className="w-full flex items-center justify-between gap-3 p-5 mb-6 text-left"
+          style={{ ...GLASS_CARD, borderRadius: 20, border: `1px solid ${COLORS.border}`, cursor: "pointer" }}
+        >
+          <div className="flex items-center gap-3">
+            <div
+              className="flex items-center justify-center flex-shrink-0"
+              style={{ width: 40, height: 40, borderRadius: 12, background: GRADIENTS.purplePink }}
+            >
+              <ClipboardCheck size={20} style={{ color: "#fff" }} />
+            </div>
+            <div>
+              <p className="text-sm font-bold" style={{ color: COLORS.textDark }}>Ready to test yourself?</p>
+              <p className="text-[11px]" style={{ color: COLORS.textLight }}>
+                10-question quiz on {topic} · sets your next revision date
+              </p>
+            </div>
+          </div>
+          <span
+            className="text-xs font-bold px-4 py-2 rounded-full flex-shrink-0"
+            style={{ background: GRADIENTS.purplePink, color: "#fff" }}
+          >
+            Take Test
+          </span>
+        </motion.button>
+      )}
 
       {(onNext || onPrevious) && (
         <div className="flex items-center justify-between gap-3">

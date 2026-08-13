@@ -107,6 +107,7 @@ export const ENDPOINTS = {
       `/topic-quiz/${encodeURIComponent(skill)}/${encodeURIComponent(topic)}`, // GET
     SUBMIT: (skill, topic) =>
       `/topic-quiz/${encodeURIComponent(skill)}/${encodeURIComponent(topic)}/submit`, // POST {uid, questions, answers, timeTakenSeconds}
+    PROGRESS: (uid) => `/topic-quiz/${uid}/progress`, // GET -> [ topic_quiz_progress docs, each with FocusBand ]
     DUE_REVISIONS: (uid) => `/revisions/${uid}`, // GET -> { due: [...], upcoming: [...] }
     SNOOZE: (uid, skill, topic) =>
       `/revisions/${uid}/${encodeURIComponent(skill)}/${encodeURIComponent(topic)}/snooze`, // POST

@@ -226,6 +226,12 @@ class Settings:
     TOPIC_QUIZ_PROGRESS_COLLECTION: str = os.getenv(
         "TOPIC_QUIZ_PROGRESS_COLLECTION", "topic_quiz_progress"
     )
+    # topic_quiz_bank_cache/{uid}__{skill}__{topic} — one in-progress quiz
+    #     per (student, topic), cleared on submit. See
+    #     services/topic_quiz_bank_cache.py's module docstring.
+    TOPIC_QUIZ_BANK_CACHE_COLLECTION: str = os.getenv(
+        "TOPIC_QUIZ_BANK_CACHE_COLLECTION", "topic_quiz_bank_cache"
+    )
 
     # Fixed count per abstract ("quiz after each topic (10 questions)") —
     # same fixed-spread reasoning as assessment_planner.QUESTIONS_PER_DIFFICULTY,

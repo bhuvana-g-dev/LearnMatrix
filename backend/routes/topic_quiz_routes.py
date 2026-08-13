@@ -9,6 +9,12 @@ POST /api/topic-quiz/<skill>/<topic>/submit   -> scores the attempt,
      classifies the learner (Fast/Moderate/Slow), schedules the next
      revision date, and persists both the attempt and updated progress.
 
+GET  /api/topic-quiz/<uid>/progress           -> every topic_quiz_progress
+     doc for this learner (each with its own FocusBand + Classification
+     from that topic's own quiz results) — read once by the frontend's
+     Course Workspace to make content depth per-topic instead of fixed
+     at whatever the one-time diagnostic assessed for the whole skill.
+
 GET  /api/revisions/<uid>                     -> { due: [...], upcoming: [...] }
      due = due today or overdue, upcoming = next 7 days — backs the
      Revision page's "Today's Revision" / "Upcoming Revision Sessions".
@@ -20,7 +26,8 @@ POST /api/revisions/<uid>/<skill>/<topic>/snooze -> pushes that topic's
 from flask import Blueprint, request
 
 from services.topic_quiz_service import (
-    get_topic_quiz, submit_topic_quiz, get_due_revisions, snooze_topic_revision, TopicQuizError,
+    get_topic_quiz, submit_topic_quiz, get_due_revisions, snooze_topic_revision,
+    get_topic_progress, TopicQuizError,
 )
 from utils.response_helper import success_response, error_response
 
@@ -65,6 +72,15 @@ def submit_topic_quiz_route(skill, topic):
         return success_response(data=result, message="Quiz submitted.")
     except TopicQuizError as exc:
         return error_response(str(exc), status_code=422)
+    except Exception as exc:  # noqa: BLE001
+        return error_response(str(exc), status_code=500)
+
+
+@topic_quiz_bp.route("/topic-quiz/<uid>/progress", methods=["GET"])
+def get_topic_progress_route(uid):
+    try:
+        progress = get_topic_progress(uid=uid)
+        return success_response(data=progress, message=f"{len(progress)} topic(s) with recorded progress.")
     except Exception as exc:  # noqa: BLE001
         return error_response(str(exc), status_code=500)
 

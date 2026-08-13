@@ -15,6 +15,19 @@
  * the STARTING focusBand used for that skill's topics (see below) and
  * small visual indicators (Verified checkmark) in the sidebar — never
  * whether a topic can be opened.
+ *
+ * PER-TOPIC FOCUS BAND (this revision): the skill-level focusBand below
+ * is only ever a STARTING point — one band computed once from the
+ * whole-skill diagnostic. Once a learner has actually taken a TOPIC's
+ * own quiz (backend/services/topic_quiz_service.py), that topic gets
+ * its own FocusBand computed from ITS Easy/Medium/Hard breakdown
+ * (backend/services/focus_band.py, same function, topic-scoped data —
+ * see backend/routes/topic_quiz_routes.py's GET .../progress). That
+ * per-topic result — passed in here as `topicProgress`, a
+ * `${skill}::${topic}` -> FocusBand map — always wins over the
+ * skill-level default, because it's a fresher, more specific signal:
+ * two topics in the same "upcoming" skill can genuinely need different
+ * content depth once the learner has actually studied one of them.
  */
 
 // A skill's roadmap-computed focusBand (fundamentals/application/
@@ -26,7 +39,14 @@
 // default level to fetch content at.
 const DEFAULT_FOCUS_BAND = "application";
 
-export function buildFlatTopicList(roadmap, compressedSyllabus) {
+/** Key used to look up a topic's recorded per-quiz progress in the
+ * `topicProgress` map — must match how CourseWorkspaceScreen builds
+ * that map from getTopicProgress()'s [{ Skill, Topic, FocusBand, ... }]. */
+export function topicProgressKey(skill, topic) {
+  return `${skill}::${topic}`;
+}
+
+export function buildFlatTopicList(roadmap, compressedSyllabus, topicProgress = null) {
   if (!roadmap) return [];
 
   const groups =
@@ -47,12 +67,17 @@ export function buildFlatTopicList(roadmap, compressedSyllabus) {
           ? syllabusTopics
           : [{ title: entry.skill, status: entry.status === "mastered" ? "Verified" : "Locked", order: 0 }];
 
-     const focusBand =
+     const skillLevelFocusBand =
   entry.status === "upcoming" && entry.focusBand
     ? entry.focusBand
     : DEFAULT_FOCUS_BAND;
 
       for (const t of topics) {
+        // A recorded per-topic quiz result always wins over the
+        // skill-level starting band — see module docstring.
+        const recordedBand = topicProgress?.[topicProgressKey(entry.skill, t.title)];
+        const focusBand = recordedBand || skillLevelFocusBand;
+
         flat.push({
           module: group.name,
           skill: entry.skill,

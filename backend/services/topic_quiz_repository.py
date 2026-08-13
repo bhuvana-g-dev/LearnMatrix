@@ -9,7 +9,7 @@ services/topic_quiz_service.py, routes/topic_quiz_routes.py, and
 scripts/train_learner_classifier.py can all share it.
 """
 
-from datetime import date
+from datetime import date, timedelta
 
 from firebase_admin import firestore
 
@@ -60,7 +60,7 @@ def list_attempts_by_uid(db, uid: str, limit: int = 500) -> list[dict]:
 
 def list_due_revisions(db, uid: str, as_of: str | None = None) -> list[dict]:
     """Every topic whose NextReviewDate <= as_of (default: today), for the
-    dashboard's 'Due Today' / 'Upcoming Revisions' card.
+    dashboard's 'Due Today' card — includes anything overdue too.
 
     NOTE: this is an equality (Uid) + range (NextReviewDate) query — on a
     fresh Firestore project the console may prompt you to create a
@@ -74,6 +74,45 @@ def list_due_revisions(db, uid: str, as_of: str | None = None) -> list[dict]:
         .where("NextReviewDate", "<=", as_of)
     )
     return [doc.to_dict() for doc in query.stream()]
+
+
+def list_upcoming_revisions(db, uid: str, days: int = 7, as_of: str | None = None) -> list[dict]:
+    """Topics scheduled between tomorrow and (as_of + days) — the 'Upcoming
+    Revision Sessions' section on the Revision page. Same composite-index
+    note as list_due_revisions() applies here (Uid equality + NextReviewDate
+    range) the first time this query runs on a fresh project.
+    """
+    today = date.fromisoformat(as_of) if as_of else date.today()
+    start = (today + timedelta(days=1)).isoformat()
+    end = (today + timedelta(days=days)).isoformat()
+    query = (
+        _progress_collection(db)
+        .where("Uid", "==", uid)
+        .where("NextReviewDate", ">=", start)
+        .where("NextReviewDate", "<=", end)
+    )
+    return [doc.to_dict() for doc in query.stream()]
+
+
+def snooze_revision(db, uid: str, skill: str, topic: str) -> dict:
+    """Pushes NextReviewDate forward by exactly one day from whatever it
+    currently is (not from today) — snoozing a 3-days-overdue topic moves
+    it to tomorrow, same as snoozing one due today. Only touches
+    NextReviewDate + UpdatedAt; AttemptCount/Classification/scores are
+    untouched since no quiz was actually taken.
+    """
+    doc_id = TopicQuizProgress.doc_id(uid, skill, topic)
+    doc_ref = _progress_collection(db).document(doc_id)
+    snap = doc_ref.get()
+    if not snap.exists:
+        raise ValueError("No revision progress found for this topic yet.")
+
+    current = snap.to_dict()
+    current_date = date.fromisoformat(current["NextReviewDate"])
+    new_date = (current_date + timedelta(days=1)).isoformat()
+
+    doc_ref.update({"NextReviewDate": new_date, "UpdatedAt": SERVER_TIMESTAMP})
+    return {**current, "NextReviewDate": new_date}
 
 
 # ---------------------------------------------------------------------------

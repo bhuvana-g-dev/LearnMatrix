@@ -11,9 +11,12 @@ import { ENDPOINTS } from "../api/endpoints";
 
 const GENERATE_TIMEOUT_MS = 60000; // LLM call — same reasoning as mindmapService/aiChatService
 
-/** Returns {title, summary, sections, keyTakeaways}. */
-export async function generateSlideDeckPreview(text) {
-  const { data } = await apiClient.post(ENDPOINTS.SLIDEDECK.GENERATE, { text }, { timeout: GENERATE_TIMEOUT_MS });
+/** Returns {title, summary, sections, keyTakeaways}. Passing uid/sessionId
+ * (i.e. generated from inside an open chat) also saves the result as a
+ * studio artifact for that session (see services/studioService.js) so it
+ * can be reopened later without regenerating. */
+export async function generateSlideDeckPreview(text, uid, sessionId) {
+  const { data } = await apiClient.post(ENDPOINTS.SLIDEDECK.GENERATE, { text, uid, sessionId }, { timeout: GENERATE_TIMEOUT_MS });
   if (!data.success) throw new Error(data.error || data.message || "Couldn't generate the slide deck.");
   return data.data;
 }

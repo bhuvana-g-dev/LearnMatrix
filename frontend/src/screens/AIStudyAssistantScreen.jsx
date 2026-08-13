@@ -36,6 +36,8 @@ import {
   BookOpen,
   MoreVertical,
   ChevronDown,
+  Share2,
+  Maximize2,
 } from "lucide-react";
 import {
   sendChatMessage,
@@ -1239,32 +1241,144 @@ function ChatBubble({ role, content, citedSources }) {
 
 function FlashcardModalBody({ set, index, flipped, onFlip, onNext, onPrev }) {
   const card = set.cards[index];
+  const total = set.cards.length;
+  const sourceCount = set.sourceCount ?? set.sources?.length ?? 0;
+
+  // Local, in-session only: which cards were marked right/wrong, and
+  // whether the "Explain" panel is open for the current card.
+  const [grades, setGrades] = useState({}); // { [cardIndex]: "right" | "wrong" }
+  const [showExplain, setShowExplain] = useState(false);
+
+  const wrongCount = Object.values(grades).filter((g) => g === "wrong").length;
+  const rightCount = Object.values(grades).filter((g) => g === "right").length;
+
+  function grade(result) {
+    setGrades((g) => ({ ...g, [index]: result }));
+  }
+
+  function goPrev() {
+    setShowExplain(false);
+    onPrev();
+  }
+  function goNext() {
+    setShowExplain(false);
+    onNext();
+  }
+
   return (
     <div>
-      <p className="text-sm font-semibold mb-3 pr-6" style={{ color: COLORS.textDark }}>
-        {set.title}
-      </p>
-      <div onClick={onFlip} className="rounded-2xl flex items-center justify-center text-center px-6" style={{ background: COLORS.lavender, minHeight: 200, cursor: "pointer" }}>
-        <div>
-          <p className="text-[10px] font-semibold uppercase tracking-wide mb-2" style={{ color: COLORS.textLight }}>
-            {flipped ? "Answer" : "Question"} · Tap to flip
-          </p>
-          <p className="text-sm font-medium" style={{ color: COLORS.textDark }}>
-            {flipped ? card.answer : card.question}
-          </p>
+      {/* Header: title + share / expand / menu */}
+      <div className="flex items-center justify-between mb-1 pr-6">
+        <p className="text-base font-semibold" style={{ color: COLORS.textDark }}>
+          AI Flashcards
+        </p>
+        <div className="flex items-center gap-3">
+          <button type="button" style={{ cursor: "pointer" }} title="Share">
+            <Share2 size={16} color={COLORS.textMid} />
+          </button>
+          <button type="button" style={{ cursor: "pointer" }} title="Expand">
+            <Maximize2 size={15} color={COLORS.textMid} />
+          </button>
+          <button type="button" style={{ cursor: "pointer" }} title="More">
+            <MoreVertical size={16} color={COLORS.textMid} />
+          </button>
         </div>
       </div>
-      <div className="flex items-center justify-between mt-4">
-        <button type="button" onClick={onPrev} disabled={index === 0} className="flex items-center gap-1 text-xs font-semibold disabled:opacity-30" style={{ color: COLORS.textDark, cursor: index === 0 ? "default" : "pointer" }}>
-          <ChevronLeft size={14} />
-          Prev
-        </button>
-        <span className="text-xs" style={{ color: COLORS.textLight }}>
-          {index + 1} / {set.cards.length}
+
+      {sourceCount > 0 && (
+        <span
+          className="inline-block text-xs font-medium mb-3 px-3 py-1 rounded-full"
+          style={{ border: `1px solid ${COLORS.border}`, color: COLORS.textMid }}
+        >
+          View {sourceCount} source{sourceCount === 1 ? "" : "s"}
         </span>
-        <button type="button" onClick={onNext} disabled={index === set.cards.length - 1} className="flex items-center gap-1 text-xs font-semibold disabled:opacity-30" style={{ color: COLORS.textDark, cursor: index === set.cards.length - 1 ? "default" : "pointer" }}>
-          Next
-          <ChevronRight size={14} />
+      )}
+
+      {/* Dark question/answer card */}
+      <div
+        onClick={onFlip}
+        className="rounded-3xl flex flex-col justify-between px-6 py-5"
+        style={{ background: "#2B2B33", minHeight: 220, cursor: "pointer" }}
+      >
+        <div className="flex items-center justify-between">
+          <span className="text-xs" style={{ color: "rgba(255,255,255,0.45)" }}>
+            {index + 1} / {total}
+          </span>
+          <MoreVertical size={16} color="rgba(255,255,255,0.45)" />
+        </div>
+        <p className="text-xl font-semibold leading-snug text-center px-2" style={{ color: COLORS.white }}>
+          {flipped ? card.answer : card.question}
+        </p>
+        <p className="text-xs text-center" style={{ color: "rgba(255,255,255,0.45)" }}>
+          {flipped ? "Tap to see question" : "See answer"}
+        </p>
+      </div>
+
+      {/* Explain panel — only once the answer is showing */}
+      {flipped && (
+        <div className="mt-2.5">
+          {showExplain ? (
+            <div className="rounded-2xl px-5 py-4" style={{ border: `1px solid ${COLORS.border}`, background: COLORS.white }}>
+              <p className="text-sm leading-relaxed" style={{ color: COLORS.textDark }}>
+                {card.explanation || card.answer}
+              </p>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowExplain(true);
+              }}
+              className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full"
+              style={{ border: `1px solid ${COLORS.border}`, color: COLORS.textMid, cursor: "pointer" }}
+            >
+              <MessageSquare size={13} />
+              Explain
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Nav + right/wrong tally */}
+      <div className="flex items-center justify-between mt-4">
+        <button
+          type="button"
+          onClick={goPrev}
+          disabled={index === 0}
+          className="flex items-center justify-center rounded-full disabled:opacity-30 shrink-0"
+          style={{ width: 34, height: 34, border: `1.5px solid ${COLORS.purple}`, cursor: index === 0 ? "default" : "pointer" }}
+        >
+          <ChevronLeft size={16} color={COLORS.purple} />
+        </button>
+
+        <div className="flex items-center gap-4">
+          <button
+            type="button"
+            onClick={() => grade("wrong")}
+            className="flex items-center gap-1 text-sm font-semibold"
+            style={{ color: "#DC2626", cursor: "pointer" }}
+          >
+            <X size={16} /> {wrongCount}
+          </button>
+          <button
+            type="button"
+            onClick={() => grade("right")}
+            className="flex items-center gap-1 text-sm font-semibold"
+            style={{ color: "#16A34A", cursor: "pointer" }}
+          >
+            {rightCount} <Check size={16} />
+          </button>
+        </div>
+
+        <button
+          type="button"
+          onClick={goNext}
+          disabled={index === total - 1}
+          className="flex items-center justify-center rounded-full disabled:opacity-30 shrink-0"
+          style={{ width: 34, height: 34, border: `1.5px solid ${COLORS.purple}`, cursor: index === total - 1 ? "default" : "pointer" }}
+        >
+          <ChevronRight size={16} color={COLORS.purple} />
         </button>
       </div>
     </div>

@@ -24,8 +24,11 @@ topic_quiz_bp = Blueprint("topic_quiz", __name__)
 
 @topic_quiz_bp.route("/topic-quiz/<skill>/<topic>", methods=["GET"])
 def get_topic_quiz_route(skill, topic):
+    uid = request.args.get("uid")
+    if not uid:
+        return error_response("uid query param is required.", status_code=400)
     try:
-        quiz = get_topic_quiz(skill=skill, topic=topic)
+        quiz = get_topic_quiz(uid=uid, skill=skill, topic=topic)
         return success_response(data=quiz, message="Topic quiz ready.")
     except TopicQuizError as exc:
         return error_response(str(exc), status_code=422)

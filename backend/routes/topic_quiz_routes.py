@@ -9,14 +9,19 @@ POST /api/topic-quiz/<skill>/<topic>/submit   -> scores the attempt,
      classifies the learner (Fast/Moderate/Slow), schedules the next
      revision date, and persists both the attempt and updated progress.
 
-GET  /api/revisions/<uid>                     -> topics currently due for
-     revision (NextReviewDate <= today) — backs the dashboard's
-     "Upcoming Revisions" / "Due Today" card.
+GET  /api/revisions/<uid>                     -> { due: [...], upcoming: [...] }
+     due = due today or overdue, upcoming = next 7 days — backs the
+     Revision page's "Today's Revision" / "Upcoming Revision Sessions".
+
+POST /api/revisions/<uid>/<skill>/<topic>/snooze -> pushes that topic's
+     NextReviewDate forward by one day, without requiring a quiz retake.
 """
 
 from flask import Blueprint, request
 
-from services.topic_quiz_service import get_topic_quiz, submit_topic_quiz, get_due_revisions, TopicQuizError
+from services.topic_quiz_service import (
+    get_topic_quiz, submit_topic_quiz, get_due_revisions, snooze_topic_revision, TopicQuizError,
+)
 from utils.response_helper import success_response, error_response
 
 topic_quiz_bp = Blueprint("topic_quiz", __name__)
@@ -67,7 +72,19 @@ def submit_topic_quiz_route(skill, topic):
 @topic_quiz_bp.route("/revisions/<uid>", methods=["GET"])
 def get_due_revisions_route(uid):
     try:
-        due = get_due_revisions(uid=uid)
-        return success_response(data=due, message=f"{len(due)} topic(s) due for revision.")
+        result = get_due_revisions(uid=uid)
+        total = len(result["due"]) + len(result["upcoming"])
+        return success_response(data=result, message=f"{total} revision(s) found.")
+    except Exception as exc:  # noqa: BLE001
+        return error_response(str(exc), status_code=500)
+
+
+@topic_quiz_bp.route("/revisions/<uid>/<skill>/<topic>/snooze", methods=["POST"])
+def snooze_revision_route(uid, skill, topic):
+    try:
+        progress = snooze_topic_revision(uid=uid, skill=skill, topic=topic)
+        return success_response(data=progress, message="Revision postponed to tomorrow.")
+    except TopicQuizError as exc:
+        return error_response(str(exc), status_code=422)
     except Exception as exc:  # noqa: BLE001
         return error_response(str(exc), status_code=500)

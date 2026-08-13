@@ -56,7 +56,7 @@ export default function TopicQuizModal({ skill, topic, uid, onComplete, onClose 
     setCurrentIndex(0);
     setAnswers({});
     try {
-      const quiz = await getTopicQuiz(skill, topic);
+      const quiz = await getTopicQuiz(skill, topic, uid);
       setQuestions(quiz.questions);
       startedAtRef.current = Date.now();
       setState("ready");

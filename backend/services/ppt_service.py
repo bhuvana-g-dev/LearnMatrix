@@ -159,7 +159,10 @@ def build_deck_sections(notes: dict) -> list[dict]:
         elif layout == "comparison" and isinstance(section.get("left"), dict) and isinstance(section.get("right"), dict):
             slides.append({"kind": "comparison", "heading": heading, "left": section["left"], "right": section["right"]})
         elif section.get("content"):
-            slides.append({"kind": "text", "heading": heading, "body": section["content"]})
+            slide = {"kind": "text", "heading": heading, "body": section["content"]}
+            if section.get("image_url"):
+                slide["image_url"] = section["image_url"]
+            slides.append(slide)
 
     takeaways = notes.get("keyTakeaways", [])
     if takeaways:
@@ -198,7 +201,7 @@ def build_pptx_from_deck_content(notes: dict, subtitle: str) -> BytesIO:
         elif kind == "comparison":
             _add_comparison_slide(prs, blank_layout, slide_data["heading"], slide_data["left"], slide_data["right"], i + 1)
         else:
-            _add_text_slide(prs, blank_layout, slide_data["heading"], slide_data["body"], i + 1, accent)
+            _add_text_slide(prs, blank_layout, slide_data["heading"], slide_data["body"], i + 1, accent, slide_data.get("image_url"))
 
     buffer = BytesIO()
     prs.save(buffer)
@@ -323,11 +326,20 @@ def _add_slide_chrome(prs, slide, heading, index, accent):
     rule.shadow.inherit = False
 
 
-def _add_text_slide(prs: Presentation, layout, heading: str, body: str, index: int, accent) -> None:
+def _add_text_slide(prs: Presentation, layout, heading: str, body: str, index: int, accent, image_url: str | None = None) -> None:
     slide = prs.slides.add_slide(layout)
     _add_slide_chrome(prs, slide, heading, index, accent)
 
-    body_box = slide.shapes.add_textbox(Inches(1.55), Inches(1.75), Inches(11.1), Inches(5.2))
+    # When a Pexels photo is available for this section (see
+    # services/slide_deck_service.py), the text column narrows to make
+    # room for it on the right instead of running full-width.
+    image_bytes = None
+    if image_url:
+        from services.image_service import fetch_image_bytes
+        image_bytes = fetch_image_bytes(image_url)
+
+    text_width = Inches(6.6) if image_bytes else Inches(11.1)
+    body_box = slide.shapes.add_textbox(Inches(1.55), Inches(1.75), text_width, Inches(5.2))
     text_frame = body_box.text_frame
     text_frame.word_wrap = True
 
@@ -349,6 +361,21 @@ def _add_text_slide(prs: Presentation, layout, heading: str, body: str, index: i
         run.font.size = Pt(18)
         run.font.color.rgb = NAVY_MID
         run.font.name = "Arial"
+
+    if image_bytes:
+        img_left, img_top, img_w, img_h = Inches(8.45), Inches(1.85), Inches(4.2), Inches(4.9)
+        # A plain add_picture() would be a hard-edged rectangle sitting on
+        # a page of otherwise all-rounded shapes — a soft accent frame
+        # behind it (peeking out on two sides) reads as an intentional
+        # framed photo instead of a raw pasted image.
+        frame = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, img_left - Inches(0.12), img_top - Inches(0.12), img_w + Inches(0.24), img_h + Inches(0.24))
+        frame.adjustments[0] = 0.04
+        _set_fill(frame, accent)
+        frame.shadow.inherit = False
+        try:
+            slide.shapes.add_picture(BytesIO(image_bytes), img_left, img_top, width=img_w, height=img_h)
+        except Exception:
+            pass  # a corrupt/unsupported download shouldn't break the whole deck — the accent frame alone still looks intentional
 
 
 # icon tag (see agents/slide_deck_agent.py's ICON_VOCAB) -> a built-in

@@ -1452,7 +1452,7 @@ function buildSlidesFromDeck(deck) {
     } else if (layout === "comparison" && s.left && s.right) {
       slides.push({ kind: "comparison", heading, left: s.left, right: s.right });
     } else if (s.content) {
-      slides.push({ kind: "text", heading, body: s.content });
+      slides.push({ kind: "text", heading, body: s.content, image: s.image_url });
     }
   });
   if (deck.keyTakeaways?.length) slides.push({ kind: "bullets", heading: "Key Takeaways", items: deck.keyTakeaways });
@@ -1745,6 +1745,15 @@ function SlideCanvas({ slide, index }) {
                   </div>
                 );
               })}
+            </div>
+          ) : slide.image ? (
+            <div className="flex gap-4">
+              <p className="text-sm leading-relaxed flex-1" style={{ color: COLORS.textMid }}>
+                {slide.body}
+              </p>
+              <div className="shrink-0 rounded-lg p-1" style={{ width: 130, height: 130, background: accent }}>
+                <img src={slide.image} alt="" className="w-full h-full object-cover rounded-md" />
+              </div>
             </div>
           ) : (
             <p className="text-sm leading-relaxed" style={{ color: COLORS.textMid }}>

@@ -74,11 +74,16 @@ export const ENDPOINTS = {
   },
   SLIDEDECK: {
     // backend/routes/slidedeck_routes.py — AI-expands a typed prompt into full deck content
-    GENERATE: "/slidedeck/generate", // POST {text, label?} -> {title, summary, sections, keyTakeaways}
+    GENERATE: "/slidedeck/generate", // POST {text, label?, uid?, sessionId?} -> {title, summary, sections, keyTakeaways}
   },
   MINDMAP: {
     // backend/routes/mindmap_routes.py — stateless, structures text into a mind map
-    GENERATE: "/mindmap/generate", // POST {text, label?}
+    GENERATE: "/mindmap/generate", // POST {text, label?, uid?, sessionId?}
+  },
+  STUDIO: {
+    // backend/routes/studio_routes.py — Mind Map / Slide Deck artifacts saved per chat session
+    LIST: (uid, sessionId) => `/studio/${uid}/${sessionId}`, // GET -> [{id, type, title, createdAt}]
+    GET: (uid, sessionId, artifactId) => `/studio/${uid}/${sessionId}/${artifactId}`, // GET -> {type, title, content, createdAt}
   },
   SYLLABUS: {
     // Skill Syllabus Tree (backend/services/skill_topic_service.py) —

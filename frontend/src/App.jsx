@@ -326,8 +326,8 @@ setLearningSession({ skill: entry.skill, topic, focusBand: entry.focusBand || "a
     // "My Profile" > "Overview" — the main profile hub (see
     // constants/navigation.js for the dropdown's other two entries).
     content = <ProfileScreen onNavigate={setActiveKey} />;
-  } else if (activeKey === "revision-schedule") {
-    content = <RevisionScheduleScreen />;
+  } else if (activeKey === "revision") {
+    content = <RevisionScheduleScreen uid={auth.user?.uid} />;
   } else if (activeKey === "learning-insights") {
     content = <LearningInsightsScreen />;
   } else if (activeKey === "ai") {

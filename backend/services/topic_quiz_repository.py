@@ -49,6 +49,16 @@ def list_all_progress(db) -> list[dict]:
     return [doc.to_dict() for doc in _progress_collection(db).stream()]
 
 
+def list_progress_by_uid(db, uid: str) -> list[dict]:
+    """Every topic_quiz_progress doc for ONE learner — every topic they've
+    ever submitted a quiz for, each carrying its own FocusBand. This is
+    what the frontend's buildCourseNavigator.js reads to override a
+    topic's skill-level default focus band with the learner's actual,
+    per-topic-quiz-derived one once they've taken that topic's quiz."""
+    query = _progress_collection(db).where("Uid", "==", uid)
+    return [doc.to_dict() for doc in query.stream()]
+
+
 def list_attempts_by_uid(db, uid: str, limit: int = 500) -> list[dict]:
     """Every topic_quiz_attempts row for ONE learner — a targeted query
     for the admin Student Profile / classification-history view, instead
@@ -130,6 +140,7 @@ def record_attempt(
     total: int,
     time_taken_seconds: int,
     classification: str,
+    focus_band: str,
     next_review_date: str,
 ) -> dict:
     """
@@ -138,6 +149,12 @@ def record_attempt(
          history services/learner_classifier.py trains on.
       2. An upsert of topic_quiz_progress/{uid}__{skill}__{topic} — the
          single latest-state doc the dashboard reads.
+
+    focus_band: this attempt's Easy/Medium/Hard-derived band (see
+    services/focus_band.py) — OVERWRITES any prior FocusBand outright
+    (unlike AverageScorePercent, which blends with history), since the
+    band should reflect what THIS topic looks like right now, not an
+    average of an old shaky attempt and a since-improved one.
 
     Returns the updated progress dict.
     """
@@ -161,6 +178,7 @@ def record_attempt(
         "AttemptNumber": attempt_number,
         "PriorAverageScorePercent": prior_avg,
         "Classification": classification,
+        "FocusBand": focus_band,
         "CreatedAt": SERVER_TIMESTAMP,
     })
 
@@ -173,6 +191,7 @@ def record_attempt(
         "LastScorePercent": score_percent,
         "AverageScorePercent": new_avg,
         "Classification": classification,
+        "FocusBand": focus_band,
         "NextReviewDate": next_review_date,
         "LastAttemptAt": SERVER_TIMESTAMP,
         "UpdatedAt": SERVER_TIMESTAMP,

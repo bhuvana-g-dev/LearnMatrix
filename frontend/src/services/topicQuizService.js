@@ -34,6 +34,14 @@ export async function submitTopicQuiz(skill, topic, { uid, questions, answers, t
   return data.data; // { scorePercent, correct, total, classification, classificationProbabilities, nextReviewDate, attemptNumber, averageScorePercent }
 }
 
+export async function getTopicProgress(uid) {
+  const { data } = await apiClient.get(ENDPOINTS.TOPIC_QUIZ.PROGRESS(uid));
+  if (!data.success) {
+    throw new Error(data.error || data.message || "Failed to load topic progress.");
+  }
+  return data.data; // array of topic_quiz_progress docs, each with { Skill, Topic, FocusBand, Classification, ... }
+}
+
 export async function getDueRevisions(uid) {
   const { data } = await apiClient.get(ENDPOINTS.TOPIC_QUIZ.DUE_REVISIONS(uid));
   if (!data.success) {

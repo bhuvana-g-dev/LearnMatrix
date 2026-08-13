@@ -796,12 +796,11 @@ export default function AIStudyAssistantScreen({ uid }) {
               </div>
             )}
 
-            <div className="grid grid-cols-2 gap-2.5">
+            <div className="flex flex-col gap-3">
               <StudioActionGroup
                 icon={PresentationIcon}
                 label="Slide Deck"
-                pastel="#FDECC8"
-                iconColor="#B8860B"
+                theme="amber"
                 loading={pptLoading}
                 onGenerate={handleDownloadPpt}
                 extra={<FormatToggle value={pptFormat} onChange={setPptFormat} />}
@@ -814,8 +813,7 @@ export default function AIStudyAssistantScreen({ uid }) {
               <StudioActionGroup
                 icon={Layers}
                 label="Flashcards"
-                pastel="#FBDDE4"
-                iconColor="#C22B54"
+                theme="pink"
                 onGenerate={handleGenerateFlashcards}
                 modes={[
                   { key: "sources", label: "Sources", disabled: sources.length === 0 },
@@ -826,8 +824,7 @@ export default function AIStudyAssistantScreen({ uid }) {
               <StudioActionGroup
                 icon={GitBranch}
                 label="Mind Map"
-                pastel="#DCEEFB"
-                iconColor="#1D6FA5"
+                theme="blue"
                 onGenerate={handleMindMapAction}
                 modes={[
                   { key: "sources", label: "Sources", disabled: sources.length === 0 },
@@ -838,8 +835,7 @@ export default function AIStudyAssistantScreen({ uid }) {
               <StudioActionGroup
                 icon={Volume2}
                 label="Audio Overview"
-                pastel="#EAE1F7"
-                iconColor="#6B3FA0"
+                theme="purple"
                 onGenerate={handleAudioAction}
                 modes={[
                   { key: "sources", label: "Sources", disabled: sources.length === 0 },
@@ -931,42 +927,95 @@ export default function AIStudyAssistantScreen({ uid }) {
   );
 }
 
-/** StudioActionGroup — one Studio card with N small mode buttons
- * (e.g. Topic/Chat/Sources for Slide Deck & Flashcards, or
- * Sources/Chat/Type for Mind Map & Audio Overview). */
-function StudioActionGroup({ icon: Icon, label, pastel, iconColor, onGenerate, loading, modes, extra }) {
+/** Glassy color themes for the Studio cards — soft gradient fill,
+ * a lighter glossy edge, and a saturated badge gradient behind the icon. */
+const STUDIO_THEMES = {
+  amber: {
+    cardFrom: "#FFE9B8",
+    cardTo: "#FCD98A",
+    border: "rgba(184,134,11,0.28)",
+    badgeFrom: "#FFD98A",
+    badgeTo: "#E9A93B",
+    iconColor: "#8A5A00",
+    textColor: "#6B4A00",
+  },
+  pink: {
+    cardFrom: "#FFD9E4",
+    cardTo: "#FCB8CB",
+    border: "rgba(194,43,84,0.26)",
+    badgeFrom: "#FFC2D4",
+    badgeTo: "#F17A9C",
+    iconColor: "#8C0F3A",
+    textColor: "#7A123B",
+  },
+  blue: {
+    cardFrom: "#D3ECFC",
+    cardTo: "#AEDCF8",
+    border: "rgba(29,111,165,0.26)",
+    badgeFrom: "#BFE2FA",
+    badgeTo: "#5FA9DE",
+    iconColor: "#0E4A73",
+    textColor: "#0E4A73",
+  },
+  purple: {
+    cardFrom: "#EBDFFB",
+    cardTo: "#D6C0F3",
+    border: "rgba(107,63,160,0.26)",
+    badgeFrom: "#DFCBF8",
+    badgeTo: "#A876E0",
+    iconColor: "#502378",
+    textColor: "#4A2270",
+  },
+};
+
+/** StudioActionGroup — one full-width, glassy Studio card with a
+ * gradient icon badge, and N small mode buttons revealed on expand
+ * (e.g. Sources/Chat/Type). */
+function StudioActionGroup({ icon: Icon, label, theme = "blue", onGenerate, loading, modes, extra }) {
   const [expanded, setExpanded] = useState(false);
+  const t = STUDIO_THEMES[theme] || STUDIO_THEMES.blue;
   return (
     <div
       style={{
-        padding: "10px 12px",
-        borderRadius: 16,
-        background: pastel || COLORS.lavender,
+        borderRadius: 26,
+        padding: 2,
+        background: `linear-gradient(135deg, ${t.cardFrom}, ${t.cardTo})`,
+        border: `1px solid ${t.border}`,
+        boxShadow: "0 4px 14px rgba(20,20,40,0.06), inset 0 1px 0 rgba(255,255,255,0.7)",
       }}
     >
       <button
         type="button"
         onClick={() => setExpanded((v) => !v)}
-        className="flex items-center gap-2 w-full text-left"
-        style={{ cursor: "pointer" }}
+        className="flex items-center gap-3.5 w-full text-left"
+        style={{ cursor: "pointer", padding: "10px 14px 10px 10px" }}
       >
         <div
-          className="flex items-center justify-center rounded-lg shrink-0"
-          style={{ width: 26, height: 26, background: "rgba(255,255,255,0.6)" }}
+          className="flex items-center justify-center rounded-full shrink-0"
+          style={{
+            width: 52,
+            height: 52,
+            background: `linear-gradient(150deg, ${t.badgeFrom}, ${t.badgeTo})`,
+            boxShadow: "0 3px 8px rgba(20,20,40,0.14), inset 0 1px 2px rgba(255,255,255,0.85)",
+          }}
         >
-          {loading ? <Loader2 size={13} className="animate-spin" color={iconColor} /> : <Icon size={13} color={iconColor} />}
+          {loading ? (
+            <Loader2 size={22} className="animate-spin" color={t.iconColor} />
+          ) : (
+            <Icon size={22} color={t.iconColor} strokeWidth={2.1} />
+          )}
         </div>
-        <p className="text-xs font-semibold flex-1 leading-tight" style={{ color: COLORS.textDark }}>
+        <p className="text-base font-semibold flex-1 leading-tight" style={{ color: t.textColor }}>
           {label}
         </p>
         <ChevronDown
-          size={13}
-          color={COLORS.textMid}
-          style={{ transform: expanded ? "rotate(180deg)" : "none", transition: "transform 0.15s" }}
+          size={18}
+          color={t.textColor}
+          style={{ transform: expanded ? "rotate(180deg)" : "none", transition: "transform 0.15s", opacity: 0.7 }}
         />
       </button>
       {expanded && (
-        <div className="mt-2.5">
+        <div className="px-3.5 pb-3.5 pt-0.5">
           {extra}
           <div className="flex gap-1.5 flex-wrap">
             {modes.map((m) => (

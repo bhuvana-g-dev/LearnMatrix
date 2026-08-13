@@ -18,6 +18,7 @@ from services.question_repository import list_active_questions_by_topic
 from services import topic_quiz_repository as repo
 from services import topic_quiz_bank_cache as quiz_cache
 from services import learner_classifier, revision_scheduler
+from services.focus_band import determine_focus_band
 from agents.topic_quiz_agent import TopicQuizAgent, TopicQuizGenerationError
 
 
@@ -102,14 +103,33 @@ def submit_topic_quiz(
         raise TopicQuizError("No questions provided to score.")
 
     correct = 0
+    # Easy/Medium/Hard breakdown for THIS attempt — same shape
+    # services/roadmap_service.py builds from the diagnostic assessment,
+    # here built from the topic quiz's own questions (TopicQuizAgent
+    # tags every question, bank or AI, with a Difficulty). Feeds
+    # determine_focus_band() below so content depth reflects how THIS
+    # topic quiz actually went, not the whole-skill diagnostic.
+    breakdown = {
+        "Easy": {"correct": 0, "total": 0},
+        "Medium": {"correct": 0, "total": 0},
+        "Hard": {"correct": 0, "total": 0},
+    }
     for q in questions:
         qid = q.get("QuestionID") or q.get("TempID")
         chosen = answers.get(qid)
-        if chosen is not None and chosen == q.get("CorrectAnswer"):
+        is_correct = chosen is not None and chosen == q.get("CorrectAnswer")
+        if is_correct:
             correct += 1
+
+        difficulty = q.get("Difficulty")
+        if difficulty in breakdown:
+            breakdown[difficulty]["total"] += 1
+            if is_correct:
+                breakdown[difficulty]["correct"] += 1
 
     total = len(questions)
     score_percent = round((correct / total) * 100, 1)
+    focus_band = determine_focus_band(breakdown)
 
     db = get_firestore_client()
     prior = repo.get_progress(db, uid, skill, topic)
@@ -129,7 +149,7 @@ def submit_topic_quiz(
         db, uid=uid, skill=skill, topic=topic,
         score_percent=score_percent, correct=correct, total=total,
         time_taken_seconds=time_taken_seconds, classification=classification,
-        next_review_date=next_review_date,
+        focus_band=focus_band, next_review_date=next_review_date,
     )
 
     # This student has now submitted — clear their cached in-progress
@@ -144,6 +164,7 @@ def submit_topic_quiz(
         "total": total,
         "classification": classification,
         "classificationProbabilities": result["probabilities"],
+        "focusBand": focus_band,
         "nextReviewDate": next_review_date,
         "attemptNumber": progress["AttemptNumber"],
         "averageScorePercent": progress["AverageScorePercent"],
@@ -156,6 +177,16 @@ def get_due_revisions(uid: str) -> dict:
         "due": repo.list_due_revisions(db, uid=uid),
         "upcoming": repo.list_upcoming_revisions(db, uid=uid, days=7),
     }
+
+
+def get_topic_progress(uid: str) -> list[dict]:
+    """Every topic this learner has ever submitted a quiz for, each with
+    its own FocusBand/Classification — see routes/topic_quiz_routes.py's
+    GET /api/topic-quiz/<uid>/progress. Consumed by the frontend once,
+    on Course Workspace load, to override skill-level default focus
+    bands with the learner's real per-topic-quiz results."""
+    db = get_firestore_client()
+    return repo.list_progress_by_uid(db, uid=uid)
 
 
 def snooze_topic_revision(uid: str, skill: str, topic: str) -> dict:

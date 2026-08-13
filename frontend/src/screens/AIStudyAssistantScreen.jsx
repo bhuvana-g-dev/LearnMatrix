@@ -58,6 +58,7 @@ import {
 } from "../services/pptService";
 import { generateMindMap } from "../services/mindmapService";
 import { generateSlideDeckPreview, downloadDeckContentPptx, downloadDeckContentPdf } from "../services/slideDeckService";
+import { listStudioArtifacts, getStudioArtifact } from "../services/studioService";
 import { COLORS, GRADIENTS, GLASS_CARD } from "../constants/theme";
 
 /**
@@ -103,6 +104,7 @@ export default function AIStudyAssistantScreen({ uid }) {
   const [pptLoading, setPptLoading] = useState(false);
   const [pptFormat, setPptFormat] = useState("pptx"); // "pptx" | "pdf" — Slide Deck download format
   const [slideDeckContent, setSlideDeckContent] = useState(null); // AI-generated {title, summary, sections, keyTakeaways} for the in-app preview
+  const [studioArtifacts, setStudioArtifacts] = useState([]); // [{id, type, title, createdAt}] saved Mind Maps / Slide Decks for the open chat
 
   const [flashSet, setFlashSet] = useState(null);
   const [flashIndex, setFlashIndex] = useState(0);
@@ -335,6 +337,50 @@ export default function AIStudyAssistantScreen({ uid }) {
     throw new Error("Unknown mode.");
   }
 
+  // Loads the saved Mind Map / Slide Deck cards for whichever chat is open —
+  // re-runs on every session switch so opening a different chat shows that
+  // chat's own studio history rather than the previous one's.
+  useEffect(() => {
+    if (!uid || !activeSessionId) {
+      setStudioArtifacts([]);
+      return;
+    }
+    let cancelled = false;
+    listStudioArtifacts(uid, activeSessionId)
+      .then((items) => {
+        if (!cancelled) setStudioArtifacts(items);
+      })
+      .catch(() => {
+        if (!cancelled) setStudioArtifacts([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [uid, activeSessionId]);
+
+  function refreshStudioArtifacts() {
+    if (!uid || !activeSessionId) return;
+    listStudioArtifacts(uid, activeSessionId)
+      .then(setStudioArtifacts)
+      .catch(() => {});
+  }
+
+  async function openStudioArtifact(item) {
+    setStudioError("");
+    try {
+      const full = await getStudioArtifact(uid, activeSessionId, item.id);
+      if (full.type === "mindmap") {
+        setMindMapNotes(full.content);
+        setStudioModal("mindmap");
+      } else if (full.type === "slidedeck") {
+        setSlideDeckContent(full.content);
+        setStudioModal("slidedeck-preview");
+      }
+    } catch (err) {
+      setStudioError(err.message || "Couldn't load that item.");
+    }
+  }
+
   function handleMindMapAction(mode) {
     if (mode === "custom") {
       setCustomTarget("mindmap");
@@ -345,8 +391,8 @@ export default function AIStudyAssistantScreen({ uid }) {
     }
     runStudioBuild("mindmap", async () => {
       const { label, text } = await getRawTextForMode(mode);
-      return generateMindMap(text, label);
-    }, setMindMapNotes);
+      return generateMindMap(text, label, uid, activeSessionId);
+    }, setMindMapNotes, refreshStudioArtifacts);
   }
 
   function handleAudioAction(mode) {
@@ -360,12 +406,13 @@ export default function AIStudyAssistantScreen({ uid }) {
     runStudioBuild("audio", () => buildAudioNotesForMode(mode), setAudioNotes);
   }
 
-  async function runStudioBuild(modalKey, buildFn, setNotes) {
+  async function runStudioBuild(modalKey, buildFn, setNotes, onSuccess) {
     setStudioError("");
     setStudioLoading(true);
     setStudioModal(modalKey);
     try {
       setNotes(await buildFn());
+      onSuccess?.();
     } catch (err) {
       setStudioError(err.message || "Something went wrong.");
     } finally {
@@ -385,7 +432,8 @@ export default function AIStudyAssistantScreen({ uid }) {
       setStudioLoading(true);
       setStudioModal("mindmap");
       try {
-        setMindMapNotes(await generateMindMap(text, "the student's own notes"));
+        setMindMapNotes(await generateMindMap(text, "the student's own notes", uid, activeSessionId));
+        refreshStudioArtifacts();
       } catch (err) {
         setStudioError(err.message || "Couldn't build the mind map.");
       } finally {
@@ -412,7 +460,8 @@ export default function AIStudyAssistantScreen({ uid }) {
       setStudioLoading(true);
       setStudioModal("slidedeck-preview");
       try {
-        setSlideDeckContent(await generateSlideDeckPreview(text));
+        setSlideDeckContent(await generateSlideDeckPreview(text, uid, activeSessionId));
+        refreshStudioArtifacts();
       } catch (err) {
         setStudioError(err.message || "Couldn't generate the slide deck.");
       } finally {
@@ -735,6 +784,37 @@ export default function AIStudyAssistantScreen({ uid }) {
               <p className="text-[11px]" style={{ color: "#DC2626" }}>
                 {studioError}
               </p>
+            )}
+
+            {activeSessionId && studioArtifacts.length > 0 && (
+              <div className="flex flex-col gap-1.5 mb-1">
+                <p className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: COLORS.textLight }}>
+                  Already generated
+                </p>
+                {studioArtifacts.map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => openStudioArtifact(item)}
+                    className="flex items-center gap-2 text-left rounded-lg px-2.5 py-2"
+                    style={{ background: COLORS.lavender, cursor: "pointer" }}
+                  >
+                    <div
+                      className="flex items-center justify-center rounded-lg shrink-0"
+                      style={{ width: 26, height: 26, background: GRADIENTS.purpleSky }}
+                    >
+                      {item.type === "slidedeck" ? (
+                        <PresentationIcon size={12} color={COLORS.white} />
+                      ) : (
+                        <GitBranch size={12} color={COLORS.white} />
+                      )}
+                    </div>
+                    <p className="text-[11px] font-semibold truncate flex-1" style={{ color: COLORS.textDark }}>
+                      {item.title}
+                    </p>
+                  </button>
+                ))}
+              </div>
             )}
 
             <StudioActionGroup

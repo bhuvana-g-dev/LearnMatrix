@@ -34,6 +34,8 @@ import {
   Zap,
   Cloud,
   BookOpen,
+  MoreVertical,
+  ChevronDown,
 } from "lucide-react";
 import {
   sendChatMessage,
@@ -786,79 +788,66 @@ export default function AIStudyAssistantScreen({ uid }) {
               </p>
             )}
 
+            <div className="grid grid-cols-2 gap-2.5">
+              <StudioActionGroup
+                icon={PresentationIcon}
+                label="Slide Deck"
+                pastel="#FDECC8"
+                iconColor="#B8860B"
+                loading={pptLoading}
+                onGenerate={handleDownloadPpt}
+                extra={<FormatToggle value={pptFormat} onChange={setPptFormat} />}
+                modes={[
+                  { key: "sources", label: "Sources", disabled: sources.length === 0 },
+                  { key: "chat", label: "Chat", disabled: !activeSessionId },
+                  { key: "custom", label: "Type", disabled: false },
+                ]}
+              />
+              <StudioActionGroup
+                icon={Layers}
+                label="Flashcards"
+                pastel="#FBDDE4"
+                iconColor="#C22B54"
+                onGenerate={handleGenerateFlashcards}
+                modes={[
+                  { key: "sources", label: "Sources", disabled: sources.length === 0 },
+                  { key: "chat", label: "Chat", disabled: !activeSessionId },
+                  { key: "custom", label: "Type", disabled: false },
+                ]}
+              />
+              <StudioActionGroup
+                icon={GitBranch}
+                label="Mind Map"
+                pastel="#DCEEFB"
+                iconColor="#1D6FA5"
+                onGenerate={handleMindMapAction}
+                modes={[
+                  { key: "sources", label: "Sources", disabled: sources.length === 0 },
+                  { key: "chat", label: "Chat", disabled: !activeSessionId },
+                  { key: "custom", label: "Type", disabled: false },
+                ]}
+              />
+              <StudioActionGroup
+                icon={Volume2}
+                label="Audio Overview"
+                pastel="#EAE1F7"
+                iconColor="#6B3FA0"
+                onGenerate={handleAudioAction}
+                modes={[
+                  { key: "sources", label: "Sources", disabled: sources.length === 0 },
+                  { key: "chat", label: "Chat", disabled: !activeSessionId },
+                  { key: "custom", label: "Type", disabled: false },
+                ]}
+              />
+            </div>
+
             {activeSessionId && studioArtifacts.length > 0 && (
-              <div className="flex flex-col gap-1.5 mb-1">
-                <p className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: COLORS.textLight }}>
-                  Already generated
-                </p>
+              <div className="flex flex-col gap-1 pt-1" style={{ borderTop: `1px solid ${COLORS.border}` }}>
                 {studioArtifacts.map((item) => (
-                  <button
-                    key={item.id}
-                    type="button"
-                    onClick={() => openStudioArtifact(item)}
-                    className="flex items-center gap-2 text-left rounded-lg px-2.5 py-2"
-                    style={{ background: COLORS.lavender, cursor: "pointer" }}
-                  >
-                    <div
-                      className="flex items-center justify-center rounded-lg shrink-0"
-                      style={{ width: 26, height: 26, background: GRADIENTS.purpleSky }}
-                    >
-                      {item.type === "slidedeck" ? (
-                        <PresentationIcon size={12} color={COLORS.white} />
-                      ) : (
-                        <GitBranch size={12} color={COLORS.white} />
-                      )}
-                    </div>
-                    <p className="text-[11px] font-semibold truncate flex-1" style={{ color: COLORS.textDark }}>
-                      {item.title}
-                    </p>
-                  </button>
+                  <StudioArtifactRow key={item.id} item={item} onOpen={() => openStudioArtifact(item)} />
                 ))}
               </div>
             )}
-
-            <StudioActionGroup
-              icon={PresentationIcon}
-              label="Slide Deck"
-              loading={pptLoading}
-              onGenerate={handleDownloadPpt}
-              extra={<FormatToggle value={pptFormat} onChange={setPptFormat} />}
-              modes={[
-                { key: "sources", label: "Sources", disabled: sources.length === 0 },
-                { key: "chat", label: "Chat", disabled: !activeSessionId },
-                { key: "custom", label: "Type", disabled: false },
-              ]}
-            />
-            <StudioActionGroup
-              icon={Layers}
-              label="Flashcards"
-              onGenerate={handleGenerateFlashcards}
-              modes={[
-                { key: "sources", label: "Sources", disabled: sources.length === 0 },
-                { key: "chat", label: "Chat", disabled: !activeSessionId },
-                { key: "custom", label: "Type", disabled: false },
-              ]}
-            />
-            <StudioActionGroup
-              icon={GitBranch}
-              label="Mind Map"
-              onGenerate={handleMindMapAction}
-              modes={[
-                { key: "sources", label: "Sources", disabled: sources.length === 0 },
-                { key: "chat", label: "Chat", disabled: !activeSessionId },
-                { key: "custom", label: "Type", disabled: false },
-              ]}
-            />
-            <StudioActionGroup
-              icon={Volume2}
-              label="Audio Overview"
-              onGenerate={handleAudioAction}
-              modes={[
-                { key: "sources", label: "Sources", disabled: sources.length === 0 },
-                { key: "chat", label: "Chat", disabled: !activeSessionId },
-                { key: "custom", label: "Type", disabled: false },
-              ]}
-            />
           </div>
         </div>
       </div>
@@ -945,35 +934,94 @@ export default function AIStudyAssistantScreen({ uid }) {
 /** StudioActionGroup — one Studio card with N small mode buttons
  * (e.g. Topic/Chat/Sources for Slide Deck & Flashcards, or
  * Sources/Chat/Type for Mind Map & Audio Overview). */
-function StudioActionGroup({ icon: Icon, label, onGenerate, loading, modes, extra }) {
+function StudioActionGroup({ icon: Icon, label, pastel, iconColor, onGenerate, loading, modes, extra }) {
+  const [expanded, setExpanded] = useState(false);
   return (
     <div
       style={{
-        padding: "12px 14px",
+        padding: "10px 12px",
         borderRadius: 16,
-        background: COLORS.white,
-        border: `1px solid ${COLORS.border}`,
-        boxShadow: "0 2px 10px rgba(13,27,61,0.06)",
+        background: pastel || COLORS.lavender,
       }}
     >
-      <div className="flex items-center gap-2.5 mb-2.5">
+      <button
+        type="button"
+        onClick={() => setExpanded((v) => !v)}
+        className="flex items-center gap-2 w-full text-left"
+        style={{ cursor: "pointer" }}
+      >
         <div
-          className="flex items-center justify-center rounded-xl shrink-0"
-          style={{ width: 30, height: 30, background: GRADIENTS.purpleSky, boxShadow: "0 3px 8px rgba(13,27,61,0.15)" }}
+          className="flex items-center justify-center rounded-lg shrink-0"
+          style={{ width: 26, height: 26, background: "rgba(255,255,255,0.6)" }}
         >
-          {loading ? <Loader2 size={14} className="animate-spin" color={COLORS.white} /> : <Icon size={14} color={COLORS.white} />}
+          {loading ? <Loader2 size={13} className="animate-spin" color={iconColor} /> : <Icon size={13} color={iconColor} />}
         </div>
-        <p className="text-xs font-semibold" style={{ color: COLORS.textDark }}>
+        <p className="text-xs font-semibold flex-1 truncate" style={{ color: COLORS.textDark }}>
           {label}
         </p>
-      </div>
-      {extra}
-      <div className="flex gap-1.5">
-        {modes.map((m) => (
-          <ModeChip key={m.key} label={m.label} disabled={m.disabled || loading} onClick={() => onGenerate(m.key)} />
-        ))}
-      </div>
+        <ChevronDown
+          size={13}
+          color={COLORS.textMid}
+          style={{ transform: expanded ? "rotate(180deg)" : "none", transition: "transform 0.15s" }}
+        />
+      </button>
+      {expanded && (
+        <div className="mt-2.5">
+          {extra}
+          <div className="flex gap-1.5 flex-wrap">
+            {modes.map((m) => (
+              <ModeChip key={m.key} label={m.label} disabled={m.disabled || loading} onClick={() => onGenerate(m.key)} />
+            ))}
+          </div>
+        </div>
+      )}
     </div>
+  );
+}
+
+const STUDIO_ARTIFACT_META = {
+  mindmap: { icon: GitBranch, pastel: "#DCEEFB", iconColor: "#1D6FA5", label: "Mind Map" },
+  slidedeck: { icon: PresentationIcon, pastel: "#FDECC8", iconColor: "#B8860B", label: "Slide Deck" },
+};
+
+function timeAgo(iso) {
+  if (!iso) return "";
+  const diffMs = Date.now() - new Date(iso).getTime();
+  const mins = Math.floor(diffMs / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+}
+
+function StudioArtifactRow({ item, onOpen }) {
+  const meta = STUDIO_ARTIFACT_META[item.type] || STUDIO_ARTIFACT_META.mindmap;
+  const Icon = meta.icon;
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      className="flex items-center gap-2.5 text-left rounded-lg px-2 py-2"
+      style={{ cursor: "pointer" }}
+    >
+      <div
+        className="flex items-center justify-center rounded-lg shrink-0"
+        style={{ width: 32, height: 32, background: meta.pastel }}
+      >
+        <Icon size={14} color={meta.iconColor} />
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-xs font-semibold truncate" style={{ color: COLORS.textDark }}>
+          {item.title}
+        </p>
+        <p className="text-[10px]" style={{ color: COLORS.textLight }}>
+          {meta.label} · {timeAgo(item.createdAt)}
+        </p>
+      </div>
+      <MoreVertical size={14} color={COLORS.textLight} className="shrink-0" />
+    </button>
   );
 }
 

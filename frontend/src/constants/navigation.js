@@ -62,10 +62,7 @@ export const NAV_SECTIONS = [
     key: "revision",
     title: "Revision",
     icon: Calendar,
-    children: [
-      { key: "today-revision", label: "Today's Revision" },
-      { key: "revision-history", label: "Revision History" },
-    ],
+    selfNavigable: true, // single link, no dropdown — Today's/Upcoming both live on one page now
   },
   {
     key: "profile",

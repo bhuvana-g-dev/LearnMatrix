@@ -2066,15 +2066,58 @@ const mmControlBtnStyleLight = {
   cursor: "pointer",
 };
 
+function estimateAudioLength(notes) {
+  const text = [notes.summary, ...(notes.sections || []).map((s) => `${s.heading} ${s.content}`), ...(notes.keyTakeaways || [])]
+    .filter(Boolean)
+    .join(" ");
+  const words = text.trim().split(/\s+/).filter(Boolean).length;
+  const totalSeconds = Math.max(30, Math.round((words / 150) * 60));
+  const mm = Math.floor(totalSeconds / 60);
+  const ss = totalSeconds % 60;
+  return `${mm}:${String(ss).padStart(2, "0")}`;
+}
+
 function AudioOverviewBody({ notes, isPlaying, isPaused, onPlay, onPause, onStop }) {
+  const sectionCount = notes.sections?.length || 0;
+  const duration = estimateAudioLength(notes);
+
   return (
     <div>
       <p className="text-sm font-semibold mb-1 pr-6" style={{ color: COLORS.textDark }}>
         Audio Overview
       </p>
-      <p className="text-xs mb-6" style={{ color: COLORS.textLight }}>
-        {notes.title}
-      </p>
+
+      {/* Compact NotebookLM-style summary row */}
+      <div
+        className="flex items-center gap-3 rounded-2xl px-3 py-2.5 mt-3 mb-6"
+        style={{ border: `1px solid ${COLORS.border}`, background: COLORS.white }}
+      >
+        <div
+          className="flex items-center justify-center rounded-full shrink-0"
+          style={{ width: 34, height: 34, background: GRADIENTS.purpleSky }}
+        >
+          <Volume2 size={15} color={COLORS.white} />
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="text-xs font-semibold truncate" style={{ color: COLORS.textDark }}>
+            {notes.title}
+          </p>
+          <p className="text-[11px] truncate" style={{ color: COLORS.textLight }}>
+            {duration} · Deep Dive{sectionCount > 0 ? ` · ${sectionCount} section${sectionCount === 1 ? "" : "s"}` : ""}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={isPlaying ? onPause : onPlay}
+          className="flex items-center justify-center rounded-full shrink-0"
+          style={{ width: 30, height: 30, border: `1.5px solid ${COLORS.purple}`, color: COLORS.purple, cursor: "pointer" }}
+        >
+          {isPlaying ? <Pause size={13} /> : <Play size={13} />}
+        </button>
+        <button type="button" className="shrink-0" style={{ color: COLORS.textLight, cursor: "pointer" }} title="More">
+          <MoreVertical size={15} />
+        </button>
+      </div>
 
       <div className="flex items-center justify-center gap-4 mb-6">
         <button

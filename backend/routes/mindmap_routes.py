@@ -1,18 +1,23 @@
 """
 routes/mindmap_routes.py
 
-    POST /api/mindmap/generate -> {text, label?} -> {title, branches: [{label, detail}]}
+    POST /api/mindmap/generate -> {text, label?, uid?, sessionId?}
+        -> {title, branches: [{label, detail}]}
 
-Stateless — nothing is persisted, this just proxies to MindMapAgent.
-Used by the AI Study Assistant's Mind Map card for all three of its
-modes (Sources / Chat / Type) — the frontend assembles the raw text
-for whichever mode was picked, and always sends it through this same
-endpoint for a consistent, LLM-structured breakdown.
+Proxies to MindMapAgent. When the request includes both `uid` and
+`sessionId` (i.e. the student generated this from inside an open chat),
+the result is also saved as a studio artifact under that session (see
+services/studio_repository.py) so it shows up as an "already
+generated" card next time they open that chat, NotebookLM-Studio-panel
+style — without `uid`/`sessionId` (Sources/Type modes with no active
+chat) it's generated and returned but not saved, same as before.
 """
 
 from flask import Blueprint, request
 
+from firebase.firebase_config import get_firestore_client
 from services.mindmap_service import generate_mindmap, MindMapServiceError
+from services import studio_repository
 from utils.response_helper import success_response, error_response
 
 mindmap_bp = Blueprint("mindmap", __name__)
@@ -31,6 +36,12 @@ def generate_mindmap_route():
 
     try:
         result = generate_mindmap(text, label)
-        return success_response(data=result, message="Mind map generated.")
     except MindMapServiceError as exc:
         return error_response(str(exc), status_code=422)
+
+    uid, session_id = payload.get("uid"), payload.get("sessionId")
+    if uid and session_id:
+        db = get_firestore_client()
+        studio_repository.save_artifact(db, uid, session_id, "mindmap", result.get("title") or "Mind Map", result)
+
+    return success_response(data=result, message="Mind map generated.")

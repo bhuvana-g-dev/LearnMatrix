@@ -38,6 +38,7 @@ from routes.flashcard_routes import flashcard_bp
 from routes.ppt_routes import ppt_bp
 from routes.mindmap_routes import mindmap_bp
 from routes.slidedeck_routes import slidedeck_bp
+from routes.studio_routes import studio_bp
 from routes.topic_quiz_routes import topic_quiz_bp
 from routes.lesson_routes import lesson_bp
 
@@ -71,6 +72,7 @@ def create_app() -> Flask:
     app.register_blueprint(ppt_bp, url_prefix="/api")
     app.register_blueprint(mindmap_bp, url_prefix="/api")
     app.register_blueprint(slidedeck_bp, url_prefix="/api")
+    app.register_blueprint(studio_bp, url_prefix="/api")
     app.register_blueprint(topic_quiz_bp, url_prefix="/api")
     app.register_blueprint(lesson_bp, url_prefix="/api")
 

@@ -8,8 +8,9 @@ import TopicContentPane from "../components/learning/TopicContentPane";
 import TopicQuizModal from "../components/learning/TopicQuizModal";
 import LessonListPane from "../components/learning/LessonListPane";
 import { COLORS, GRADIENTS, GLASS_CARD } from "../constants/theme";
-import { buildFlatTopicList, findStartingIndex } from "../utils/buildCourseNavigator";
+import { buildFlatTopicList, findStartingIndex, topicProgressKey } from "../utils/buildCourseNavigator";
 import { getLessons, compositeTopicKey } from "../services/lessonService";
+import { getTopicProgress } from "../services/topicQuizService";
 
 /**
  * CourseWorkspaceScreen — Coursera-style layout, THREE-level main pane:
@@ -43,7 +44,37 @@ import { getLessons, compositeTopicKey } from "../services/lessonService";
  * shows.
  */
 export default function CourseWorkspaceScreen({ roadmap, compressedSyllabus, initialEntry, uid, onBack }) {
-  const flatTopics = useMemo(() => buildFlatTopicList(roadmap, compressedSyllabus), [roadmap, compressedSyllabus]);
+  // Per-topic focus bands from the learner's actual topic-quiz results
+  // (backend/routes/topic_quiz_routes.py's GET .../progress) — starts
+  // empty (every topic falls back to its skill-level default band) and
+  // fills in / updates as topics are quizzed. Keyed by
+  // topicProgressKey(skill, topic) -> FocusBand, matching what
+  // buildFlatTopicList expects.
+  const [topicProgress, setTopicProgress] = useState({});
+
+  const fetchTopicProgress = useCallback(async () => {
+    if (!uid) return;
+    try {
+      const rows = await getTopicProgress(uid);
+      const map = {};
+      for (const row of rows) {
+        if (row.FocusBand) map[topicProgressKey(row.Skill, row.Topic)] = row.FocusBand;
+      }
+      setTopicProgress(map);
+    } catch {
+      // Non-fatal — every topic just keeps using its skill-level
+      // default band, same as before this feature existed.
+    }
+  }, [uid]);
+
+  useEffect(() => {
+    fetchTopicProgress();
+  }, [fetchTopicProgress]);
+
+  const flatTopics = useMemo(
+    () => buildFlatTopicList(roadmap, compressedSyllabus, topicProgress),
+    [roadmap, compressedSyllabus, topicProgress]
+  );
   const [activeIndex, setActiveIndex] = useState(() => findStartingIndex(flatTopics, initialEntry));
   const active = flatTopics[activeIndex] || null;
 
@@ -436,7 +467,14 @@ export default function CourseWorkspaceScreen({ roadmap, compressedSyllabus, ini
           topic={quizTarget.topic}
           uid={uid}
           onClose={() => setQuizTarget(null)}
-          onComplete={() => setQuizTarget(null)}
+          onComplete={() => {
+            setQuizTarget(null);
+            // Refresh so this topic's (and any other's) focus band
+            // reflects the attempt just submitted — the content pane
+            // re-fetches automatically since focusBand is one of its
+            // fetch dependencies (see TopicContentPane.jsx).
+            fetchTopicProgress();
+          }}
         />
       )}
     </div>

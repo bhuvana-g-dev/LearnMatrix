@@ -68,6 +68,7 @@ export default function CourseWorkspaceScreen({ roadmap, compressedSyllabus, ini
   const [activeModuleName, setActiveModuleName] = useState(() => active?.module ?? modules[0]?.name ?? null);
   const [viewMode, setViewMode] = useState("lessons"); // "list" | "lessons" | "content"
   const [expandedSkills, setExpandedSkills] = useState(() => new Set(active ? [active.skill] : []));
+  const [sidebarExpandedModule, setSidebarExpandedModule] = useState(() => active?.module ?? modules[0]?.name ?? null);
   const [quizTarget, setQuizTarget] = useState(null); // { skill, topic } | null — Coursera-style "Test" item, opened from the list
 
   // Lessons layer: Topic -> ordered list of bite-sized Lessons -> content
@@ -129,6 +130,12 @@ export default function CourseWorkspaceScreen({ roadmap, compressedSyllabus, ini
     setExpandedSkills(new Set(firstSkillInModule ? [firstSkillInModule] : []));
   };
 
+  const jumpToSkillFromSidebar = (moduleName, skillName) => {
+    setActiveModuleName(moduleName);
+    setViewMode("list");
+    setExpandedSkills(new Set([skillName]));
+  };
+
   const openTopic = (flatIdx) => {
     setActiveIndex(flatIdx);
     setActiveLessonIndex(0);
@@ -168,30 +175,89 @@ export default function CourseWorkspaceScreen({ roadmap, compressedSyllabus, ini
               const { total, verified } = moduleProgress(mod);
               const isActive = mod.name === activeModuleName;
               const isComplete = total > 0 && verified === total;
+              const isExpanded = sidebarExpandedModule === mod.name;
               return (
-                <button
-                  key={mod.name || "all"}
-                  onClick={() => openModule(mod.name)}
-                  className="flex items-center gap-2.5 px-3 py-2.5 text-left"
-                  style={{
-                    borderRadius: 10,
-                    background: isActive ? "rgba(124,111,224,0.14)" : "none",
-                    border: "none",
-                    cursor: "pointer",
-                  }}
-                >
-                  {isComplete ? (
-                    <CheckCircle2 size={16} style={{ color: "#22C55E", flexShrink: 0 }} />
-                  ) : (
-                    <Circle size={16} style={{ color: isActive ? COLORS.purple : COLORS.border, flexShrink: 0 }} />
-                  )}
-                  <span
-                    className="text-sm truncate"
-                    style={{ color: isActive ? COLORS.purple : COLORS.textDark, fontWeight: isActive ? 700 : 600 }}
+                <div key={mod.name || "all"}>
+                  <div
+                    className="flex items-center gap-1 px-1 py-0.5"
+                    style={{ borderRadius: 10, background: isActive ? "rgba(124,111,224,0.14)" : "none" }}
                   >
-                    {mod.name || "Skills"}
-                  </span>
-                </button>
+                    <button
+                      onClick={() => openModule(mod.name)}
+                      className="flex-1 flex items-center gap-2.5 px-2 py-2 text-left min-w-0"
+                      style={{ background: "none", border: "none", cursor: "pointer" }}
+                    >
+                      {isComplete ? (
+                        <CheckCircle2 size={16} style={{ color: "#22C55E", flexShrink: 0 }} />
+                      ) : (
+                        <Circle size={16} style={{ color: isActive ? COLORS.purple : COLORS.border, flexShrink: 0 }} />
+                      )}
+                      <span
+                        className="text-sm truncate"
+                        style={{ color: isActive ? COLORS.purple : COLORS.textDark, fontWeight: isActive ? 700 : 600 }}
+                      >
+                        {mod.name || "Skills"}
+                      </span>
+                    </button>
+                    <button
+                      onClick={() => setSidebarExpandedModule((prev) => (prev === mod.name ? null : mod.name))}
+                      className="flex-shrink-0 flex items-center justify-center"
+                      style={{ width: 26, height: 26, borderRadius: 8, background: "none", border: "none", cursor: "pointer" }}
+                      aria-label={isExpanded ? `Collapse ${mod.name}` : `Expand ${mod.name}`}
+                    >
+                      <motion.span animate={{ rotate: isExpanded ? 180 : 0 }} style={{ display: "flex" }}>
+                        <ChevronDown size={14} style={{ color: COLORS.textLight }} />
+                      </motion.span>
+                    </button>
+                  </div>
+
+                  <AnimatePresence initial={false}>
+                    {isExpanded && (
+                      <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: "auto", opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        style={{ overflow: "hidden" }}
+                      >
+                        <div className="flex flex-col gap-0.5 pl-6 py-1">
+                          {mod.skills.map((sk) => {
+                            const skVerified = sk.topics.filter((t) => t.topicStatus === "Verified").length;
+                            const skComplete = sk.topics.length > 0 && skVerified === sk.topics.length;
+                            const isSkillActive = isActive && expandedSkills.has(sk.name) && viewMode === "list";
+                            return (
+                              <button
+                                key={sk.name}
+                                onClick={() => jumpToSkillFromSidebar(mod.name, sk.name)}
+                                className="flex items-center gap-2 px-2 py-1.5 text-left"
+                                style={{
+                                  borderRadius: 8,
+                                  background: isSkillActive ? "rgba(124,111,224,0.10)" : "none",
+                                  border: "none",
+                                  cursor: "pointer",
+                                }}
+                              >
+                                {skComplete ? (
+                                  <CheckCircle2 size={12} style={{ color: "#22C55E", flexShrink: 0 }} />
+                                ) : (
+                                  <Circle size={12} style={{ color: COLORS.border, flexShrink: 0 }} />
+                                )}
+                                <span
+                                  className="text-xs truncate"
+                                  style={{
+                                    color: isSkillActive ? COLORS.purple : COLORS.textMid,
+                                    fontWeight: isSkillActive ? 700 : 500,
+                                  }}
+                                >
+                                  {sk.name}
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
               );
             })}
           </div>
@@ -233,6 +299,7 @@ export default function CourseWorkspaceScreen({ roadmap, compressedSyllabus, ini
                 topic={compositeTopicKey(active.topic, lessons[activeLessonIndex].Title)}
                 focusBand={active.focusBand}
                 topicStatus={active.topicStatus}
+                onTakeTest={() => setQuizTarget({ skill: active.skill, topic: active.topic })}
                 onNext={() =>
                   activeLessonIndex < lessons.length - 1
                     ? setActiveLessonIndex((i) => i + 1)

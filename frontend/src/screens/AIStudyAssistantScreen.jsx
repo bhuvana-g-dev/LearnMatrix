@@ -788,6 +788,14 @@ export default function AIStudyAssistantScreen({ uid }) {
               </p>
             )}
 
+            {activeSessionId && studioArtifacts.length > 0 && (
+              <div className="flex flex-col gap-1 pb-1" style={{ borderBottom: `1px solid ${COLORS.border}` }}>
+                {studioArtifacts.map((item) => (
+                  <StudioArtifactRow key={item.id} item={item} onOpen={() => openStudioArtifact(item)} />
+                ))}
+              </div>
+            )}
+
             <div className="grid grid-cols-2 gap-2.5">
               <StudioActionGroup
                 icon={PresentationIcon}
@@ -840,14 +848,6 @@ export default function AIStudyAssistantScreen({ uid }) {
                 ]}
               />
             </div>
-
-            {activeSessionId && studioArtifacts.length > 0 && (
-              <div className="flex flex-col gap-1 pt-1" style={{ borderTop: `1px solid ${COLORS.border}` }}>
-                {studioArtifacts.map((item) => (
-                  <StudioArtifactRow key={item.id} item={item} onOpen={() => openStudioArtifact(item)} />
-                ))}
-              </div>
-            )}
           </div>
         </div>
       </div>
@@ -956,7 +956,7 @@ function StudioActionGroup({ icon: Icon, label, pastel, iconColor, onGenerate, l
         >
           {loading ? <Loader2 size={13} className="animate-spin" color={iconColor} /> : <Icon size={13} color={iconColor} />}
         </div>
-        <p className="text-xs font-semibold flex-1 truncate" style={{ color: COLORS.textDark }}>
+        <p className="text-xs font-semibold flex-1 leading-tight" style={{ color: COLORS.textDark }}>
           {label}
         </p>
         <ChevronDown

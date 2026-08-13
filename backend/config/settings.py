@@ -91,6 +91,13 @@ class Settings:
     YOUTUBE_API_KEY: str = os.getenv("YOUTUBE_API_KEY", "")
     YOUTUBE_SEARCH_MAX_RESULTS: int = int(os.getenv("YOUTUBE_SEARCH_MAX_RESULTS", 6))
 
+    # --- Pexels API (services/image_service.py) ---
+    # Required only for Slide Deck's per-section photo lookup — missing/
+    # empty key means slides are built without photos rather than
+    # erroring (same "degrade gracefully" pattern as YOUTUBE_API_KEY
+    # above). Get a free key at https://www.pexels.com/api/.
+    PEXELS_API_KEY: str = os.getenv("PEXELS_API_KEY", "")
+
     # --- Skill Syllabus Tree (Adaptive Roadmap System) ---
     # skill_topics/{TopicID} — the ordered curriculum inside one skill
     # (e.g. HTML5 -> Introduction, Headings, Paragraphs, ...).
@@ -225,12 +232,6 @@ class Settings:
     )
     TOPIC_QUIZ_PROGRESS_COLLECTION: str = os.getenv(
         "TOPIC_QUIZ_PROGRESS_COLLECTION", "topic_quiz_progress"
-    )
-    # topic_quiz_bank_cache/{uid}__{skill}__{topic} — one in-progress quiz
-    #     per (student, topic), cleared on submit. See
-    #     services/topic_quiz_bank_cache.py's module docstring.
-    TOPIC_QUIZ_BANK_CACHE_COLLECTION: str = os.getenv(
-        "TOPIC_QUIZ_BANK_CACHE_COLLECTION", "topic_quiz_bank_cache"
     )
 
     # Fixed count per abstract ("quiz after each topic (10 questions)") —

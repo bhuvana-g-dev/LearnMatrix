@@ -19,6 +19,16 @@ only ever holds the LATEST state, same split as
 services/activity_repository.py (append-only dates) vs a hypothetical
 "current streak" doc, except here we actually need both: history for
 training, latest-state for the dashboard's due-today query.
+
+FocusBand (this revision): the SAME four-value band
+services/focus_band.py computes for a whole skill (fundamentals /
+application / advanced / polish), computed here from THIS topic quiz's
+own Easy/Medium/Hard breakdown instead of the skill-wide diagnostic.
+This is what lets content depth update per-topic as the learner actually
+takes topic quizzes, rather than staying fixed at whatever the one-time
+diagnostic assessed for the whole skill — see
+utils/buildCourseNavigator.js (frontend) for how a topic with recorded
+progress overrides the skill-level default.
 """
 
 from dataclasses import dataclass, asdict
@@ -34,6 +44,7 @@ class TopicQuizProgress:
     LastScorePercent: float
     AverageScorePercent: float
     Classification: str  # "Fast" | "Moderate" | "Slow"
+    FocusBand: str  # "fundamentals" | "application" | "advanced" | "polish" — from THIS topic's own Easy/Medium/Hard breakdown
     NextReviewDate: str  # "YYYY-MM-DD"
 
     LastAttemptAt: Optional[object] = None

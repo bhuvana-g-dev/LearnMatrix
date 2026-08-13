@@ -102,7 +102,9 @@ export const ENDPOINTS = {
       `/topic-quiz/${encodeURIComponent(skill)}/${encodeURIComponent(topic)}`, // GET
     SUBMIT: (skill, topic) =>
       `/topic-quiz/${encodeURIComponent(skill)}/${encodeURIComponent(topic)}/submit`, // POST {uid, questions, answers, timeTakenSeconds}
-    DUE_REVISIONS: (uid) => `/revisions/${uid}`, // GET
+    DUE_REVISIONS: (uid) => `/revisions/${uid}`, // GET -> { due: [...], upcoming: [...] }
+    SNOOZE: (uid, skill, topic) =>
+      `/revisions/${uid}/${encodeURIComponent(skill)}/${encodeURIComponent(topic)}/snooze`, // POST
   },
   // ---- Admin Panel (new) ----
   // Backend: routes/admin_question_routes.py, routes/admin_student_routes.py,

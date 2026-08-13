@@ -150,6 +150,17 @@ def submit_topic_quiz(
     }
 
 
-def get_due_revisions(uid: str) -> list[dict]:
+def get_due_revisions(uid: str) -> dict:
     db = get_firestore_client()
-    return repo.list_due_revisions(db, uid=uid)
+    return {
+        "due": repo.list_due_revisions(db, uid=uid),
+        "upcoming": repo.list_upcoming_revisions(db, uid=uid, days=7),
+    }
+
+
+def snooze_topic_revision(uid: str, skill: str, topic: str) -> dict:
+    db = get_firestore_client()
+    try:
+        return repo.snooze_revision(db, uid=uid, skill=skill, topic=topic)
+    except ValueError as exc:
+        raise TopicQuizError(str(exc)) from exc

@@ -136,7 +136,7 @@ def build_pdf_from_deck_content(notes: dict, subtitle: str) -> BytesIO:
         elif kind == "comparison":
             _draw_comparison_page(c, slide_data["heading"], slide_data["left"], slide_data["right"], i + 1)
         else:
-            _draw_text_page(c, slide_data["heading"], slide_data["body"], i + 1, accent)
+            _draw_text_page(c, slide_data["heading"], slide_data["body"], i + 1, accent, slide_data.get("image_url"))
 
     c.showPage()
     c.save()
@@ -305,8 +305,23 @@ def _draw_chrome(c: canvas.Canvas, heading: str, index: int, accent) -> None:
     c.rect(1.55 * inch, PAGE_H - 1.35 * inch, 1.4 * inch, 3, fill=1, stroke=0)
 
 
-def _draw_text_page(c: canvas.Canvas, heading: str, body: str, index: int, accent) -> None:
+def _draw_text_page(c: canvas.Canvas, heading: str, body: str, index: int, accent, image_url: str | None = None) -> None:
     _draw_chrome(c, heading, index, accent)
+
+    image_bytes = None
+    if image_url:
+        from services.image_service import fetch_image_bytes
+        image_bytes = fetch_image_bytes(image_url)
+
+    if image_bytes:
+        img_left, img_top, img_w, img_h = 8.45 * inch, PAGE_H - 6.65 * inch, 4.2 * inch, 4.9 * inch
+        try:
+            from reportlab.lib.utils import ImageReader
+            c.setFillColor(accent)
+            c.roundRect(img_left - 0.12 * inch, img_top - 0.12 * inch, img_w + 0.24 * inch, img_h + 0.24 * inch, 10, fill=1, stroke=0)
+            c.drawImage(ImageReader(BytesIO(image_bytes)), img_left, img_top, width=img_w, height=img_h, preserveAspectRatio=True, mask="auto")
+        except Exception:
+            image_bytes = None  # corrupt/unsupported download — fall through to full-width text below
 
     c.setFillColor(NAVY_MID)
     c.setFont("Helvetica", 14)
@@ -316,7 +331,7 @@ def _draw_text_page(c: canvas.Canvas, heading: str, body: str, index: int, accen
         sentences = [body[:2000]]
 
     y = PAGE_H - 1.9 * inch
-    max_width = 11.1 * inch
+    max_width = 6.6 * inch if image_bytes else 11.1 * inch
     for sentence in sentences[:20]:
         text = sentence + ("." if not sentence.endswith(".") else "")
         for line in _wrap_text(text, "Helvetica", 14, max_width):

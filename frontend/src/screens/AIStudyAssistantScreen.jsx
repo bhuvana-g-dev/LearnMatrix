@@ -523,9 +523,9 @@ export default function AIStudyAssistantScreen({ uid }) {
   }
 
   return (
-    <div className="px-4 sm:px-6 py-8 pb-20">
-      <div className="max-w-7xl mx-auto w-full">
-        <div className="flex items-center gap-3 mb-5">
+    <div className="h-screen flex flex-col overflow-hidden px-4 sm:px-6 py-4">
+      <div className="max-w-7xl mx-auto w-full flex flex-col flex-1 min-h-0">
+        <div className="flex items-center gap-3 mb-4 shrink-0">
           <div className="flex items-center justify-center rounded-full" style={{ width: 40, height: 40, background: GRADIENTS.purpleSky }}>
             <Bot size={20} color={COLORS.white} />
           </div>
@@ -540,13 +540,13 @@ export default function AIStudyAssistantScreen({ uid }) {
         </div>
 
         <div
-          className={`grid grid-cols-1 rounded-2xl overflow-hidden ${historyCollapsed ? "lg:grid-cols-[56px_220px_1fr_280px]" : "lg:grid-cols-[190px_220px_1fr_280px]"}`}
+          className={`grid grid-cols-1 rounded-2xl overflow-hidden flex-1 min-h-0 ${historyCollapsed ? "lg:grid-cols-[56px_220px_1fr_280px]" : "lg:grid-cols-[190px_220px_1fr_280px]"}`}
           style={{ ...GLASS_CARD }}
         >
           {/* ---------------- HISTORY (permanent, collapsible sidebar) ---------------- */}
           <div
-            className="p-3 flex flex-col border-b lg:border-b-0 lg:border-r"
-            style={{ height: 600, borderColor: COLORS.border }}
+            className="p-3 flex flex-col border-b lg:border-b-0 lg:border-r overflow-hidden"
+            style={{ height: "100%", borderColor: COLORS.border }}
           >
             <div className={`flex items-center gap-1.5 mb-3 ${historyCollapsed ? "flex-col" : ""}`}>
               <button
@@ -625,8 +625,8 @@ export default function AIStudyAssistantScreen({ uid }) {
 
           {/* ---------------- SOURCES ---------------- */}
           <div
-            className="p-4 flex flex-col border-b lg:border-b-0 lg:border-r"
-            style={{ height: 600, borderColor: COLORS.border }}
+            className="p-4 flex flex-col border-b lg:border-b-0 lg:border-r overflow-hidden"
+            style={{ height: "100%", borderColor: COLORS.border }}
           >
             <div className="flex items-center justify-between mb-3">
               <p className="text-xs font-semibold" style={{ color: COLORS.textDark }}>
@@ -684,8 +684,8 @@ export default function AIStudyAssistantScreen({ uid }) {
 
           {/* ---------------- CHAT ---------------- */}
           <div
-            className="p-4 flex flex-col border-b lg:border-b-0 lg:border-r"
-            style={{ height: 600, borderColor: COLORS.border }}
+            className="p-4 flex flex-col border-b lg:border-b-0 lg:border-r overflow-hidden"
+            style={{ height: "100%", borderColor: COLORS.border }}
           >
             <p className="text-xs font-semibold mb-3" style={{ color: COLORS.textDark }}>
               {activeSessionId ? sessions.find((s) => s.id === activeSessionId)?.title || "Chat" : "New Chat"}
@@ -779,7 +779,7 @@ export default function AIStudyAssistantScreen({ uid }) {
           </div>
 
           {/* ---------------- STUDIO ---------------- */}
-          <div className="p-4 flex flex-col gap-3" style={{ height: 600, overflowY: "auto" }}>
+          <div className="p-4 flex flex-col gap-3 overflow-y-auto" style={{ height: "100%" }}>
             <p className="text-xs font-semibold" style={{ color: COLORS.textDark }}>
               Studio
             </p>

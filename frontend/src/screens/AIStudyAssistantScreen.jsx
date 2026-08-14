@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Bot,
@@ -38,6 +38,11 @@ import {
   ChevronDown,
   Share2,
   Maximize2,
+  ThumbsUp,
+  ThumbsDown,
+  RotateCcw,
+  RotateCw,
+  History,
 } from "lucide-react";
 import {
   sendChatMessage,
@@ -116,8 +121,6 @@ export default function AIStudyAssistantScreen({ uid }) {
 
   const [mindMapNotes, setMindMapNotes] = useState(null);
   const [audioNotes, setAudioNotes] = useState(null);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [isPaused, setIsPaused] = useState(false);
 
   // which card ("mindmap" | "audio" | "flashcards" | "slidedeck") the
   // custom-input modal is generating for
@@ -504,50 +507,9 @@ export default function AIStudyAssistantScreen({ uid }) {
 
   function closeStudioModal() {
     window.speechSynthesis?.cancel();
-    setIsPlaying(false);
-    setIsPaused(false);
     setStudioModal(null);
     setStudioError("");
     setSlideDeckContent(null);
-  }
-
-  function buildAudioScript(notes) {
-    const parts = [`Here's your overview on ${notes.title}.`, notes.summary];
-    for (const section of notes.sections || []) parts.push(`${section.heading}. ${section.content}`);
-    if (notes.keyTakeaways?.length) parts.push("Key takeaways: " + notes.keyTakeaways.join(". "));
-    return parts.filter(Boolean).join(" ");
-  }
-
-  function handlePlayAudio() {
-    if (!audioNotes || !window.speechSynthesis) return;
-    if (isPaused) {
-      window.speechSynthesis.resume();
-      setIsPaused(false);
-      setIsPlaying(true);
-      return;
-    }
-    window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(buildAudioScript(audioNotes));
-    utterance.rate = 0.98;
-    utterance.onend = () => {
-      setIsPlaying(false);
-      setIsPaused(false);
-    };
-    window.speechSynthesis.speak(utterance);
-    setIsPlaying(true);
-    setIsPaused(false);
-  }
-
-  function handlePauseAudio() {
-    window.speechSynthesis?.pause();
-    setIsPaused(true);
-    setIsPlaying(false);
-  }
-
-  function handleStopAudio() {
-    window.speechSynthesis?.cancel();
-    setIsPlaying(false);
-    setIsPaused(false);
   }
 
   return (
@@ -958,11 +920,6 @@ export default function AIStudyAssistantScreen({ uid }) {
             notes={audioNotes}
             loading={studioLoading}
             error={studioError}
-            isPlaying={isPlaying}
-            isPaused={isPaused}
-            onPlay={handlePlayAudio}
-            onPause={handlePauseAudio}
-            onStop={handleStopAudio}
             onClose={closeStudioModal}
           />
         )}
@@ -2164,26 +2121,145 @@ const mmControlBtnStyleLight = {
   cursor: "pointer",
 };
 
-function estimateAudioLength(notes) {
-  const text = [notes.summary, ...(notes.sections || []).map((s) => `${s.heading} ${s.content}`), ...(notes.keyTakeaways || [])]
-    .filter(Boolean)
-    .join(" ");
-  const words = text.trim().split(/\s+/).filter(Boolean).length;
-  const totalSeconds = Math.max(30, Math.round((words / 150) * 60));
-  const mm = Math.floor(totalSeconds / 60);
-  const ss = totalSeconds % 60;
+const AUDIO_RATE_OPTIONS = [0.75, 1, 1.25, 1.5, 1.75, 2];
+
+function buildAudioScript(notes) {
+  const parts = [`Here's your overview on ${notes.title}.`, notes.summary];
+  for (const section of notes.sections || []) parts.push(`${section.heading}. ${section.content}`);
+  if (notes.keyTakeaways?.length) parts.push("Key takeaways: " + notes.keyTakeaways.join(". "));
+  return parts.filter(Boolean).join(" ");
+}
+
+function estimateAudioSeconds(wordCount) {
+  return Math.max(20, Math.round((wordCount / 150) * 60));
+}
+
+function formatTime(totalSeconds) {
+  const s = Math.max(0, Math.round(totalSeconds));
+  const mm = Math.floor(s / 60);
+  const ss = s % 60;
   return `${mm}:${String(ss).padStart(2, "0")}`;
 }
 
-/** AudioOverviewDock — bottom-docked, non-blocking player bar for Audio
- * Overview (see the render call above for why this is intentionally
- * NOT run through StudioModal's dark-backdrop overlay). Fixed to the
- * bottom of the viewport with no backdrop, so the chat underneath stays
- * fully visible and interactive while audio plays — closer to a
- * podcast-app mini-player than a dialog. */
-function AudioOverviewDock({ notes, loading, error, isPlaying, isPaused, onPlay, onPause, onStop, onClose }) {
+/** AudioOverviewDock — bottom-docked, non-blocking NotebookLM-style player
+ * bar for Audio Overview (see the render call above for why this is
+ * intentionally NOT run through StudioModal's dark-backdrop overlay).
+ * Fixed to the bottom of the viewport with no backdrop, so the chat
+ * underneath stays fully visible and interactive while audio plays —
+ * closer to a podcast-app mini-player than a dialog.
+ *
+ * Fully self-contained: owns its own play/pause/seek/rate/transcript
+ * state and talks to window.speechSynthesis directly, since none of
+ * that needs to live in the parent screen. The Web Speech API has no
+ * real seek/scrub or "current position" concept, so skip/seek here work
+ * by re-speaking from an estimated word offset (elapsed/duration ×
+ * word count) — smooth and good enough for a study aid, not
+ * frame-accurate the way a real audio file's <audio> element would be. */
+function AudioOverviewDock({ notes, loading, error, onClose }) {
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [isPaused, setIsPaused] = useState(false);
+  const [rate, setRate] = useState(1);
+  const [elapsed, setElapsed] = useState(0);
+  const [liked, setLiked] = useState(null); // null | "up" | "down"
+  const [showTranscript, setShowTranscript] = useState(false);
+
+  const words = useMemo(() => (notes ? buildAudioScript(notes).split(/\s+/).filter(Boolean) : []), [notes]);
+  const duration = useMemo(() => estimateAudioSeconds(words.length), [words]);
+
+  const timerRef = useRef(null);
+  const skipCancelRef = useRef(false); // true while we intentionally cancel() mid-utterance, so onend ignores it
+
+  useEffect(() => {
+    // Reset the player whenever a different Audio Overview is opened.
+    window.speechSynthesis?.cancel();
+    setIsPlaying(false);
+    setIsPaused(false);
+    setElapsed(0);
+    setShowTranscript(false);
+    return () => {
+      window.speechSynthesis?.cancel();
+      clearInterval(timerRef.current);
+    };
+  }, [notes]);
+
+  useEffect(() => {
+    if (!isPlaying) {
+      clearInterval(timerRef.current);
+      return;
+    }
+    timerRef.current = setInterval(() => {
+      setElapsed((e) => Math.min(duration, e + 0.25 * rate));
+    }, 250);
+    return () => clearInterval(timerRef.current);
+  }, [isPlaying, rate, duration]);
+
+  function speakFromWord(wordIndex, speed) {
+    if (!window.speechSynthesis) return;
+    skipCancelRef.current = true;
+    window.speechSynthesis.cancel();
+    const text = words.slice(wordIndex).join(" ");
+    if (!text) {
+      setIsPlaying(false);
+      setIsPaused(false);
+      return;
+    }
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.rate = speed;
+    utterance.onend = () => {
+      if (skipCancelRef.current) {
+        skipCancelRef.current = false;
+        return;
+      }
+      setIsPlaying(false);
+      setIsPaused(false);
+      setElapsed(duration);
+    };
+    window.speechSynthesis.speak(utterance);
+    setIsPlaying(true);
+    setIsPaused(false);
+  }
+
+  function handlePlayPause() {
+    if (!notes || !window.speechSynthesis) return;
+    if (isPlaying) {
+      window.speechSynthesis.pause();
+      setIsPlaying(false);
+      setIsPaused(true);
+      return;
+    }
+    if (isPaused) {
+      window.speechSynthesis.resume();
+      setIsPlaying(true);
+      setIsPaused(false);
+      return;
+    }
+    speakFromWord(Math.round((elapsed / duration) * words.length) || 0, rate);
+  }
+
+  function seekTo(newElapsed) {
+    const clamped = Math.max(0, Math.min(duration, newElapsed));
+    setElapsed(clamped);
+    const wordIndex = Math.min(words.length - 1, Math.round((clamped / duration) * words.length));
+    speakFromWord(wordIndex, rate);
+  }
+
+  function handleSkip(deltaSeconds) {
+    if (!notes) return;
+    seekTo(elapsed + deltaSeconds);
+  }
+
+  function handleRateChange() {
+    const idx = AUDIO_RATE_OPTIONS.indexOf(rate);
+    const next = AUDIO_RATE_OPTIONS[(idx + 1) % AUDIO_RATE_OPTIONS.length];
+    setRate(next);
+    if (isPlaying) {
+      const wordIndex = Math.min(words.length - 1, Math.round((elapsed / duration) * words.length));
+      speakFromWord(wordIndex, next);
+    }
+  }
+
   const sectionCount = notes?.sections?.length || 0;
-  const duration = notes ? estimateAudioLength(notes) : "";
+  const script = notes ? buildAudioScript(notes) : "";
 
   return (
     <motion.div
@@ -2197,64 +2273,148 @@ function AudioOverviewDock({ notes, loading, error, isPlaying, isPaused, onPlay,
         className="relative rounded-2xl px-4 py-3.5"
         style={{ background: COLORS.white, border: `1px solid ${COLORS.border}`, boxShadow: "0 12px 32px rgba(13,27,61,0.18)" }}
       >
-        <button
-          type="button"
-          onClick={onClose}
-          className="absolute -top-2.5 -right-2.5 flex items-center justify-center rounded-full"
-          style={{ width: 26, height: 26, color: COLORS.white, background: "rgba(13,27,61,0.75)", cursor: "pointer" }}
-        >
-          <X size={13} />
-        </button>
-
         {loading ? (
           <div className="flex items-center justify-center py-6">
             <Loader2 size={20} className="animate-spin" color={COLORS.purple} />
           </div>
         ) : error ? (
-          <p className="text-xs text-center py-4" style={{ color: "#DC2626" }}>
-            {error}
-          </p>
+          <>
+            <button
+              type="button"
+              onClick={onClose}
+              className="absolute -top-2.5 -right-2.5 flex items-center justify-center rounded-full"
+              style={{ width: 26, height: 26, color: COLORS.white, background: "rgba(13,27,61,0.75)", cursor: "pointer" }}
+            >
+              <X size={13} />
+            </button>
+            <p className="text-xs text-center py-4" style={{ color: "#DC2626" }}>
+              {error}
+            </p>
+          </>
         ) : notes ? (
           <>
-            <p className="text-xs font-semibold mb-2.5" style={{ color: COLORS.textDark }}>
-              Audio Overview
-            </p>
-            <div className="flex items-center gap-3">
-              <div
-                className="flex items-center justify-center rounded-full shrink-0"
-                style={{ width: 34, height: 34, background: GRADIENTS.purpleSky }}
-              >
-                <Volume2 size={15} color={COLORS.white} />
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="text-xs font-semibold truncate" style={{ color: COLORS.textDark }}>
-                  {notes.title}
-                </p>
-                <p className="text-[11px] truncate" style={{ color: COLORS.textLight }}>
-                  {duration} · Deep Dive{sectionCount > 0 ? ` · ${sectionCount} section${sectionCount === 1 ? "" : "s"}` : ""}
-                </p>
-              </div>
+            {/* Top row: title, thumbs, menu, close */}
+            <div className="flex items-center gap-2 mb-2.5">
+              <p className="text-xs font-semibold truncate flex-1" style={{ color: COLORS.textDark }}>
+                {notes.title}
+              </p>
               <button
                 type="button"
-                onClick={isPlaying ? onPause : onPlay}
-                className="flex items-center justify-center rounded-full shrink-0"
-                style={{ width: 34, height: 34, background: GRADIENTS.purplePink, color: COLORS.white, cursor: "pointer" }}
+                onClick={() => setLiked((v) => (v === "up" ? null : "up"))}
+                style={{ cursor: "pointer", color: liked === "up" ? COLORS.purple : COLORS.textLight }}
+                title="Good overview"
               >
-                {isPlaying ? <Pause size={14} /> : <Play size={14} />}
+                <ThumbsUp size={14} fill={liked === "up" ? "currentColor" : "none"} />
               </button>
               <button
                 type="button"
-                onClick={onStop}
-                disabled={!isPlaying && !isPaused}
-                className="flex items-center justify-center rounded-full shrink-0 disabled:opacity-30"
-                style={{ width: 30, height: 30, background: COLORS.lavender, color: COLORS.sky, cursor: "pointer" }}
+                onClick={() => setLiked((v) => (v === "down" ? null : "down"))}
+                style={{ cursor: "pointer", color: liked === "down" ? "#DC2626" : COLORS.textLight }}
+                title="Not helpful"
               >
-                <Square size={13} />
+                <ThumbsDown size={14} fill={liked === "down" ? "currentColor" : "none"} />
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowTranscript((v) => !v)}
+                style={{ cursor: "pointer", color: showTranscript ? COLORS.purple : COLORS.textLight }}
+                title="Transcript"
+              >
+                <History size={15} />
+              </button>
+              <button type="button" style={{ cursor: "pointer", color: COLORS.textLight }} title="More">
+                <MoreVertical size={15} />
+              </button>
+              <button
+                type="button"
+                onClick={onClose}
+                style={{ cursor: "pointer", color: COLORS.textLight }}
+                title="Close"
+              >
+                <X size={15} />
               </button>
             </div>
-            <p className="text-[11px] text-center mt-2" style={{ color: COLORS.textLight }}>
-              {isPlaying ? "Playing..." : isPaused ? "Paused" : "Tap play to listen to a summary of this content."}
-            </p>
+
+            {/* Scrub bar */}
+            <input
+              type="range"
+              min={0}
+              max={duration}
+              step={0.1}
+              value={elapsed}
+              onChange={(e) => setElapsed(parseFloat(e.target.value))}
+              onMouseUp={(e) => seekTo(parseFloat(e.target.value))}
+              onTouchEnd={(e) => seekTo(parseFloat(e.target.value))}
+              className="w-full"
+              style={{ accentColor: COLORS.purple, cursor: "pointer" }}
+            />
+            <div className="flex items-center justify-between -mt-1 mb-2">
+              <span className="text-[11px]" style={{ color: COLORS.textLight }}>
+                {formatTime(elapsed)} / {formatTime(duration)}
+              </span>
+              <span className="text-[11px]" style={{ color: COLORS.textLight }}>
+                Deep Dive{sectionCount > 0 ? ` · ${sectionCount} section${sectionCount === 1 ? "" : "s"}` : ""}
+              </span>
+            </div>
+
+            {/* Transport row: speed, -10s, play/pause, +10s, transcript toggle */}
+            <div className="flex items-center justify-between mt-1">
+              <button
+                type="button"
+                onClick={handleRateChange}
+                className="text-xs font-semibold"
+                style={{ color: COLORS.purple, cursor: "pointer", minWidth: 34, textAlign: "left" }}
+                title="Playback speed"
+              >
+                {rate}x
+              </button>
+
+              <div className="flex items-center gap-4">
+                <button
+                  type="button"
+                  onClick={() => handleSkip(-10)}
+                  className="relative flex items-center justify-center"
+                  style={{ color: COLORS.purple, cursor: "pointer" }}
+                  title="Back 10 seconds"
+                >
+                  <RotateCcw size={26} />
+                  <span className="absolute text-[9px] font-bold" style={{ color: COLORS.purple }}>
+                    10
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handlePlayPause}
+                  className="flex items-center justify-center rounded-full shrink-0"
+                  style={{ width: 42, height: 42, background: GRADIENTS.purplePink, color: COLORS.white, cursor: "pointer" }}
+                >
+                  {isPlaying ? <Pause size={18} /> : <Play size={18} />}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSkip(10)}
+                  className="relative flex items-center justify-center"
+                  style={{ color: COLORS.purple, cursor: "pointer" }}
+                  title="Forward 10 seconds"
+                >
+                  <RotateCw size={26} />
+                  <span className="absolute text-[9px] font-bold" style={{ color: COLORS.purple }}>
+                    10
+                  </span>
+                </button>
+              </div>
+
+              <div style={{ minWidth: 34 }} />
+            </div>
+
+            {showTranscript && (
+              <div
+                className="mt-3 rounded-xl px-3 py-2.5 overflow-y-auto text-xs leading-relaxed"
+                style={{ maxHeight: 160, background: COLORS.lavender, color: COLORS.textMid }}
+              >
+                {script}
+              </div>
+            )}
           </>
         ) : null}
       </div>

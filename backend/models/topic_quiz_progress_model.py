@@ -44,7 +44,8 @@ class TopicQuizProgress:
     LastScorePercent: float
     AverageScorePercent: float
     Classification: str  # "Fast" | "Moderate" | "Slow"
-    FocusBand: str  # "fundamentals" | "application" | "advanced" | "polish" — from THIS topic's own Easy/Medium/Hard breakdown
+    FocusBand: str  # "fundamentals" | "application" | "advanced" | "polish" — content LEVEL, from Topic Mastery %
+    WeakArea: Optional[str]  # "fundamentals" | "application" | "advanced" | None — content EMPHASIS, from this attempt's weakest difficulty tier
     NextReviewDate: str  # "YYYY-MM-DD"
 
     LastAttemptAt: Optional[object] = None

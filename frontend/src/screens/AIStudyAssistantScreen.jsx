@@ -1743,7 +1743,7 @@ function buildSlidesFromDeck(deck) {
     } else if (layout === "comparison" && s.left && s.right) {
       slides.push({ kind: "comparison", heading, left: s.left, right: s.right });
     } else if (s.content) {
-      slides.push({ kind: "text", heading, body: s.content, image: s.image_url });
+      slides.push({ kind: "text", heading, body: s.content, image: s.image_url, subpoints: s.subpoints });
     }
   });
   if (deck.keyTakeaways?.length) slides.push({ kind: "bullets", heading: "Key Takeaways", items: deck.keyTakeaways });
@@ -2042,8 +2042,20 @@ function SlideCanvas({ slide, index }) {
               <p className="text-sm leading-relaxed flex-1" style={{ color: COLORS.textMid }}>
                 {slide.body}
               </p>
-              <div className="shrink-0 rounded-lg p-1" style={{ width: 130, height: 130, background: accent }}>
-                <img src={slide.image} alt="" className="w-full h-full object-cover rounded-md" />
+              <div className="shrink-0 flex flex-col gap-2" style={{ width: 130 }}>
+                <div className="rounded-lg p-1" style={{ width: 130, height: 130, background: accent }}>
+                  <img src={slide.image} alt="" className="w-full h-full object-cover rounded-md" />
+                </div>
+                {slide.subpoints?.length ? <SlideKeyPoints subpoints={slide.subpoints} accent={accent} /> : null}
+              </div>
+            </div>
+          ) : slide.subpoints?.length ? (
+            <div className="flex gap-4">
+              <p className="text-sm leading-relaxed flex-1" style={{ color: COLORS.textMid }}>
+                {slide.body}
+              </p>
+              <div className="shrink-0" style={{ width: 130 }}>
+                <SlideKeyPoints subpoints={slide.subpoints} accent={accent} />
               </div>
             </div>
           ) : (
@@ -2053,6 +2065,33 @@ function SlideCanvas({ slide, index }) {
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+/** SlideKeyPoints — the in-app preview's counterpart to
+ * services/ppt_service.py's _add_key_points_panel / services/pdf_service.py's
+ * _draw_key_points_panel: a compact "Key Points" list of short highlight
+ * bullets (see backend agents/slide_deck_agent.py's "subpoints") stacked
+ * in the text slide's sidebar, below the image when one is present. */
+function SlideKeyPoints({ subpoints, accent }) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <p className="text-[9px] font-bold tracking-wide" style={{ color: accent }}>
+        KEY POINTS
+      </p>
+      {subpoints.slice(0, 5).map((sp, i) => {
+        const text = typeof sp === "object" ? sp.text : sp;
+        if (!text) return null;
+        return (
+          <div key={i} className="flex items-start gap-1.5">
+            <div className="rounded-full shrink-0 mt-1" style={{ width: 5, height: 5, background: accent }} />
+            <p className="text-[10px] leading-snug" style={{ color: COLORS.textMid }}>
+              {text}
+            </p>
+          </div>
+        );
+      })}
     </div>
   );
 }

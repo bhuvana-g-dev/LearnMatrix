@@ -241,6 +241,14 @@ class Settings:
     TOPIC_QUIZ_PROGRESS_COLLECTION: str = os.getenv(
         "TOPIC_QUIZ_PROGRESS_COLLECTION", "topic_quiz_progress"
     )
+    # Write-only audit log of every AI-generated topic-quiz question, for
+    # the Admin Panel's AI Questions screen. NEVER read back to serve a
+    # quiz — every learner gets a freshly generated quiz (see
+    # services/topic_quiz_service.get_topic_quiz), this collection only
+    # records what was generated, for whom, and when.
+    AI_GENERATED_QUESTIONS_COLLECTION: str = os.getenv(
+        "AI_GENERATED_QUESTIONS_COLLECTION", "ai_generated_questions"
+    )
 
     # Fixed count per abstract ("quiz after each topic (10 questions)") —
     # same fixed-spread reasoning as assessment_planner.QUESTIONS_PER_DIFFICULTY,

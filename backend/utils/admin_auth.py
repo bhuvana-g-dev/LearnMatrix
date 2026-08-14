@@ -15,6 +15,7 @@ from functools import wraps
 from firebase_admin import auth as firebase_auth
 from flask import g, request
 
+from firebase.firebase_config import get_firestore_client
 from utils.response_helper import error_response
 
 
@@ -40,6 +41,16 @@ def verify_admin_token(id_token: str | None) -> dict:
     decides "is this actually an admin."""
     if not id_token:
         raise AdminAuthError("ID token is required.", 401)
+
+    # get_firestore_client() triggers firebase_admin.initialize_app() as
+    # a side effect (see firebase/firebase_config.py) — needed here
+    # because this can be the FIRST Firebase-touching call in a fresh
+    # process (an admin logging in before any other route has run), and
+    # firebase_auth.verify_id_token() fails with "the default Firebase
+    # app does not exist" if initialize_app() hasn't run yet. Cheap and
+    # idempotent — every other Firebase-touching module in this codebase
+    # (routes, scripts) does the same before its first real call.
+    get_firestore_client()
 
     try:
         decoded = firebase_auth.verify_id_token(id_token)

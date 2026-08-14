@@ -84,6 +84,38 @@ def _generate_json_gemini(prompt: str, temperature: float, api_key: str | None =
 
 
 # ---------------------------------------------------------------------
+# Gemini image generation (services/image_service.py's generate_ai_image)
+# ---------------------------------------------------------------------
+def generate_image(prompt: str, api_key: str | None = None) -> bytes | None:
+    """Best-effort creative image generation via Gemini's image-capable
+    model (settings.GEMINI_IMAGE_MODEL). Returns raw image bytes, or
+    None on ANY failure — missing key, unsupported model, safety block,
+    network hiccup, empty response. Callers (image_service.py) fall
+    back to a Pexels stock photo whenever this returns None, so an
+    image-gen outage never breaks deck generation."""
+    if not (api_key or settings.GEMINI_API_KEY) or not prompt or not prompt.strip():
+        return None
+    try:
+        from google.genai import types
+
+        client = _get_gemini_client(api_key)
+        response = client.models.generate_content(
+            model=settings.GEMINI_IMAGE_MODEL,
+            contents=prompt,
+            config=types.GenerateContentConfig(response_modalities=["TEXT", "IMAGE"]),
+        )
+        for candidate in getattr(response, "candidates", None) or []:
+            parts = getattr(getattr(candidate, "content", None), "parts", None) or []
+            for part in parts:
+                inline_data = getattr(part, "inline_data", None)
+                if inline_data is not None and getattr(inline_data, "data", None):
+                    return inline_data.data
+        return None
+    except Exception:
+        return None
+
+
+# ---------------------------------------------------------------------
 # Groq (official SDK, OpenAI-compatible chat.completions)
 # ---------------------------------------------------------------------
 def _get_groq_client():

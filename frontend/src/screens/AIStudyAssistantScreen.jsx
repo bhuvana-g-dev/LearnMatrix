@@ -851,7 +851,7 @@ export default function AIStudyAssistantScreen({ uid }) {
       </div>
 
       <AnimatePresence>
-        {studioModal && (
+        {studioModal && studioModal !== "audio" && (
           <StudioModal
             onClose={closeStudioModal}
             wide={(studioModal === "mindmap" || studioModal === "slidedeck-preview") && !studioLoading && !studioError}
@@ -912,17 +912,31 @@ export default function AIStudyAssistantScreen({ uid }) {
                   }
                 }}
               />
-            ) : studioModal === "audio" && audioNotes ? (
-              <AudioOverviewBody
-                notes={audioNotes}
-                isPlaying={isPlaying}
-                isPaused={isPaused}
-                onPlay={handlePlayAudio}
-                onPause={handlePauseAudio}
-                onStop={handleStopAudio}
-              />
             ) : null}
           </StudioModal>
+        )}
+      </AnimatePresence>
+
+      {/* Audio Overview deliberately renders OUTSIDE the StudioModal system
+       * as a bottom-docked player bar rather than a centered/full-screen
+       * overlay — unlike Mind Map or Slide Deck, listening to an Audio
+       * Overview is something a student naturally wants to do WHILE still
+       * reading/using the chat behind it, so it shouldn't block the page
+       * the way a dark backdrop modal does (see StudioModal's
+       * `rgba(13,27,61,0.45)` backdrop above). */}
+      <AnimatePresence>
+        {studioModal === "audio" && (
+          <AudioOverviewDock
+            notes={audioNotes}
+            loading={studioLoading}
+            error={studioError}
+            isPlaying={isPlaying}
+            isPaused={isPaused}
+            onPlay={handlePlayAudio}
+            onPause={handlePauseAudio}
+            onStop={handleStopAudio}
+            onClose={closeStudioModal}
+          />
         )}
       </AnimatePresence>
     </div>
@@ -2116,71 +2130,89 @@ function estimateAudioLength(notes) {
   return `${mm}:${String(ss).padStart(2, "0")}`;
 }
 
-function AudioOverviewBody({ notes, isPlaying, isPaused, onPlay, onPause, onStop }) {
-  const sectionCount = notes.sections?.length || 0;
-  const duration = estimateAudioLength(notes);
+/** AudioOverviewDock — bottom-docked, non-blocking player bar for Audio
+ * Overview (see the render call above for why this is intentionally
+ * NOT run through StudioModal's dark-backdrop overlay). Fixed to the
+ * bottom of the viewport with no backdrop, so the chat underneath stays
+ * fully visible and interactive while audio plays — closer to a
+ * podcast-app mini-player than a dialog. */
+function AudioOverviewDock({ notes, loading, error, isPlaying, isPaused, onPlay, onPause, onStop, onClose }) {
+  const sectionCount = notes?.sections?.length || 0;
+  const duration = notes ? estimateAudioLength(notes) : "";
 
   return (
-    <div>
-      <p className="text-sm font-semibold mb-1 pr-6" style={{ color: COLORS.textDark }}>
-        Audio Overview
-      </p>
-
-      {/* Compact NotebookLM-style summary row */}
+    <motion.div
+      initial={{ opacity: 0, y: 24 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: 24 }}
+      className="fixed bottom-5 left-1/2 z-40 w-full px-4"
+      style={{ transform: "translateX(-50%)", maxWidth: 420 }}
+    >
       <div
-        className="flex items-center gap-3 rounded-2xl px-3 py-2.5 mt-3 mb-6"
-        style={{ border: `1px solid ${COLORS.border}`, background: COLORS.white }}
+        className="relative rounded-2xl px-4 py-3.5"
+        style={{ background: COLORS.white, border: `1px solid ${COLORS.border}`, boxShadow: "0 12px 32px rgba(13,27,61,0.18)" }}
       >
-        <div
-          className="flex items-center justify-center rounded-full shrink-0"
-          style={{ width: 34, height: 34, background: GRADIENTS.purpleSky }}
-        >
-          <Volume2 size={15} color={COLORS.white} />
-        </div>
-        <div className="min-w-0 flex-1">
-          <p className="text-xs font-semibold truncate" style={{ color: COLORS.textDark }}>
-            {notes.title}
-          </p>
-          <p className="text-[11px] truncate" style={{ color: COLORS.textLight }}>
-            {duration} · Deep Dive{sectionCount > 0 ? ` · ${sectionCount} section${sectionCount === 1 ? "" : "s"}` : ""}
-          </p>
-        </div>
         <button
           type="button"
-          onClick={isPlaying ? onPause : onPlay}
-          className="flex items-center justify-center rounded-full shrink-0"
-          style={{ width: 30, height: 30, border: `1.5px solid ${COLORS.purple}`, color: COLORS.purple, cursor: "pointer" }}
+          onClick={onClose}
+          className="absolute -top-2.5 -right-2.5 flex items-center justify-center rounded-full"
+          style={{ width: 26, height: 26, color: COLORS.white, background: "rgba(13,27,61,0.75)", cursor: "pointer" }}
         >
-          {isPlaying ? <Pause size={13} /> : <Play size={13} />}
+          <X size={13} />
         </button>
-        <button type="button" className="shrink-0" style={{ color: COLORS.textLight, cursor: "pointer" }} title="More">
-          <MoreVertical size={15} />
-        </button>
-      </div>
 
-      <div className="flex items-center justify-center gap-4 mb-6">
-        <button
-          type="button"
-          onClick={isPlaying ? onPause : onPlay}
-          className="flex items-center justify-center rounded-full"
-          style={{ width: 56, height: 56, background: GRADIENTS.purplePink, color: COLORS.white, cursor: "pointer" }}
-        >
-          {isPlaying ? <Pause size={22} /> : <Play size={22} />}
-        </button>
-        <button
-          type="button"
-          onClick={onStop}
-          disabled={!isPlaying && !isPaused}
-          className="flex items-center justify-center rounded-full disabled:opacity-30"
-          style={{ width: 44, height: 44, background: COLORS.lavender, color: COLORS.sky, cursor: "pointer" }}
-        >
-          <Square size={16} />
-        </button>
+        {loading ? (
+          <div className="flex items-center justify-center py-6">
+            <Loader2 size={20} className="animate-spin" color={COLORS.purple} />
+          </div>
+        ) : error ? (
+          <p className="text-xs text-center py-4" style={{ color: "#DC2626" }}>
+            {error}
+          </p>
+        ) : notes ? (
+          <>
+            <p className="text-xs font-semibold mb-2.5" style={{ color: COLORS.textDark }}>
+              Audio Overview
+            </p>
+            <div className="flex items-center gap-3">
+              <div
+                className="flex items-center justify-center rounded-full shrink-0"
+                style={{ width: 34, height: 34, background: GRADIENTS.purpleSky }}
+              >
+                <Volume2 size={15} color={COLORS.white} />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-xs font-semibold truncate" style={{ color: COLORS.textDark }}>
+                  {notes.title}
+                </p>
+                <p className="text-[11px] truncate" style={{ color: COLORS.textLight }}>
+                  {duration} · Deep Dive{sectionCount > 0 ? ` · ${sectionCount} section${sectionCount === 1 ? "" : "s"}` : ""}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={isPlaying ? onPause : onPlay}
+                className="flex items-center justify-center rounded-full shrink-0"
+                style={{ width: 34, height: 34, background: GRADIENTS.purplePink, color: COLORS.white, cursor: "pointer" }}
+              >
+                {isPlaying ? <Pause size={14} /> : <Play size={14} />}
+              </button>
+              <button
+                type="button"
+                onClick={onStop}
+                disabled={!isPlaying && !isPaused}
+                className="flex items-center justify-center rounded-full shrink-0 disabled:opacity-30"
+                style={{ width: 30, height: 30, background: COLORS.lavender, color: COLORS.sky, cursor: "pointer" }}
+              >
+                <Square size={13} />
+              </button>
+            </div>
+            <p className="text-[11px] text-center mt-2" style={{ color: COLORS.textLight }}>
+              {isPlaying ? "Playing..." : isPaused ? "Paused" : "Tap play to listen to a summary of this content."}
+            </p>
+          </>
+        ) : null}
       </div>
-
-      <p className="text-xs text-center" style={{ color: COLORS.textLight }}>
-        {isPlaying ? "Playing..." : isPaused ? "Paused" : "Tap play to listen to a summary of this content."}
-      </p>
-    </div>
+    </motion.div>
   );
 }

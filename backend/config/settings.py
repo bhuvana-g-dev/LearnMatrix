@@ -136,6 +136,14 @@ class Settings:
     GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
     GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-3.5-flash")
 
+    # Image-capable Gemini model (services/image_service.py's
+    # generate_ai_image / utils/gemini_client.py's generate_image) —
+    # used to make ONE creative, on-topic illustration per Slide Deck
+    # "text" section instead of a generic stock photo. Falls back to
+    # Pexels (PEXELS_API_KEY above) automatically whenever this call
+    # fails for any reason — missing key, safety block, quota, etc.
+    GEMINI_IMAGE_MODEL: str = os.getenv("GEMINI_IMAGE_MODEL", "gemini-2.5-flash-image")
+
     # Optional SEPARATE key for Assessment question generation only
     # (agents/question_generation_agent.py) — diagnostic assessments
     # fire several generate_json() calls back-to-back (one per skill),

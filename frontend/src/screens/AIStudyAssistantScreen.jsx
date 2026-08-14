@@ -62,7 +62,7 @@ import {
 } from "../services/pptService";
 import { generateMindMap } from "../services/mindmapService";
 import { generateSlideDeckPreview, downloadDeckContentPptx, downloadDeckContentPdf } from "../services/slideDeckService";
-import { listStudioArtifacts, getStudioArtifact } from "../services/studioService";
+import { listStudioArtifacts, getStudioArtifact, saveStudioArtifact } from "../services/studioService";
 import { COLORS, GRADIENTS, GLASS_CARD } from "../constants/theme";
 
 /**
@@ -287,6 +287,15 @@ export default function AIStudyAssistantScreen({ uid }) {
       setFlashSet(result);
       setFlashIndex(0);
       setFlashFlipped(false);
+      // Saved into the same per-session Studio history as Mind Map/Slide
+      // Deck (see studio_repository.py) so it shows up as an "already
+      // generated" card next time this chat is reopened — only when a
+      // chat is actually open, same condition mindmap/slidedeck use.
+      if (activeSessionId) {
+        saveStudioArtifact(uid, activeSessionId, "flashcards", result.title || "Flashcards", result)
+          .then(refreshStudioArtifacts)
+          .catch(() => {}); // best-effort — a save failure shouldn't block the flashcards the student is already looking at
+      }
     } catch (err) {
       setStudioError(err.message || "Couldn't generate flashcards.");
     } finally {
@@ -379,6 +388,14 @@ export default function AIStudyAssistantScreen({ uid }) {
       } else if (full.type === "slidedeck") {
         setSlideDeckContent(full.content);
         setStudioModal("slidedeck-preview");
+      } else if (full.type === "flashcards") {
+        setFlashSet(full.content);
+        setFlashIndex(0);
+        setFlashFlipped(false);
+        setStudioModal("flashcards");
+      } else if (full.type === "audio") {
+        setAudioNotes(full.content);
+        setStudioModal("audio");
       }
     } catch (err) {
       setStudioError(err.message || "Couldn't load that item.");
@@ -407,7 +424,17 @@ export default function AIStudyAssistantScreen({ uid }) {
       setStudioModal("custom-input");
       return;
     }
-    runStudioBuild("audio", () => buildAudioNotesForMode(mode), setAudioNotes);
+    runStudioBuild("audio", () => buildAudioNotesForMode(mode), setAudioNotes, (notes) => {
+      // Audio Overview is built entirely client-side (no backend call
+      // knows the session the way Mind Map/Slide Deck's own generate
+      // endpoints do — see mindmap_routes.py/slidedeck_routes.py), so
+      // it's saved into Studio history explicitly here instead.
+      if (activeSessionId && notes) {
+        saveStudioArtifact(uid, activeSessionId, "audio", notes.title || "Audio Overview", notes)
+          .then(refreshStudioArtifacts)
+          .catch(() => {}); // best-effort — a save failure shouldn't block playback the student already has
+      }
+    });
   }
 
   async function runStudioBuild(modalKey, buildFn, setNotes, onSuccess) {
@@ -415,8 +442,9 @@ export default function AIStudyAssistantScreen({ uid }) {
     setStudioLoading(true);
     setStudioModal(modalKey);
     try {
-      setNotes(await buildFn());
-      onSuccess?.();
+      const result = await buildFn();
+      setNotes(result);
+      onSuccess?.(result);
     } catch (err) {
       setStudioError(err.message || "Something went wrong.");
     } finally {
@@ -1047,6 +1075,8 @@ function StudioActionGroup({ icon: Icon, label, theme = "blue", onGenerate, load
 const STUDIO_ARTIFACT_META = {
   mindmap: { icon: GitBranch, pastel: "#DCEEFB", iconColor: "#1D6FA5", label: "Mind Map" },
   slidedeck: { icon: PresentationIcon, pastel: "#FDECC8", iconColor: "#B8860B", label: "Slide Deck" },
+  flashcards: { icon: Layers, pastel: "#FCE0EC", iconColor: "#C23B79", label: "Flashcards" },
+  audio: { icon: Volume2, pastel: "#EAE1F9", iconColor: "#6D3FBF", label: "Audio Overview" },
 };
 
 function timeAgo(iso) {

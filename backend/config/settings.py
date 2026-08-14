@@ -22,9 +22,12 @@ class Settings:
     PORT: int = int(os.getenv("PORT", 5000))
 
     # --- CORS ---
-    # The React dev server origin. Comma-separated if you later add more.
+    # Comma-separated list of allowed frontend origins. localhost for
+    # local dev + the deployed Vercel frontend by default — override via
+    # the CORS_ORIGINS env var (Render dashboard -> Environment) if the
+    # Vercel URL ever changes, without touching code.
     CORS_ORIGINS: list[str] = os.getenv(
-        "CORS_ORIGINS", "http://localhost:5173"
+        "CORS_ORIGINS", "http://localhost:5173,https://learn-matrix-ten.vercel.app"
     ).split(",")
 
     # --- Firebase ---
@@ -66,6 +69,16 @@ class Settings:
     LEARNING_NOTES_COLLECTION: str = os.getenv("LEARNING_NOTES_COLLECTION", "learning_notes")
     LEARNING_RESOURCES_COLLECTION: str = os.getenv("LEARNING_RESOURCES_COLLECTION", "learning_resources")
     ACTIVITY_COLLECTION: str = os.getenv("ACTIVITY_COLLECTION", "learning_activity")
+    CERTIFICATES_COLLECTION: str = os.getenv("CERTIFICATES_COLLECTION", "certificates")
+
+    # --- Certificates (services/certificate_service.py) ---
+    # Drop your exported Canva certificate as a PNG at this path (any
+    # resolution — it's scaled to fill the page). One template is used
+    # for every certificate today; per-course templates can be added
+    # later by keying CERTIFICATE_TEMPLATE_PATH off `course_name`.
+    CERTIFICATE_TEMPLATE_PATH: str = os.getenv(
+        "CERTIFICATE_TEMPLATE_PATH", "assets/certificates/template.png"
+    )
 
     # --- Learning Resources (services/resource_repository.py) ---
     # One shared list of resource types across student display, admin

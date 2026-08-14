@@ -23,7 +23,7 @@ const EMPTY_FORM = { skill: "", topic: "", type: "video", title: "", url: "", di
 
 /**
  * ResourceBankScreen — the admin Learning Resources Management section.
- * Same visual/CRUD conventions as QuestionBankScreen.jsx, but built as
+ * Same visual/CRUD conventions the old Question Bank screen used, but built as
  * one self-contained screen (own fetch/filter/CRUD state) rather than a
  * separate hook+table+modal split — smaller surface for this first
  * version; splitting out is a mechanical refactor later if this screen

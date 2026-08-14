@@ -10,3 +10,15 @@ body {
   margin: 0;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 }
+
+/* Hides the browser scrollbar track/thumb on an element while leaving
+ * it fully scrollable (wheel/trackpad/touch/keyboard all still work) —
+ * used on AIStudyAssistantScreen.jsx's chat/sidebar panes so scrolling
+ * doesn't show a visible scrollbar rail down the side of the page. */
+.no-scrollbar {
+  scrollbar-width: none;       /* Firefox */
+  -ms-overflow-style: none;    /* old Edge/IE */
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;               /* Chrome/Safari/new Edge */
+}

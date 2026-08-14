@@ -114,17 +114,12 @@ export const ENDPOINTS = {
       `/revisions/${uid}/${encodeURIComponent(skill)}/${encodeURIComponent(topic)}/snooze`, // POST
   },
   // ---- Admin Panel (new) ----
-  // Backend: routes/admin_question_routes.py, routes/admin_student_routes.py,
-  // routes/admin_learner_routes.py, routes/admin_auth_routes.py, all
-  // registered under /api like every other blueprint in app.py.
+  // Backend: routes/admin_student_routes.py, routes/admin_learner_routes.py,
+  // routes/admin_auth_routes.py, all registered under /api like every
+  // other blueprint in app.py. The old Excel/PDF Question Bank
+  // (admin_question_routes.py) has been removed — topic quizzes are
+  // AI-generated only now (see services/topic_quiz_service.py).
   ADMIN: {
-    QUESTIONS: {
-      LIST: "/admin/questions", // GET, supports ?skill=&role=&difficulty=&status=&search=
-      CREATE: "/admin/questions", // POST
-      UPDATE: (questionId) => `/admin/questions/${questionId}`, // PUT
-      SET_STATUS: (questionId) => `/admin/questions/${questionId}/status`, // PATCH
-      EXTRACT_PDF: "/admin/questions/extract-pdf", // POST multipart/form-data
-    },
     // Resource Bank — backend: routes/learning_routes.py
     RESOURCES: {
       LIST: "/admin/learning-resources", // GET, supports ?skill=&topic=&type=&difficulty=&status=
@@ -151,6 +146,7 @@ export const ENDPOINTS = {
     LEARNERS: {
       LIST: "/admin/learners", // GET, supports ?email=&skill=&topic=&learnerType=
       PROFILE: "/admin/learners/profile", // GET ?email= (required) — skill-wise WHY breakdown
+      SUMMARY: "/admin/learners/summary", // GET — dashboard totals, distribution, recent activity
     },
     // Admin auth — backend: routes/admin_auth_routes.py. Real Firebase
     // login happens client-side (see services/adminAuthService.js); this

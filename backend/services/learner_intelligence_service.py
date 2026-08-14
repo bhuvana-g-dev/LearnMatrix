@@ -220,3 +220,68 @@ def get_student_profile(email: str) -> dict | None:
         "skills": skills,
         "weakTopics": weak_topics,
     }
+
+
+def get_dashboard_summary(recent_limit: int = 15) -> dict:
+    """Real counts for the Admin Dashboard: total students, overall
+    Fast/Moderate/Slow distribution, how many classification changes
+    have happened (a student's type flipping between two consecutive
+    attempts on the same skill/topic), and a recent-activity feed. Every
+    number here traces to an actual topic_quiz_progress / attempts doc —
+    nothing is invented."""
+    db = get_firestore_client()
+
+    progress_rows = repo.list_all_progress(db)
+    attempts = repo.list_all_attempts(db)
+    grouped_attempts = _group_attempts_by_uid_skill_topic(attempts)
+
+    # Overall type per student = the classification they carry most often
+    # right now across their skills (same rule get_student_profile uses).
+    per_student_type_counts: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
+    for p in progress_rows:
+        uid = p.get("Uid")
+        classification = p.get("Classification")
+        if uid and classification:
+            per_student_type_counts[uid][classification] += 1
+
+    distribution = {"Fast": 0, "Moderate": 0, "Slow": 0}
+    for uid, counts in per_student_type_counts.items():
+        overall = max(counts, key=counts.get)
+        if overall in distribution:
+            distribution[overall] += 1
+
+    # A "classification change" = two consecutive attempts on the same
+    # (uid, skill, topic) that carry different Classification values.
+    classification_changes = 0
+    for key_attempts in grouped_attempts.values():
+        for prev, curr in zip(key_attempts, key_attempts[1:]):
+            if prev.get("Classification") != curr.get("Classification"):
+                classification_changes += 1
+
+    email_cache: dict[str, str] = {}
+
+    def _cached_email(uid: str) -> str:
+        if uid not in email_cache:
+            email_cache[uid] = email_for_uid(uid)
+        return email_cache[uid]
+
+    recent_sorted = sorted(attempts, key=lambda a: a.get("CreatedAt") or 0, reverse=True)
+    recent_activity = [
+        {
+            "email": _cached_email(a.get("Uid")),
+            "skill": a.get("Skill"),
+            "topic": a.get("Topic"),
+            "classification": a.get("Classification"),
+            "scorePercent": a.get("ScorePercent"),
+            "attemptNumber": a.get("AttemptNumber"),
+            "createdAt": a.get("CreatedAt"),
+        }
+        for a in recent_sorted[:recent_limit]
+    ]
+
+    return {
+        "totalStudents": len(per_student_type_counts),
+        "distribution": distribution,
+        "classificationChanges": classification_changes,
+        "recentActivity": recent_activity,
+    }

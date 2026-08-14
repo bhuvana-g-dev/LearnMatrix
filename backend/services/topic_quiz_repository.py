@@ -27,6 +27,25 @@ def _progress_collection(db):
     return db.collection(settings.TOPIC_QUIZ_PROGRESS_COLLECTION)
 
 
+def _ai_questions_collection(db):
+    return db.collection(settings.AI_GENERATED_QUESTIONS_COLLECTION)
+
+
+def log_generated_questions(db, entries: list[dict]) -> None:
+    """Persists each AI-generated topic-quiz question for the Admin
+    Panel's AI Questions screen. Write-only: nothing in this codebase
+    ever reads this collection back to build a quiz — see
+    services/topic_quiz_service.get_topic_quiz(), which always calls
+    TopicQuizAgent fresh (through the per-student cache in
+    topic_quiz_bank_cache.py, which is a different, unrelated concern —
+    see that module's docstring). A logging failure here should never
+    fail the student's quiz, so callers are expected to swallow/log any
+    exception from this rather than let it bubble into the quiz response."""
+    collection = _ai_questions_collection(db)
+    for entry in entries:
+        collection.add(entry)
+
+
 # ---------------------------------------------------------------------------
 # Progress (latest state) — read path
 # ---------------------------------------------------------------------------

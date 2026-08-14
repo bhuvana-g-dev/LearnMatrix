@@ -575,7 +575,7 @@ export default function AIStudyAssistantScreen({ uid }) {
               </p>
             )}
 
-            <div className="flex-1 overflow-y-auto flex flex-col gap-1">
+            <div className="flex-1 overflow-y-auto no-scrollbar flex flex-col gap-1">
               {historyCollapsed ? (
                 sessions.map((s) => (
                   <button
@@ -655,7 +655,7 @@ export default function AIStudyAssistantScreen({ uid }) {
               </p>
             )}
 
-            <div className="flex-1 overflow-y-auto flex flex-col gap-2">
+            <div className="flex-1 overflow-y-auto no-scrollbar flex flex-col gap-2">
               {sources.length === 0 ? (
                 <p className="text-[11px]" style={{ color: COLORS.textLight }}>
                   No sources yet. Upload a PDF or notes file to power chat, Mind Map, Audio Overview, Slide Deck, and Flashcards.
@@ -691,7 +691,7 @@ export default function AIStudyAssistantScreen({ uid }) {
               {activeSessionId ? sessions.find((s) => s.id === activeSessionId)?.title || "Chat" : "New Chat"}
             </p>
 
-            <div ref={scrollRef} className="flex-1 overflow-y-auto flex flex-col gap-3 px-1">
+            <div ref={scrollRef} className="flex-1 overflow-y-auto no-scrollbar flex flex-col gap-3 px-1">
               {loadingChat ? (
                 <p className="text-xs text-center m-auto" style={{ color: COLORS.textLight }}>
                   Loading...
@@ -779,7 +779,7 @@ export default function AIStudyAssistantScreen({ uid }) {
           </div>
 
           {/* ---------------- STUDIO ---------------- */}
-          <div className="p-4 flex flex-col gap-3 overflow-y-auto" style={{ height: "100%" }}>
+          <div className="p-4 flex flex-col gap-3 overflow-y-auto no-scrollbar" style={{ height: "100%" }}>
             <p className="text-xs font-semibold" style={{ color: COLORS.textDark }}>
               Studio
             </p>
@@ -1308,31 +1308,46 @@ function FlashcardModalBody({ set, index, flipped, onFlip, onNext, onPrev }) {
         </span>
       )}
 
-      {/* Dark question/answer card */}
+      {/* Question/answer card — two distinct colors (navy for the
+       * question, gold for the revealed answer) so it's visually obvious
+       * at a glance which side you're looking at, rather than the same
+       * dark card just swapping text. */}
       <div
         onClick={onFlip}
         className="rounded-3xl flex flex-col justify-between px-6 py-5"
-        style={{ background: "#2B2B33", minHeight: 220, cursor: "pointer" }}
+        style={{
+          background: flipped
+            ? "linear-gradient(135deg, #E8B93D, #D4A017)"
+            : "linear-gradient(135deg, #16234A, #0D1B3D)",
+          minHeight: 220,
+          cursor: "pointer",
+        }}
       >
         <div className="flex items-center justify-between">
-          <span className="text-xs" style={{ color: "rgba(255,255,255,0.45)" }}>
+          <span className="text-xs font-semibold" style={{ color: flipped ? "rgba(13,27,61,0.55)" : "rgba(255,255,255,0.45)" }}>
             {index + 1} / {total}
           </span>
-          <MoreVertical size={16} color="rgba(255,255,255,0.45)" />
+          <MoreVertical size={16} color={flipped ? "rgba(13,27,61,0.55)" : "rgba(255,255,255,0.45)"} />
         </div>
-        <p className="text-xl font-semibold leading-snug text-center px-2" style={{ color: COLORS.white }}>
+        <p className="text-xl font-semibold leading-snug text-center px-2" style={{ color: flipped ? COLORS.textDark : COLORS.white }}>
           {flipped ? card.answer : card.question}
         </p>
-        <p className="text-xs text-center" style={{ color: "rgba(255,255,255,0.45)" }}>
+        <p className="text-xs text-center font-medium" style={{ color: flipped ? "rgba(13,27,61,0.6)" : "rgba(255,255,255,0.45)" }}>
           {flipped ? "Tap to see question" : "See answer"}
         </p>
       </div>
 
-      {/* Explain panel — only once the answer is showing */}
+      {/* Explain panel — only once the answer is showing. Given its own
+       * lavender/gold-tinted card + left accent bar (rather than a plain
+       * white bordered box) so it reads as a distinct "reason" callout,
+       * not just more of the same card. */}
       {flipped && (
         <div className="mt-2.5">
           {showExplain ? (
-            <div className="rounded-2xl px-5 py-4" style={{ border: `1px solid ${COLORS.border}`, background: COLORS.white }}>
+            <div
+              className="rounded-2xl pl-4 pr-5 py-4"
+              style={{ background: COLORS.lavender, borderLeft: `4px solid ${COLORS.purple}` }}
+            >
               <p className="text-sm leading-relaxed" style={{ color: COLORS.textDark }}>
                 {card.explanation || card.answer}
               </p>

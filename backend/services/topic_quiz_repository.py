@@ -27,25 +27,6 @@ def _progress_collection(db):
     return db.collection(settings.TOPIC_QUIZ_PROGRESS_COLLECTION)
 
 
-def _ai_questions_collection(db):
-    return db.collection(settings.AI_GENERATED_QUESTIONS_COLLECTION)
-
-
-def log_generated_questions(db, entries: list[dict]) -> None:
-    """Persists each AI-generated topic-quiz question for the Admin
-    Panel's AI Questions screen. Write-only: nothing in this codebase
-    ever reads this collection back to build a quiz — see
-    services/topic_quiz_service.get_topic_quiz(), which always calls
-    TopicQuizAgent fresh (through the per-student cache in
-    topic_quiz_bank_cache.py, which is a different, unrelated concern —
-    see that module's docstring). A logging failure here should never
-    fail the student's quiz, so callers are expected to swallow/log any
-    exception from this rather than let it bubble into the quiz response."""
-    collection = _ai_questions_collection(db)
-    for entry in entries:
-        collection.add(entry)
-
-
 # ---------------------------------------------------------------------------
 # Progress (latest state) — read path
 # ---------------------------------------------------------------------------
@@ -70,9 +51,9 @@ def list_all_progress(db) -> list[dict]:
 
 def list_progress_by_uid(db, uid: str) -> list[dict]:
     """Every topic_quiz_progress doc for ONE learner — every topic they've
-    ever submitted a quiz for, each carrying its own FocusBand. This is
-    what the frontend's buildCourseNavigator.js reads to override a
-    topic's skill-level default focus band with the learner's actual,
+    ever submitted a quiz for, each carrying its own FocusBand + WeakArea.
+    This is what the frontend's buildCourseNavigator.js reads to override
+    a topic's skill-level default focus band with the learner's actual,
     per-topic-quiz-derived one once they've taken that topic's quiz."""
     query = _progress_collection(db).where("Uid", "==", uid)
     return [doc.to_dict() for doc in query.stream()]
@@ -160,6 +141,7 @@ def record_attempt(
     time_taken_seconds: int,
     classification: str,
     focus_band: str,
+    weak_area: str | None,
     next_review_date: str,
 ) -> dict:
     """
@@ -169,11 +151,13 @@ def record_attempt(
       2. An upsert of topic_quiz_progress/{uid}__{skill}__{topic} — the
          single latest-state doc the dashboard reads.
 
-    focus_band: this attempt's Easy/Medium/Hard-derived band (see
-    services/focus_band.py) — OVERWRITES any prior FocusBand outright
-    (unlike AverageScorePercent, which blends with history), since the
-    band should reflect what THIS topic looks like right now, not an
-    average of an old shaky attempt and a since-improved one.
+    focus_band: this attempt's Topic-Mastery-%-derived content level (see
+    services/focus_band.py's determine_content_level). weak_area: this
+    attempt's weakest difficulty tier (see identify_weak_area). Both
+    OVERWRITE any prior value outright (unlike AverageScorePercent,
+    which blends with history), since they should reflect what THIS
+    topic looks like right now, not an average of an old shaky attempt
+    and a since-improved one.
 
     Returns the updated progress dict.
     """
@@ -198,6 +182,7 @@ def record_attempt(
         "PriorAverageScorePercent": prior_avg,
         "Classification": classification,
         "FocusBand": focus_band,
+        "WeakArea": weak_area,
         "CreatedAt": SERVER_TIMESTAMP,
     })
 
@@ -211,6 +196,7 @@ def record_attempt(
         "AverageScorePercent": new_avg,
         "Classification": classification,
         "FocusBand": focus_band,
+        "WeakArea": weak_area,
         "NextReviewDate": next_review_date,
         "LastAttemptAt": SERVER_TIMESTAMP,
         "UpdatedAt": SERVER_TIMESTAMP,

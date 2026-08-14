@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { motion } from "framer-motion";
 import {
   Loader2, XCircle, RotateCcw, ArrowRight, ArrowLeft as ArrowLeftIcon,
-  X, Trophy, CalendarClock,
+  X, Trophy, CalendarClock, Target, Layers,
 } from "lucide-react";
 import { COLORS, GRADIENTS, GLASS_CARD } from "../../constants/theme";
 import { getTopicQuiz, submitTopicQuiz } from "../../services/topicQuizService";
@@ -10,6 +10,9 @@ import { getTopicQuiz, submitTopicQuiz } from "../../services/topicQuizService";
 const OPTION_KEYS = ["OptionA", "OptionB", "OptionC", "OptionD"];
 const OPTION_LETTERS = { OptionA: "A", OptionB: "B", OptionC: "C", OptionD: "D" };
 
+// Revision PACE only — Fast/Moderate/Slow never decides content (that's
+// CONTENT_LEVEL_COPY below, driven by Topic Mastery % instead). See
+// backend/services/focus_band.py's module docstring for the split.
 const CLASSIFICATION_COPY = {
   Fast: {
     color: "#22C55E",
@@ -26,6 +29,41 @@ const CLASSIFICATION_COPY = {
     headline: "Needs more practice",
     detail: "This topic needs another round with simpler material. Next check-in in 3 days.",
   },
+};
+
+// Content LEVEL — driven purely by this attempt's Topic Mastery %
+// (backend/services/focus_band.py::determine_content_level). Same four
+// values as FOCUS_BAND_LABELS in TopicContentPane.jsx; the `items` list
+// here is just this modal's own display of what that level means, so a
+// learner (or evaluator) can see WHY the content pane below will look
+// the way it does for this specific topic.
+const CONTENT_LEVEL_COPY = {
+  fundamentals: {
+    label: "FOUNDATION",
+    color: "#E0559C",
+    items: ["Basic concepts", "Step-by-step explanation", "Simple examples", "Easy practice"],
+  },
+  application: {
+    label: "APPLICATION",
+    color: "#F59E0B",
+    items: ["Applied concepts", "Worked examples", "Guided practice", "Medium-difficulty questions"],
+  },
+  advanced: {
+    label: "ADVANCED",
+    color: "#7C6FE0",
+    items: ["Deeper explanations", "Edge-case awareness", "Harder practice", "Less hand-holding"],
+  },
+  polish: {
+    label: "POLISH",
+    color: "#22C55E",
+    items: ["Edge cases", "Complex examples", "Real-world problems", "Hard practice"],
+  },
+};
+
+const WEAK_AREA_LABELS = {
+  fundamentals: "Fundamentals",
+  application: "Application",
+  advanced: "Advanced reasoning",
 };
 
 /**
@@ -303,6 +341,9 @@ export default function TopicQuizModal({ skill, topic, uid, onComplete, onClose 
 
 function ResultView({ result, onContinue }) {
   const copy = CLASSIFICATION_COPY[result.classification] || CLASSIFICATION_COPY.Moderate;
+  const contentCopy = CONTENT_LEVEL_COPY[result.focusBand] || CONTENT_LEVEL_COPY.application;
+  const weakAreaLabel = WEAK_AREA_LABELS[result.weakArea];
+
   return (
     <div className="flex flex-col items-center text-center gap-2 py-2">
       <motion.div
@@ -321,6 +362,47 @@ function ResultView({ result, onContinue }) {
         {result.correct} of {result.total} correct
       </p>
 
+      {/* ---- Content decision: driven by Topic Mastery %, NOT the
+          Fast/Moderate/Slow badge below. Same topic, different mastery,
+          different content — this is the block that proves it. ---- */}
+      <div
+        className="flex flex-col gap-2.5 px-4 py-4 mb-3 w-full max-w-sm text-left"
+        style={{ borderRadius: 14, border: `1.5px solid ${contentCopy.color}33`, background: `${contentCopy.color}0F` }}
+      >
+        <div className="flex items-center justify-between">
+          <span className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide" style={{ color: COLORS.textLight }}>
+            <Layers size={13} /> Content Level
+          </span>
+          <span
+            className="px-3 py-1 text-[11px] font-extrabold rounded-full"
+            style={{ background: contentCopy.color, color: "#fff" }}
+          >
+            {contentCopy.label}
+          </span>
+        </div>
+        <p className="text-[11px]" style={{ color: COLORS.textMid }}>
+          Topic Mastery: <strong style={{ color: COLORS.textDark }}>{result.masteryPercent}%</strong>
+          {weakAreaLabel && (
+            <>
+              {" "}· Weak area: <strong style={{ color: COLORS.textDark }}>{weakAreaLabel}</strong>
+            </>
+          )}
+        </p>
+        <div className="flex flex-wrap gap-1.5">
+          {contentCopy.items.map((item) => (
+            <span
+              key={item}
+              className="flex items-center gap-1 px-2.5 py-1 text-[10px] font-semibold rounded-full"
+              style={{ background: "rgba(255,255,255,0.7)", color: COLORS.textDark }}
+            >
+              <Target size={10} style={{ color: contentCopy.color }} /> {item}
+            </span>
+          ))}
+        </div>
+      </div>
+
+      {/* ---- Revision pace: Fast/Moderate/Slow. Separate axis, never
+          decides content — see backend/services/learner_classifier.py. ---- */}
       <span
         className="px-4 py-1.5 text-xs font-bold rounded-full mb-3"
         style={{ background: copy.color, color: "#fff" }}

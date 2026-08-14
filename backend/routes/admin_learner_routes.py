@@ -18,11 +18,21 @@ reads the EXISTING topic_quiz_progress / topic_quiz_attempts collections
 
 from flask import Blueprint, request
 
-from services.learner_intelligence_service import get_student_profile, list_learners
+from services.learner_intelligence_service import get_dashboard_summary, get_student_profile, list_learners
 from utils.admin_auth import require_admin
 from utils.response_helper import error_response, success_response
 
 admin_learner_bp = Blueprint("admin_learners", __name__)
+
+
+@admin_learner_bp.route("/admin/learners/summary", methods=["GET"])
+@require_admin
+def dashboard_summary_route():
+    try:
+        summary = get_dashboard_summary()
+        return success_response(data=summary, message="Dashboard summary fetched successfully.")
+    except Exception as exc:  # noqa: BLE001
+        return error_response(str(exc), status_code=500)
 
 
 @admin_learner_bp.route("/admin/learners", methods=["GET"])

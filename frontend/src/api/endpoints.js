@@ -81,9 +81,10 @@ export const ENDPOINTS = {
     GENERATE: "/mindmap/generate", // POST {text, label?, uid?, sessionId?}
   },
   STUDIO: {
-    // backend/routes/studio_routes.py — Mind Map / Slide Deck artifacts saved per chat session
+    // backend/routes/studio_routes.py — Mind Map / Slide Deck / Flashcards / Audio Overview artifacts saved per chat session
     LIST: (uid, sessionId) => `/studio/${uid}/${sessionId}`, // GET -> [{id, type, title, createdAt}]
     GET: (uid, sessionId, artifactId) => `/studio/${uid}/${sessionId}/${artifactId}`, // GET -> {type, title, content, createdAt}
+    SAVE: (uid, sessionId) => `/studio/${uid}/${sessionId}`, // POST {type, title, content} -> {id}
   },
   SYLLABUS: {
     // Skill Syllabus Tree (backend/services/skill_topic_service.py) —

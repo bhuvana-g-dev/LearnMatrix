@@ -162,6 +162,8 @@ def build_deck_sections(notes: dict) -> list[dict]:
             slide = {"kind": "text", "heading": heading, "body": section["content"]}
             if section.get("image_url"):
                 slide["image_url"] = section["image_url"]
+            if section.get("subpoints"):
+                slide["subpoints"] = section["subpoints"]
             slides.append(slide)
 
     takeaways = notes.get("keyTakeaways", [])
@@ -201,7 +203,7 @@ def build_pptx_from_deck_content(notes: dict, subtitle: str) -> BytesIO:
         elif kind == "comparison":
             _add_comparison_slide(prs, blank_layout, slide_data["heading"], slide_data["left"], slide_data["right"], i + 1)
         else:
-            _add_text_slide(prs, blank_layout, slide_data["heading"], slide_data["body"], i + 1, accent, slide_data.get("image_url"))
+            _add_text_slide(prs, blank_layout, slide_data["heading"], slide_data["body"], i + 1, accent, slide_data.get("image_url"), slide_data.get("subpoints"))
 
     buffer = BytesIO()
     prs.save(buffer)
@@ -326,44 +328,53 @@ def _add_slide_chrome(prs, slide, heading, index, accent):
     rule.shadow.inherit = False
 
 
-def _add_text_slide(prs: Presentation, layout, heading: str, body: str, index: int, accent, image_url: str | None = None) -> None:
+def _add_text_slide(prs: Presentation, layout, heading: str, body: str, index: int, accent, image_url: str | None = None, subpoints: list | None = None) -> None:
     slide = prs.slides.add_slide(layout)
     _add_slide_chrome(prs, slide, heading, index, accent)
 
-    # When a Pexels photo is available for this section (see
-    # services/slide_deck_service.py), the text column narrows to make
-    # room for it on the right instead of running full-width.
+    # When a photo/illustration is available for this section (AI-
+    # generated or Pexels — see services/slide_deck_service.py), the
+    # text column narrows to make room for it on the right instead of
+    # running full-width. Sub-point highlights (see
+    # agents/slide_deck_agent.py) share that same right-hand column,
+    # stacking below the image when both are present.
     image_bytes = None
     if image_url:
         from services.image_service import fetch_image_bytes
         image_bytes = fetch_image_bytes(image_url)
 
-    text_width = Inches(6.6) if image_bytes else Inches(11.1)
-    body_box = slide.shapes.add_textbox(Inches(1.55), Inches(1.75), text_width, Inches(5.2))
+    has_sidebar = bool(image_bytes) or bool(subpoints)
+    text_width = Inches(6.6) if has_sidebar else Inches(11.1)
+    body_box = slide.shapes.add_textbox(Inches(1.55), Inches(1.7), text_width, Inches(5.35))
     text_frame = body_box.text_frame
     text_frame.word_wrap = True
 
     # A single dense paragraph reads poorly on a slide, so split on
     # sentence boundaries into shorter paragraphs rather than dumping
-    # the whole block into one text run.
+    # the whole block into one text run. Full-depth "text" sections run
+    # 5-8 sentences (see agents/slide_deck_agent.py), so the font here
+    # is a touch smaller than a thin-summary deck would need, to keep
+    # the whole paragraph readable on one slide rather than overflowing.
     sentences = [s.strip() for s in body.replace("\n", " ").split(". ") if s.strip()]
     if not sentences:
         sentences = [body[:2000]]
 
+    body_font_size = Pt(16) if len(sentences) > 5 else Pt(18)
     first = True
-    for sentence in sentences[:20]:  # cap paragraphs per slide — very long sources shouldn't produce one giant slide
+    for sentence in sentences[:26]:  # cap paragraphs per slide — very long sources shouldn't produce one giant slide
         text = sentence + ("." if not sentence.endswith(".") else "")
         p = text_frame.paragraphs[0] if first else text_frame.add_paragraph()
         first = False
-        p.space_after = Pt(12)
+        p.space_after = Pt(10)
         run = p.add_run()
         run.text = text
-        run.font.size = Pt(18)
+        run.font.size = body_font_size
         run.font.color.rgb = NAVY_MID
         run.font.name = "Arial"
 
+    sidebar_top = Inches(1.85)
     if image_bytes:
-        img_left, img_top, img_w, img_h = Inches(8.45), Inches(1.85), Inches(4.2), Inches(4.9)
+        img_left, img_top, img_w, img_h = Inches(8.45), sidebar_top, Inches(4.2), Inches(3.15)
         # A plain add_picture() would be a hard-edged rectangle sitting on
         # a page of otherwise all-rounded shapes — a soft accent frame
         # behind it (peeking out on two sides) reads as an intentional
@@ -374,8 +385,54 @@ def _add_text_slide(prs: Presentation, layout, heading: str, body: str, index: i
         frame.shadow.inherit = False
         try:
             slide.shapes.add_picture(BytesIO(image_bytes), img_left, img_top, width=img_w, height=img_h)
+            sidebar_top = img_top + img_h + Inches(0.4)
         except Exception:
             pass  # a corrupt/unsupported download shouldn't break the whole deck — the accent frame alone still looks intentional
+
+    if subpoints:
+        _add_key_points_panel(slide, subpoints, Inches(8.45), sidebar_top, Inches(4.2), accent)
+
+
+def _add_key_points_panel(slide, subpoints: list, x, y, width, accent) -> None:
+    """A compact 'Key Points' card stacked in the text slide's sidebar
+    (below the image when one is present) — short highlight bullets
+    (see agents/slide_deck_agent.py's "subpoints") give a Gamma/
+    NotebookLM-style at-a-glance summary alongside the long-form
+    paragraph, instead of forcing the reader through the whole
+    paragraph to find the key facts."""
+    label_box = slide.shapes.add_textbox(x, y, width, Inches(0.35))
+    lf = label_box.text_frame
+    lf.word_wrap = True
+    lp = lf.paragraphs[0]
+    lrun = lp.add_run()
+    lrun.text = "KEY POINTS"
+    lrun.font.size = Pt(12)
+    lrun.font.bold = True
+    lrun.font.name = "Arial"
+    lrun.font.color.rgb = accent
+
+    row_y = y + Inches(0.38)
+    for sp in subpoints[:5]:
+        text, _icon = _item_text_icon(sp)
+        if not text:
+            continue
+        dot = slide.shapes.add_shape(MSO_SHAPE.OVAL, x, row_y + Inches(0.06), Inches(0.09), Inches(0.09))
+        _set_fill(dot, accent)
+        dot.shadow.inherit = False
+        dot.line.fill.background()
+
+        item_box = slide.shapes.add_textbox(x + Inches(0.22), row_y - Inches(0.05), width - Inches(0.22), Inches(0.6))
+        tf = item_box.text_frame
+        tf.word_wrap = True
+        p = tf.paragraphs[0]
+        run = p.add_run()
+        run.text = text
+        run.font.size = Pt(13)
+        run.font.name = "Arial"
+        run.font.color.rgb = NAVY_MID
+
+        line_count = max(1, -(-len(text) // 42))  # rough wrap estimate, matches ~4.2" width at 13pt
+        row_y += Inches(0.24 * line_count + 0.16)
 
 
 # icon tag (see agents/slide_deck_agent.py's ICON_VOCAB) -> a built-in

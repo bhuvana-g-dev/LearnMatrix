@@ -11,11 +11,13 @@ import { COLORS, GRADIENTS } from "../../constants/theme";
 export default function LearningProgressSection({ progress, onContinueLearning }) {
   if (!progress) return null;
 
-  const eta = new Date(progress.estimatedCompletionDate).toLocaleDateString("en-IN", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
+  const eta = progress.estimatedCompletionDate
+    ? new Date(progress.estimatedCompletionDate).toLocaleDateString("en-IN", {
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+      })
+    : "TBD";
 
   return (
     <SectionCard icon={Target} title="Current Learning Progress" subtitle={progress.careerPath} delay={0.05}>

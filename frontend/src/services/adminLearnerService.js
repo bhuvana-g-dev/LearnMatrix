@@ -25,3 +25,8 @@ export async function fetchLearnerProfile(email) {
   });
   return data.data;
 }
+
+export async function fetchDashboardSummary() {
+  const { data } = await apiClient.get(ENDPOINTS.ADMIN.LEARNERS.SUMMARY);
+  return data.data;
+}

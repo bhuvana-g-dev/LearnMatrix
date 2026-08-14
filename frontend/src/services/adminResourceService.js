@@ -3,7 +3,7 @@ import { ENDPOINTS } from "../api/endpoints";
 
 /**
  * Admin Resource Bank service (backend: routes/learning_routes.py).
- * Same convention as adminQuestionService.js — screens/hooks never call
+ * Same convention as the other admin services — screens/hooks never call
  * apiClient or ENDPOINTS directly, everything about "how" a resource is
  * fetched/saved lives here.
  */

@@ -136,7 +136,7 @@ def build_pdf_from_deck_content(notes: dict, subtitle: str) -> BytesIO:
         elif kind == "comparison":
             _draw_comparison_page(c, slide_data["heading"], slide_data["left"], slide_data["right"], i + 1)
         else:
-            _draw_text_page(c, slide_data["heading"], slide_data["body"], i + 1, accent, slide_data.get("image_url"))
+            _draw_text_page(c, slide_data["heading"], slide_data["body"], i + 1, accent, slide_data.get("image_url"), slide_data.get("subpoints"))
 
     c.showPage()
     c.save()
@@ -305,7 +305,7 @@ def _draw_chrome(c: canvas.Canvas, heading: str, index: int, accent) -> None:
     c.rect(1.55 * inch, PAGE_H - 1.35 * inch, 1.4 * inch, 3, fill=1, stroke=0)
 
 
-def _draw_text_page(c: canvas.Canvas, heading: str, body: str, index: int, accent, image_url: str | None = None) -> None:
+def _draw_text_page(c: canvas.Canvas, heading: str, body: str, index: int, accent, image_url: str | None = None, subpoints: list | None = None) -> None:
     _draw_chrome(c, heading, index, accent)
 
     image_bytes = None
@@ -313,33 +313,71 @@ def _draw_text_page(c: canvas.Canvas, heading: str, body: str, index: int, accen
         from services.image_service import fetch_image_bytes
         image_bytes = fetch_image_bytes(image_url)
 
+    has_sidebar = bool(image_bytes) or bool(subpoints)
+    sidebar_x = 8.45 * inch
+    sidebar_top = PAGE_H - 1.85 * inch
+
     if image_bytes:
-        img_left, img_top, img_w, img_h = 8.45 * inch, PAGE_H - 6.65 * inch, 4.2 * inch, 4.9 * inch
+        img_left, img_top, img_w, img_h = sidebar_x, PAGE_H - 5.0 * inch, 4.2 * inch, 3.15 * inch
         try:
             from reportlab.lib.utils import ImageReader
             c.setFillColor(accent)
             c.roundRect(img_left - 0.12 * inch, img_top - 0.12 * inch, img_w + 0.24 * inch, img_h + 0.24 * inch, 10, fill=1, stroke=0)
             c.drawImage(ImageReader(BytesIO(image_bytes)), img_left, img_top, width=img_w, height=img_h, preserveAspectRatio=True, mask="auto")
+            sidebar_top = img_top - 0.4 * inch
         except Exception:
             image_bytes = None  # corrupt/unsupported download — fall through to full-width text below
 
     c.setFillColor(NAVY_MID)
-    c.setFont("Helvetica", 14)
+    body_font_size = 14
 
     sentences = [s.strip() for s in body.replace("\n", " ").split(". ") if s.strip()]
     if not sentences:
         sentences = [body[:2000]]
+    if len(sentences) > 5:
+        body_font_size = 12.5
+    c.setFont("Helvetica", body_font_size)
 
     y = PAGE_H - 1.9 * inch
-    max_width = 6.6 * inch if image_bytes else 11.1 * inch
-    for sentence in sentences[:20]:
+    max_width = 6.6 * inch if has_sidebar else 11.1 * inch
+    for sentence in sentences[:26]:
         text = sentence + ("." if not sentence.endswith(".") else "")
-        for line in _wrap_text(text, "Helvetica", 14, max_width):
+        for line in _wrap_text(text, "Helvetica", body_font_size, max_width):
             if y < 0.6 * inch:
-                return  # page is full — matches the pptx cap of ~20 sentences/slide
+                break  # page is full — matches the pptx cap of ~26 sentences/slide
             c.drawString(1.55 * inch, y, line)
-            y -= 0.28 * inch
+            y -= (body_font_size / 14) * 0.28 * inch
         y -= 0.16 * inch  # extra gap between sentences/paragraphs
+
+    if subpoints:
+        _draw_key_points_panel(c, subpoints, sidebar_x, sidebar_top, 4.2 * inch, accent)
+
+
+def _draw_key_points_panel(c: canvas.Canvas, subpoints: list, x: float, top: float, width: float, accent) -> None:
+    """PDF counterpart to ppt_service.py's _add_key_points_panel — a
+    compact 'Key Points' list of short highlight bullets (see
+    agents/slide_deck_agent.py's "subpoints") stacked below the image
+    in the text page's sidebar."""
+    c.setFillColor(accent)
+    c.setFont("Helvetica-Bold", 12)
+    c.drawString(x, top, "KEY POINTS")
+
+    y = top - 0.3 * inch
+    for sp in subpoints[:5]:
+        text, _icon = _item_text_icon(sp)
+        if not text:
+            continue
+        c.setFillColor(accent)
+        c.circle(x + 0.05 * inch, y + 0.04 * inch, 0.045 * inch, fill=1, stroke=0)
+
+        c.setFillColor(NAVY_MID)
+        c.setFont("Helvetica", 13)
+        lines = _wrap_text(text, "Helvetica", 13, width - 0.25 * inch)
+        ty = y
+        for line in lines:
+            c.drawString(x + 0.22 * inch, ty, line)
+            ty -= 0.22 * inch
+        y = ty - 0.14 * inch
 
 
 def _draw_bullet_page(c: canvas.Canvas, heading: str, bullets: list, index: int, accent) -> None:

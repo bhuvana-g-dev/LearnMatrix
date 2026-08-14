@@ -17,7 +17,6 @@ export const ADMIN_NAV_SECTIONS = [
     title: "Content",
     icon: ListChecks,
     children: [
-      { key: "question-bank", label: "Question Bank" },
       { key: "resource-bank", label: "Resource Bank" },
     ],
   },

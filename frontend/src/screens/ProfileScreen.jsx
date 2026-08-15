@@ -1,43 +1,47 @@
 import { useState } from "react";
-import { useProfile } from "../hooks/useProfile";
-import ProfileHeaderCard from "../components/profile/ProfileHeaderCard";
+import { useProfileDashboard } from "../hooks/useProfileDashboard";
 import EditProfileModal from "../components/profile/EditProfileModel";
-import LearningProgressSection from "../components/profile/LearningProgressSection";
-import UpcomingAssessmentsSection from "../components/profile/UpcomingAssessmentsSection";
-import CompletedCoursesSection from "../components/profile/CompletedCoursesSection";
-import CertificatesSection from "../components/profile/certificates/CertificatesSection";
-import LearningStatisticsSection from "../components/profile/LearningStatisticsSection";
-import { COLORS } from "../constants/theme";
+import ProfileIdentityCard from "../components/profile/dashboard/ProfileIdentityCard";
+import StatsRow from "../components/profile/dashboard/StatsRow";
+import { CareerPathCard, SkillProgressCard } from "../components/profile/dashboard/CareerAndSkillsCards";
+import InsightsCard from "../components/profile/dashboard/InsightsCard";
+import WeeklyActivityCard from "../components/profile/dashboard/WeeklyActivityCard";
+import AchievementsCard from "../components/profile/dashboard/AchievementsCard";
+import { UpcomingRevisionsCard, NextRevisionCard } from "../components/profile/dashboard/RevisionCards";
+import CertificatesGridCard from "../components/profile/dashboard/CertificatesGridCard";
+import { DASH } from "../constants/profileDashboardTheme";
+
 /**
- * ProfileScreen — the main "My Profile" overview page. "AI Revision
- * Schedule" and "Learning Insights" now live on their own separate pages
- * (see RevisionScheduleScreen.jsx / LearningInsightsScreen.jsx, wired via
- * the "My Profile" dropdown in the sidebar) — this screen covers the rest:
- * Personal Info, Learning Progress, Assessments, Completed Courses,
- * Certificates, and Statistics.
+ * ProfileScreen — "My Profile" dashboard.
  *
- * All data comes from useProfile(), which is backed by mock service files
- * shaped like future API responses (see src/services/*.js and
- * src/constants/*.js). Swapping in Flask/Firebase later only means
- * editing those services — this screen and its sub-components stay as-is.
+ * Every number on this page traces back to a real source (see
+ * hooks/useProfileDashboard.js's docstring for the full mapping:
+ * Firebase Auth + Firestore profile doc, the diagnostic-assessment-
+ * derived AI insights, the saved roadmap, the real day-level activity
+ * log, and the revision scheduler). Nothing here is filled in from
+ * constants/*.js dummy data — a brand-new user genuinely sees zeros
+ * and honest empty states (e.g. "No achievements yet") instead of
+ * canned demo numbers, exactly like AIInsightsSection.jsx already does
+ * for the Learning Insights page.
  */
 export default function ProfileScreen({ onNavigate }) {
-  const {
-    profile,
-    progress,
-    assessments,
-    completedCourses,
-    statistics,
-    loading,
-    refetchProfile,
-  } = useProfile();
+  const { profile, aiInsights, roadmap, revision, loading, refetchProfile, stats, weekActivity, nextRevision } =
+    useProfileDashboard();
 
   const [editOpen, setEditOpen] = useState(false);
 
+  const goToAssessment = () => onNavigate?.("initial-assessment");
+
+  const handleStartRevision = () => {
+    // No dedicated "start revision" screen wired yet, so this routes to
+    // the Revision page for now rather than doing nothing.
+    onNavigate?.("revision");
+  };
+
   if (loading) {
     return (
-      <div className="px-4 sm:px-8 py-10 text-center">
-        <p className="text-sm" style={{ color: COLORS.textLight }}>
+      <div className="px-4 sm:px-8 py-10 text-center" style={{ background: DASH.page, minHeight: "100%" }}>
+        <p className="text-sm" style={{ color: DASH.textLight }}>
           Loading your profile...
         </p>
       </div>
@@ -45,12 +49,18 @@ export default function ProfileScreen({ onNavigate }) {
   }
 
   return (
-    <div className="px-4 sm:px-8 py-10 pb-20">
-      <div className="max-w-5xl mx-auto">
-        <ProfileHeaderCard
-          profile={profile}
-          onEditProfile={() => setEditOpen(true)}
-        />
+    <div className="px-4 sm:px-8 py-8 pb-20" style={{ background: DASH.page, minHeight: "100%" }}>
+      <div className="max-w-6xl mx-auto">
+        <div className="mb-6">
+          <h1 className="text-xl font-bold" style={{ color: DASH.textPrimary }}>
+            My Profile
+          </h1>
+          <p className="text-xs" style={{ color: DASH.textLight }}>
+            Your learning journey overview
+          </p>
+        </div>
+
+        <ProfileIdentityCard profile={profile} onEditProfile={() => setEditOpen(true)} />
 
         {editOpen && (
           <EditProfileModal
@@ -63,24 +73,30 @@ export default function ProfileScreen({ onNavigate }) {
           />
         )}
 
-        <LearningProgressSection
-          progress={progress}
-          onContinueLearning={() => onNavigate?.("skills")}
-        />
+        <StatsRow stats={stats} />
 
-        <UpcomingAssessmentsSection
-          assessments={assessments}
-          onStartAssessment={(a) => alert(`Starting: ${a.name}`)}
-        />
+        <div className="grid lg:grid-cols-2 gap-6 mb-6">
+          <CareerPathCard profile={profile} roadmap={roadmap} stats={stats} />
+          <SkillProgressCard aiInsights={aiInsights} onStartAssessment={goToAssessment} />
+        </div>
 
-        <CompletedCoursesSection
-          courses={completedCourses}
-          onViewDetails={(c) => alert(`Viewing details for: ${c.moduleName}`)}
-        />
+        <div className="grid lg:grid-cols-2 gap-6 mb-6">
+          <InsightsCard aiInsights={aiInsights} onStartAssessment={goToAssessment} />
+          <WeeklyActivityCard weekActivity={weekActivity} />
+        </div>
 
-        <CertificatesSection />
+        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6 mb-6">
+          <AchievementsCard />
+          <UpcomingRevisionsCard upcoming={revision.upcoming} />
+          <NextRevisionCard
+            nextRevision={nextRevision}
+            dueCount={revision.due?.length || 0}
+            upcomingCount={revision.upcoming?.length || 0}
+            onStartRevision={handleStartRevision}
+          />
+        </div>
 
-        <LearningStatisticsSection statistics={statistics} />
+        <CertificatesGridCard />
       </div>
     </div>
   );

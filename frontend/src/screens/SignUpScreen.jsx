@@ -500,4 +500,42 @@ export default function SignUpScreen({ auth, onLogin, onSuccess, onBack }) {
             {successMessage && (
               <div
                 className="flex items-start gap-2 text-sm p-3"
-                style={{ borderRadius: 14,
+                style={{ borderRadius: 14, background: "rgba(34,192,142,0.12)", color: "#22C08E" }}
+              >
+                <CheckCircle2 size={16} className="flex-shrink-0 mt-0.5" />
+                <span>{successMessage}</span>
+              </div>
+            )}
+
+            <motion.button
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              onClick={handleSignup}
+              disabled={loading || !!successMessage}
+              className="w-full"
+              style={{
+                padding: "14px",
+                borderRadius: 9999,
+                border: "none",
+                background: GRADIENTS.purplePink,
+                color: "#fff",
+                fontWeight: 700,
+                cursor: loading || successMessage ? "default" : "pointer",
+                opacity: loading || successMessage ? 0.8 : 1,
+              }}
+            >
+              {successMessage ? "Redirecting..." : loading ? "Creating Account..." : "Continue"}
+            </motion.button>
+
+            <p className="text-center text-sm mt-4">
+              Already have an account?{" "}
+              <span onClick={onLogin} style={{ color: "#8B5CF6", cursor: "pointer", fontWeight: 700 }}>
+                Login
+              </span>
+            </p>
+          </div>
+        </div>
+      </div>
+    </PageShell>
+  );
+}

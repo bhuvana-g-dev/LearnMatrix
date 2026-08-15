@@ -117,7 +117,7 @@ function CollegeDropdown({ value, onChange, disabled }) {
           cursor: disabled ? "default" : "pointer",
         }}
       >
-        {value || "Select your college"}
+        {value || "Select your college *"}
       </button>
       <ChevronDown
         size={16}
@@ -232,6 +232,7 @@ export default function SignUpScreen({ auth, onLogin, onSuccess, onBack }) {
     setSuccessMessage("");
 
     if (!firstName.trim()) return setError("Please enter your first name.");
+    if (!lastName.trim()) return setError("Please enter your last name.");
     if (!email.trim()) return setError("Please enter your email.");
     if (!EMAIL_REGEX.test(email.trim())) {
       return setError("Please enter a valid email address (e.g. name@example.com).");
@@ -343,7 +344,7 @@ export default function SignUpScreen({ auth, onLogin, onSuccess, onBack }) {
               </div>
               <input
                 style={{ ...inputStyle, paddingLeft: 16 }}
-                placeholder="Last Name"
+                placeholder="Last Name *"
                 value={lastName}
                 onChange={(e) => setLastName(e.target.value)}
                 disabled={loading || !!successMessage}
@@ -356,7 +357,7 @@ export default function SignUpScreen({ auth, onLogin, onSuccess, onBack }) {
               <input
                 type="email"
                 style={inputStyle}
-                placeholder="Email"
+                placeholder="Email *"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 disabled={loading || !!successMessage}
@@ -370,7 +371,7 @@ export default function SignUpScreen({ auth, onLogin, onSuccess, onBack }) {
                 <input
                   type={showPw ? "text" : "password"}
                   style={{ ...inputStyle, paddingRight: 36 }}
-                  placeholder="Password"
+                  placeholder="Password *"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   disabled={loading || !!successMessage}
@@ -386,7 +387,7 @@ export default function SignUpScreen({ auth, onLogin, onSuccess, onBack }) {
               <input
                 type="password"
                 style={{ ...inputStyle, paddingLeft: 16 }}
-                placeholder="Confirm Password"
+                placeholder="Confirm Password *"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 disabled={loading || !!successMessage}
@@ -405,7 +406,7 @@ export default function SignUpScreen({ auth, onLogin, onSuccess, onBack }) {
               <input
                 type="tel"
                 style={{ ...inputStyle, paddingLeft: 92 }}
-                placeholder="Mobile Number"
+                placeholder="Mobile Number *"
                 value={mobile}
                 onChange={(e) => setMobile(e.target.value.replace(/\D/g, "").slice(0, 10))}
                 disabled={loading || !!successMessage}
@@ -454,7 +455,7 @@ export default function SignUpScreen({ auth, onLogin, onSuccess, onBack }) {
                   <GraduationCap size={17} style={{ position: "absolute", left: 15, top: "50%", transform: "translateY(-50%)" }} />
                   <input
                     style={inputStyle}
-                    placeholder="Department (e.g. B.Sc. Computer Science)"
+                    placeholder="Department (e.g. B.Sc. Computer Science) *"
                     value={department}
                     onChange={(e) => setDepartment(e.target.value)}
                     disabled={loading || !!successMessage}
@@ -465,7 +466,7 @@ export default function SignUpScreen({ auth, onLogin, onSuccess, onBack }) {
                   <CalendarDays size={17} style={{ position: "absolute", left: 15, top: "50%", transform: "translateY(-50%)" }} />
                   <input
                     style={inputStyle}
-                    placeholder="Academic Year (e.g. Final Year (2027))"
+                    placeholder="Academic Year (e.g. Final Year (2027)) *"
                     value={academicYear}
                     onChange={(e) => setAcademicYear(e.target.value)}
                     disabled={loading || !!successMessage}
@@ -499,42 +500,4 @@ export default function SignUpScreen({ auth, onLogin, onSuccess, onBack }) {
             {successMessage && (
               <div
                 className="flex items-start gap-2 text-sm p-3"
-                style={{ borderRadius: 14, background: "rgba(34,192,142,0.12)", color: "#22C08E" }}
-              >
-                <CheckCircle2 size={16} className="flex-shrink-0 mt-0.5" />
-                <span>{successMessage}</span>
-              </div>
-            )}
-
-            <motion.button
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-              onClick={handleSignup}
-              disabled={loading || !!successMessage}
-              className="w-full"
-              style={{
-                padding: "14px",
-                borderRadius: 9999,
-                border: "none",
-                background: GRADIENTS.purplePink,
-                color: "#fff",
-                fontWeight: 700,
-                cursor: loading || successMessage ? "default" : "pointer",
-                opacity: loading || successMessage ? 0.8 : 1,
-              }}
-            >
-              {successMessage ? "Redirecting..." : loading ? "Creating Account..." : "Continue"}
-            </motion.button>
-
-            <p className="text-center text-sm mt-4">
-              Already have an account?{" "}
-              <span onClick={onLogin} style={{ color: "#8B5CF6", cursor: "pointer", fontWeight: 700 }}>
-                Login
-              </span>
-            </p>
-          </div>
-        </div>
-      </div>
-    </PageShell>
-  );
-}
+                style={{ borderRadius: 14,

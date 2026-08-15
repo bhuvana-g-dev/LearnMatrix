@@ -23,8 +23,27 @@ import Logo from "../components/common/Logo";
 import { COLORS, GRADIENTS, GLASS_CARD } from "../constants/theme";
 import { TN_COLLEGES } from "../constants/tnColleges";
 import { saveUserProfileDoc } from "../services/userProfileService";
+
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 const MOBILE_REGEX = /^[0-9]{10}$/;
+
+// Firebase throws a technical error like "Firebase: The email address is
+// already in use by another account. (auth/email-already-in-use)." — this
+// maps the codes we actually see on signup to a friendly message instead.
+function getSignupErrorMessage(err) {
+  switch (err?.code) {
+    case "auth/email-already-in-use":
+      return "This email is already registered. Try another email, or log in instead.";
+    case "auth/invalid-email":
+      return "Please enter a valid email address.";
+    case "auth/weak-password":
+      return "That password is too weak. Please choose a stronger one.";
+    case "auth/network-request-failed":
+      return "Network error — please check your connection and try again.";
+    default:
+      return err?.message || "Something went wrong. Please try again.";
+  }
+}
 
 // At least 8 characters, one uppercase, one lowercase, one number, and
 // one special character.
@@ -260,7 +279,7 @@ export default function SignUpScreen({ auth, onLogin, onSuccess, onBack }) {
         (onSuccess || onLogin)?.();
       }, 1600);
     } catch (err) {
-      setError(err.message);
+      setError(getSignupErrorMessage(err));
     } finally {
       setLoading(false);
     }
@@ -518,5 +537,4 @@ export default function SignUpScreen({ auth, onLogin, onSuccess, onBack }) {
       </div>
     </PageShell>
   );
-  
 }

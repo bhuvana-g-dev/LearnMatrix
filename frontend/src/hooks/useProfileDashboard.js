@@ -5,6 +5,7 @@ import { getAIInsights } from "../services/aiInsightsService";
 import { loadSavedRoadmap } from "../services/aiAssessmentService";
 import { getActivity } from "../services/activityService";
 import { getRevisionSchedule } from "../services/revisionService";
+import { getCertificate } from "../services/certificateService";
 
 /**
  * useProfileDashboard — owns all state for the "My Profile" dashboard
@@ -17,11 +18,15 @@ import { getRevisionSchedule } from "../services/revisionService";
  *   roadmap         -> GET /api/roadmap/<uid> (services/roadmap_service.py)
  *   activityDates   -> GET /api/activity/<uid> (services/activity_repository.py) — real day-level app-open log
  *   revision        -> GET /api/revisions/<uid> (services/revision_scheduler.py)
+ *   certificate     -> GET /api/certificates/<uid> (services/certificate_service.py) —
+ *                        issued the moment a career path/roadmap is started,
+ *                        auto-flipped to "completed" once the roadmap's
+ *                        mastered skills reach its total
  *
  * Nothing here is faked for a brand-new user — a field with no real
- * source yet (learning hours in minutes, achievements/badges,
- * certificates) is simply left out; the screen shows an honest empty
- * state for those instead of a placeholder number.
+ * source yet (learning hours in minutes, achievements/badges) is simply
+ * left out; the screen shows an honest empty state for those instead of
+ * a placeholder number.
  */
 export function useProfileDashboard() {
   const [profile, setProfile] = useState(null);
@@ -29,17 +34,19 @@ export function useProfileDashboard() {
   const [roadmap, setRoadmap] = useState(null);
   const [activityDates, setActivityDates] = useState([]);
   const [revision, setRevision] = useState({ due: [], upcoming: [] });
+  const [certificate, setCertificate] = useState(null);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
     const uid = auth.currentUser?.uid;
 
-    const [p, ai, rm, dates, rev] = await Promise.all([
+    const [p, ai, rm, dates, rev, cert] = await Promise.all([
       getUserProfile(),
       getAIInsights(),
       uid ? loadSavedRoadmap(uid).catch(() => null) : Promise.resolve(null),
       uid ? getActivity(uid).catch(() => []) : Promise.resolve([]),
       uid ? getRevisionSchedule(uid).catch(() => ({ due: [], upcoming: [] })) : Promise.resolve({ due: [], upcoming: [] }),
+      uid ? getCertificate(uid).catch(() => null) : Promise.resolve(null),
     ]);
 
     setProfile(p);
@@ -47,6 +54,7 @@ export function useProfileDashboard() {
     setRoadmap(rm);
     setActivityDates(dates);
     setRevision(rev);
+    setCertificate(cert);
     setLoading(false);
   }, []);
 
@@ -86,6 +94,7 @@ export function useProfileDashboard() {
     aiInsights,
     roadmap,
     revision,
+    certificate,
     loading,
     refetchProfile,
     stats: {

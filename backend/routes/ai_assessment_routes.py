@@ -28,6 +28,7 @@ from services.ai_assessment_service import (
     AIAssessmentError,
 )
 from services.roadmap_service import generate_and_save_roadmap, generate_roadmap_preview
+from services.certificate_service import issue_or_update_certificate
 from utils.response_helper import success_response, error_response
 
 ai_assessment_bp = Blueprint("ai_assessment", __name__)
@@ -257,6 +258,12 @@ def generate_roadmap_route():
             roadmap_dict = generate_and_save_roadmap(
                 uid=uid, role=role, evaluation=evaluation, role_id=role_id,
             )
+            # Starting (or switching to) a career path starts its
+            # certificate too — see services/certificate_service.py for
+            # why a retake of the SAME role leaves an existing
+            # certificate untouched.
+            if role:
+                issue_or_update_certificate(uid=uid, course_name=role, role_id=role_id)
         else:
             roadmap_dict = generate_roadmap_preview(evaluation, role_id=role_id)
 

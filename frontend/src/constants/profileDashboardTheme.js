@@ -1,27 +1,37 @@
+import { COLORS } from "./theme";
+
 /**
- * profileDashboardTheme — self-contained dark theme tokens for the
- * "My Profile" dashboard (screens/ProfileScreen.jsx), same pattern as
- * constants/insightsTheme.js: the app doesn't have a global dark-mode
- * system yet, so this page ships its own palette rather than touching
- * the shared light constants/theme.js used elsewhere.
+ * profileDashboardTheme — dark theme tokens for the "My Profile"
+ * dashboard (screens/ProfileScreen.jsx), built strictly from the real
+ * LearnMatrix brand palette in constants/theme.js (navy #0D1B3D + gold
+ * #D4A017 / #E8B93D) — no unrelated hues.
+ *
+ * Like constants/theme.js itself, the key names (accentPurple,
+ * accentTeal, etc.) are kept as-is even though every one of them now
+ * resolves to a navy/gold tone — components just read DASH.accentX and
+ * never hardcode a color, so the whole dashboard re-themes from this
+ * one file.
  */
 export const DASH = {
-  page: "#0B1220",
-  card: "#141B2E",
-  cardAlt: "#111827",
-  border: "rgba(255,255,255,0.08)",
-  textPrimary: "#F3F5F9",
-  textMid: "#A6ADBB",
-  textLight: "#6B7280",
-  accentPurple: "#7C5CFC",
-  accentPurpleSoft: "rgba(124,92,252,0.15)",
-  accentTeal: "#14B8A6",
-  accentTealSoft: "rgba(20,184,166,0.15)",
-  accentOrange: "#F59E0B",
-  accentOrangeSoft: "rgba(245,158,11,0.15)",
-  accentPink: "#EF4C7A",
-  accentPinkSoft: "rgba(239,76,122,0.15)",
-  accentGreen: "#22C08E",
-  accentGreenSoft: "rgba(34,192,142,0.15)",
+  page: COLORS.sky,                        // #0D1B3D navy page background
+  card: "#16264F",                         // lighter navy panel
+  cardAlt: "#101D3F",
+  border: "rgba(232,185,61,0.16)",         // faint gold-tinted border
+  textPrimary: COLORS.white,
+  textMid: "#C7CEDE",                      // light navy-gray on dark bg
+  textLight: "#8A93A8",                    // COLORS.textLight
+
+  // Every accent below is a navy/gold tone — no other hues.
+  accentPurple: COLORS.purple,             // #D4A017 gold — primary
+  accentPurpleSoft: "rgba(212,160,23,0.16)",
+  accentTeal: COLORS.pink,                 // #E8B93D lighter gold — secondary
+  accentTealSoft: "rgba(232,185,61,0.16)",
+  accentOrange: COLORS.purple,             // gold
+  accentOrangeSoft: "rgba(212,160,23,0.16)",
+  accentPink: COLORS.pink,                 // lighter gold
+  accentPinkSoft: "rgba(232,185,61,0.16)",
+  accentGreen: COLORS.pink,                // lighter gold
+  accentGreenSoft: "rgba(232,185,61,0.16)",
+
   trackBg: "rgba(255,255,255,0.08)",
 };

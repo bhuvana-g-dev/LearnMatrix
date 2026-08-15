@@ -25,8 +25,18 @@ import { DASH } from "../constants/profileDashboardTheme";
  * for the Learning Insights page.
  */
 export default function ProfileScreen({ onNavigate }) {
-  const { profile, aiInsights, roadmap, revision, loading, refetchProfile, stats, weekActivity, nextRevision } =
-    useProfileDashboard();
+  const {
+    profile,
+    aiInsights,
+    roadmap,
+    revision,
+    certificate,
+    loading,
+    refetchProfile,
+    stats,
+    weekActivity,
+    nextRevision,
+  } = useProfileDashboard();
 
   const [editOpen, setEditOpen] = useState(false);
 
@@ -96,7 +106,7 @@ export default function ProfileScreen({ onNavigate }) {
           />
         </div>
 
-        <CertificatesGridCard />
+        <CertificatesGridCard certificate={certificate} studentName={profile?.fullName} />
       </div>
     </div>
   );

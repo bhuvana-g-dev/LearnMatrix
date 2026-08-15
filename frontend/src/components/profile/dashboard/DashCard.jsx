@@ -1,6 +1,6 @@
 import { DASH } from "../../../constants/profileDashboardTheme";
 
-// Shared dark card shell every dashboard section sits inside.
+// Shared card shell every dashboard section sits inside.
 export default function DashCard({ children, className = "", style = {} }) {
   return (
     <div
@@ -9,6 +9,7 @@ export default function DashCard({ children, className = "", style = {} }) {
         background: DASH.card,
         border: `1px solid ${DASH.border}`,
         borderRadius: 18,
+        boxShadow: "0 4px 24px rgba(13,27,61,0.08)",
         ...style,
       }}
     >

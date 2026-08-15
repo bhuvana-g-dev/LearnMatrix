@@ -17,7 +17,12 @@ export default function ProfileIdentityCard({ profile, onEditProfile }) {
   return (
     <div
       className="p-5 sm:p-7 mb-6 flex flex-col sm:flex-row sm:items-center gap-6 sm:gap-8"
-      style={{ background: DASH.card, border: `1px solid ${DASH.border}`, borderRadius: 20 }}
+      style={{
+        background: DASH.card,
+        border: `1px solid ${DASH.border}`,
+        borderRadius: 20,
+        boxShadow: "0 4px 24px rgba(13,27,61,0.08)",
+      }}
     >
       <div
         className="w-20 h-20 rounded-full flex-shrink-0 flex items-center justify-center text-xl font-bold overflow-hidden"

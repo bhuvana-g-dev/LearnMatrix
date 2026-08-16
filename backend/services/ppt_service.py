@@ -75,7 +75,8 @@ def generate_study_summary_pptx(skill: str, topic: str, focus_band: str) -> tupl
             "Open that topic in the Learning Hub first so notes are generated."
         )
     safe_topic = _safe_filename(topic)
-    return _build_pptx_from_notes(notes, subtitle=f"{focus_band.title()} level"), f"{safe_topic}_study_summary.pptx"
+    enriched = _enrich_notes_for_deck(notes, label=f"{skill} - {topic}") or notes
+    return _build_pptx_from_notes(enriched, subtitle=f"{focus_band.title()} level"), f"{safe_topic}_study_summary.pptx"
 
 
 def generate_sources_summary_pptx(uid: str) -> tuple[BytesIO, str]:
@@ -90,7 +91,8 @@ def generate_sources_summary_pptx(uid: str) -> tuple[BytesIO, str]:
         "sections": [{"heading": s["title"], "content": s["text"]} for s in sources_content],
         "keyTakeaways": [],
     }
-    return _build_pptx_from_notes(notes, subtitle="Study Summary from Sources"), "sources_study_summary.pptx"
+    enriched = _enrich_notes_for_deck(notes, label="these sources") or notes
+    return _build_pptx_from_notes(enriched, subtitle="Study Summary from Sources"), "sources_study_summary.pptx"
 
 
 def generate_chat_summary_pptx(uid: str, session_id: str) -> tuple[BytesIO, str]:
@@ -108,7 +110,8 @@ def generate_chat_summary_pptx(uid: str, session_id: str) -> tuple[BytesIO, str]
             sections.append({"heading": turn.get("content", "")[:60], "content": answer})
 
     notes = {"title": "Your Chat", "summary": "", "sections": sections, "keyTakeaways": []}
-    return _build_pptx_from_notes(notes, subtitle="Study Summary from AI Chat"), "chat_study_summary.pptx"
+    enriched = _enrich_notes_for_deck(notes, label="this conversation") or notes
+    return _build_pptx_from_notes(enriched, subtitle="Study Summary from AI Chat"), "chat_study_summary.pptx"
 
 
 def generate_custom_text_pptx(text: str) -> tuple[BytesIO, str]:
@@ -125,6 +128,37 @@ def generate_custom_text_pptx(text: str) -> tuple[BytesIO, str]:
     except SlideDeckServiceError as exc:
         raise PptServiceError(str(exc)) from exc
     return build_pptx_from_deck_content(notes, subtitle="Study Summary"), f"{_safe_filename(notes.get('title') or 'custom')}_study_summary.pptx"
+
+
+def _enrich_notes_for_deck(notes: dict, label: str) -> dict | None:
+    """Runs the SAME Gamma/NotebookLM-style AI enrichment the "type a
+    topic" custom deck already gets (agents/slide_deck_agent.py, via
+    services/slide_deck_service.py) on top of already-existing plain
+    notes/chat/sources content — so every export mode gets varied
+    layouts (list/process/comparison), per-item icons, and real
+    AI-generated images, not just the custom-prompt one.
+
+    Returns None (caller falls back to the original plain notes) if the
+    AI call fails for any reason — a slow/unavailable LLM should
+    degrade an export to "plain but still downloadable", never break it
+    outright. This does mean every pptx download now makes an LLM call
+    plus per-section image calls — see services/slide_deck_service.py's
+    _attach_section_images, which is sequential per section, so a
+    gunicorn worker timeout that's too short (see routes/ai_assessment_routes.py
+    and routes/slidedeck_routes.py's own timeout notes) will surface here too."""
+    from services.slide_deck_service import generate_deck_content, SlideDeckServiceError
+
+    combined = (notes.get("title") or "").strip() + "\n\n"
+    for s in notes.get("sections", []):
+        combined += f"## {s.get('heading', '')}\n{s.get('content', '')}\n\n"
+    combined = combined.strip()
+    if not combined:
+        return None
+
+    try:
+        return generate_deck_content(combined[:6000], label=label)
+    except SlideDeckServiceError:
+        return None
 
 
 # ---------------------------------------------------------------------------

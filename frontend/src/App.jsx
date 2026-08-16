@@ -18,7 +18,6 @@ import CourseWorkspaceScreen from "./screens/CourseWorkspaceScreen";
 import LearningSessionScreen from "./screens/LearningSessionScreen";
 import ProfileScreen from "./screens/ProfileScreen";
 import RevisionScheduleScreen from "./screens/RevisionScheduleScreen";
-import LearningInsightsScreen from "./screens/LearningInsightsScreen";
 import AIStudyAssistantScreen from "./screens/AIStudyAssistantScreen";
 import ComingSoonScreen from "./screens/ComingSoonScreen";
 import { useAuth } from "./hooks/useAuth";
@@ -328,8 +327,6 @@ setLearningSession({ skill: entry.skill, topic, focusBand: entry.focusBand || "a
     content = <ProfileScreen onNavigate={setActiveKey} />;
   } else if (activeKey === "revision") {
     content = <RevisionScheduleScreen uid={auth.user?.uid} />;
-  } else if (activeKey === "learning-insights") {
-    content = <LearningInsightsScreen />;
   } else if (activeKey === "ai") {
     content = <AIStudyAssistantScreen uid={auth.user?.uid} />;
   } else {

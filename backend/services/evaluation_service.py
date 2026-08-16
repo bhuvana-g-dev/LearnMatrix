@@ -68,6 +68,14 @@ class EvaluationResult:
     overall_correct: int = 0
     overall_total: int = 0
     overall_percent: float = 0.0
+    # Per-question correctness, keyed by TempID — {"AI-1": True, ...}.
+    # Exists specifically so the frontend's results/review screen can
+    # show accurate correct/wrong per question WITHOUT re-deriving it
+    # itself (see screens/AssessmentScreen.jsx) — for FillBlank/
+    # CodeCompletion questions, correctness comes from is_equivalent()'s
+    # loose/AI-assisted match, not a plain string comparison, so the
+    # frontend has no way to recompute this correctly on its own.
+    question_results: dict[str, bool] = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         return {
@@ -77,6 +85,7 @@ class EvaluationResult:
                 "total": self.overall_total,
                 "scorePercent": self.overall_percent,
             },
+            "questionResults": self.question_results,
         }
 
 
@@ -106,6 +115,7 @@ def evaluate_diagnostic_assessment(
     skill_order: list[str] = []
     # skill -> difficulty -> {"correct": int, "total": int}
     per_skill: dict[str, dict[str, dict[str, int]]] = {}
+    question_results: dict[str, bool] = {}
 
     for q in questions:
         skill = q["Skill"]
@@ -130,6 +140,7 @@ def evaluate_diagnostic_assessment(
                 correct_answer=q["CorrectAnswer"],
                 student_answer=chosen,
             )
+        question_results[q["TempID"]] = is_correct
         if is_correct:
             per_skill[skill][difficulty]["correct"] += 1
 
@@ -164,4 +175,5 @@ def evaluate_diagnostic_assessment(
     result.overall_percent = round(
         (result.overall_correct / result.overall_total * 100) if result.overall_total else 0.0, 1
     )
+    result.question_results = question_results
     return result

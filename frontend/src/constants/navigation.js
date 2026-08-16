@@ -69,8 +69,5 @@ export const NAV_SECTIONS = [
     title: "My Profile",
     icon: User,
     selfNavigable: true,
-    children: [
-      { key: "learning-insights", label: "Learning Insights" },
-    ],
   },
 ];

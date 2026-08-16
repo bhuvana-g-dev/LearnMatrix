@@ -55,7 +55,7 @@ export async function generateAssessmentQuestions({
 
 /**
  * generateDiagnosticAssessment — the real diagnostic flow. One call
- * generates a fixed 2 Easy + 2 Medium + 2 Hard set PER selected skill
+ * generates a fixed 5 Easy + 5 Medium + 5 Hard set PER selected skill
  * (backend/services/assessment_planner.py), all aggregated into one
  * question set with globally-unique TempIDs (each prefixed by skill).
  *
@@ -89,11 +89,11 @@ export async function generateDiagnosticAssessment({ skills, role = "", learning
  * brand-new assessment. Omit them to evaluate without persisting.
  *
  * @param {object[]} questions
- * @param {Record<string, string>} answers - {TempID: "OptionA", ...}
+ * @param {Record<string, string>} answers - {TempID: "OptionA" | <typed answer text>, ...}
  * @param {string} [uid]
  * @param {string} [role]
  * @param {string[]} [skills]
- * @returns {Promise<{skills: object[], overall: {correct, total, scorePercent}}>}
+ * @returns {Promise<{skills: object[], overall: {correct, total, scorePercent}, questionResults: Record<string, boolean>}>}
  */
 export async function evaluateDiagnosticAssessment(questions, answers, uid = null, role = "", skills = []) {
   // Fast, local, no cold-start/Gemini call involved — default timeout is fine.

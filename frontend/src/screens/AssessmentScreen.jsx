@@ -29,10 +29,58 @@ const LEVEL_COLORS = {
 };
 
 /**
+ * TypedAnswerInput — the text-entry counterpart to the 4 MCQ option
+ * buttons, for FillBlank and CodeCompletion questions (backend:
+ * services/assessment_planner.py's open-ended slots). Whatever gets
+ * typed here is sent back exactly as-is in the `answers` payload — the
+ * backend does the loose/AI-assisted equivalence check (see
+ * services/answer_equivalence_service.py), this component doesn't try
+ * to validate or format it.
+ */
+function TypedAnswerInput({ questionType, value, onChange, disabled }) {
+  const isCode = questionType === "CodeCompletion";
+  return (
+    <div>
+      <label
+        className="block text-xs font-semibold mb-2 px-1"
+        style={{ color: COLORS.textMid }}
+      >
+        {isCode ? "Type the missing code:" : "Type your answer:"}
+      </label>
+      <input
+        type="text"
+        value={value}
+        disabled={disabled}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={isCode ? "e.g. range(5)" : "Your answer"}
+        autoComplete="off"
+        autoCapitalize="off"
+        autoCorrect="off"
+        spellCheck={!isCode}
+        className="w-full px-5 py-3.5 font-medium"
+        style={{
+          borderRadius: 16,
+          border: `2px solid ${value ? COLORS.purple : COLORS.border}`,
+          background: "rgba(255,255,255,0.5)",
+          color: COLORS.textDark,
+          outline: "none",
+          fontFamily: isCode
+            ? "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace"
+            : "inherit",
+        }}
+      />
+    </div>
+  );
+}
+
+/**
  * AssessmentScreen — the real diagnostic assessment flow (see
- * ARCHITECTURE.md's "core intelligence" upgrade): generates 2 Easy +
- * 2 Medium + 2 Hard questions PER selected skill (Assessment Planner +
- * QuestionGenerationAgent.run_mixed()), then after submission calls the
+ * ARCHITECTURE.md's "core intelligence" upgrade): generates 5 Easy +
+ * 5 Medium + 5 Hard questions PER selected skill (Assessment Planner +
+ * QuestionGenerationAgent.run_chunked()), 4 of which are typed-answer
+ * (FillBlank or CodeCompletion, auto-detected per skill — see
+ * services/assessment_planner.py) instead of multiple-choice, then
+ * after submission calls the
  * Evaluation Agent for a real skill-wise Strong/Intermediate/Weak table
  * — not just one overall percentage.
  *
@@ -57,7 +105,7 @@ export default function AssessmentScreen({ selectedRole, selectedSkills, uid, on
   const [questions, setQuestions] = useState([]);
 
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [answers, setAnswers] = useState({}); // { [TempID]: "OptionA" }
+  const [answers, setAnswers] = useState({}); // { [TempID]: "OptionA" | <typed answer text> }
   const [evaluating, setEvaluating] = useState(false);
   const [evaluation, setEvaluation] = useState(null); // { skills: [...], overall: {...} }
   const [submitted, setSubmitted] = useState(false);
@@ -412,7 +460,16 @@ export default function AssessmentScreen({ selectedRole, selectedSkills, uid, on
                   .filter((q) => q.Skill === s.skill)
                   .map((q, i) => {
                     const chosen = answers[q.TempID];
-                    const isCorrect = chosen === q.CorrectAnswer;
+                    const isMcq = q.QuestionType === "MCQ" || !q.QuestionType;
+                    // Real backend correctness, not a client-side guess —
+                    // for FillBlank/CodeCompletion this can be TRUE even
+                    // when `chosen` isn't byte-identical to CorrectAnswer
+                    // (see services/answer_equivalence_service.py's loose/
+                    // AI-assisted match). Re-deriving this with `===` here
+                    // would wrongly show a correct typed answer as wrong.
+                    const isCorrect = evaluation.questionResults?.[q.TempID] ?? false;
+                    const chosenDisplay = !chosen ? null : isMcq ? q[chosen] : chosen;
+                    const correctDisplay = isMcq ? q[q.CorrectAnswer] : q.CorrectAnswer;
                     return (
                       <div key={q.TempID} className="p-5" style={{ ...GLASS_CARD, borderRadius: 20 }}>
                         <div className="flex items-start gap-3 mb-3">
@@ -437,13 +494,13 @@ export default function AssessmentScreen({ selectedRole, selectedSkills, uid, on
                           <p>
                             Your answer:{" "}
                             <span style={{ color: isCorrect ? "#22C55E" : "#E0559C", fontWeight: 600 }}>
-                              {chosen ? q[chosen] : "(skipped)"}
+                              {chosenDisplay ?? "(skipped)"}
                             </span>
                           </p>
                           {!isCorrect && (
                             <p>
                               Correct answer:{" "}
-                              <span style={{ color: "#22C55E", fontWeight: 600 }}>{q[q.CorrectAnswer]}</span>
+                              <span style={{ color: "#22C55E", fontWeight: 600 }}>{correctDisplay}</span>
                             </p>
                           )}
                           {q.Explanation && <p className="italic mt-1">{q.Explanation}</p>}
@@ -536,43 +593,69 @@ export default function AssessmentScreen({ selectedRole, selectedSkills, uid, on
           >
             {currentQuestion.Topic}
           </span>
-          <h3 className="text-lg font-bold mb-6" style={{ color: COLORS.textDark }}>
-            {currentQuestion.Question}
-          </h3>
+          {currentQuestion.QuestionType === "CodeCompletion" ? (
+            <pre
+              className="text-sm mb-6 p-4 overflow-x-auto"
+              style={{
+                borderRadius: 14,
+                background: "rgba(13,27,61,0.92)",
+                color: "#E5E7EB",
+                fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
+                whiteSpace: "pre-wrap",
+                wordBreak: "break-word",
+              }}
+            >
+              {currentQuestion.Question}
+            </pre>
+          ) : (
+            <h3 className="text-lg font-bold mb-6" style={{ color: COLORS.textDark }}>
+              {currentQuestion.Question}
+            </h3>
+          )}
 
           <div className="flex flex-col gap-3">
-            {optionKeys.map((key) => {
-              const isSelected = selectedOption === key;
-              return (
-                <motion.button
-                  key={key}
-                  onClick={() => selectAnswer(key)}
-                  whileHover={{ x: 3 }}
-                  whileTap={{ scale: 0.99 }}
-                  className="flex items-center gap-3.5 text-left px-5 py-3.5 font-medium"
-                  style={{
-                    borderRadius: 16,
-                    border: `2px solid ${isSelected ? COLORS.purple : COLORS.border}`,
-                    background: isSelected ? "rgba(212,160,23,0.14)" : "rgba(255,255,255,0.35)",
-                    color: COLORS.textDark,
-                    cursor: "pointer",
-                  }}
-                >
-                  <span
-                    className="flex items-center justify-center flex-shrink-0 text-xs font-bold"
+            {currentQuestion.QuestionType === "FillBlank" || currentQuestion.QuestionType === "CodeCompletion" ? (
+              <TypedAnswerInput
+                key={currentQuestion.TempID}
+                questionType={currentQuestion.QuestionType}
+                value={selectedOption || ""}
+                onChange={selectAnswer}
+                disabled={submitted}
+              />
+            ) : (
+              optionKeys.map((key) => {
+                const isSelected = selectedOption === key;
+                return (
+                  <motion.button
+                    key={key}
+                    onClick={() => selectAnswer(key)}
+                    whileHover={{ x: 3 }}
+                    whileTap={{ scale: 0.99 }}
+                    className="flex items-center gap-3.5 text-left px-5 py-3.5 font-medium"
                     style={{
-                      width: 26, height: 26, borderRadius: "50%",
-                      background: isSelected ? GRADIENTS.purpleSky : "rgba(13,27,61,0.06)",
-                      color: isSelected ? "#fff" : COLORS.textMid,
-                      transition: "all .2s ease",
+                      borderRadius: 16,
+                      border: `2px solid ${isSelected ? COLORS.purple : COLORS.border}`,
+                      background: isSelected ? "rgba(212,160,23,0.14)" : "rgba(255,255,255,0.35)",
+                      color: COLORS.textDark,
+                      cursor: "pointer",
                     }}
                   >
-                    {optionLetters[key]}
-                  </span>
-                  {currentQuestion[key]}
-                </motion.button>
-              );
-            })}
+                    <span
+                      className="flex items-center justify-center flex-shrink-0 text-xs font-bold"
+                      style={{
+                        width: 26, height: 26, borderRadius: "50%",
+                        background: isSelected ? GRADIENTS.purpleSky : "rgba(13,27,61,0.06)",
+                        color: isSelected ? "#fff" : COLORS.textMid,
+                        transition: "all .2s ease",
+                      }}
+                    >
+                      {optionLetters[key]}
+                    </span>
+                    {currentQuestion[key]}
+                  </motion.button>
+                );
+              })
+            )}
           </div>
         </motion.div>
       </AnimatePresence>

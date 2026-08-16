@@ -184,9 +184,40 @@ class Settings:
     # limit, overload, timeout), the next one is tried automatically —
     # no manual env var flip / redeploy needed mid-demo. Only providers
     # whose API key is actually set are attempted; missing keys are
-    # skipped rather than causing a hard failure.
+    # skipped rather than causing a hard failure. Cerebras/OpenRouter are
+    # in the default chain now too — both were already fully implemented
+    # in utils/gemini_client.py but not actually reachable unless someone
+    # manually overrode this env var. Adding them here costs nothing if
+    # their keys are unset (they're just skipped), and gives real extra
+    # headroom the moment either key IS set.
     AI_PROVIDER_CHAIN: list[str] = [
-        p.strip() for p in os.getenv("AI_PROVIDER_CHAIN", "gemini,groq").split(",") if p.strip()
+        p.strip() for p in os.getenv("AI_PROVIDER_CHAIN", "gemini,groq,cerebras,openrouter").split(",") if p.strip()
+    ]
+
+    # Extra Gemini API keys (comma-separated), used ONLY by the
+    # diagnostic assessment's question generation (agents/question_generation_agent.py)
+    # as a rotation pool — deliberately NOT shared with chat, flashcards,
+    # notes, mind maps, slide decks, or topic quizzes. Assessment
+    # generation is the heaviest AI feature (3 chunked calls per skill,
+    # times however many skills are selected, all in one request), so
+    # it's the one that actually needs extra headroom; giving every
+    # other feature access to the same pool would mean assessment
+    # traffic competes with everything else for it, defeating the point.
+    #
+    # See utils/gemini_client.py's _gemini_key_candidates() for how this
+    # is used: if the key actually in use for a call (GEMINI_API_KEY_ASSESSMENT,
+    # or plain GEMINI_API_KEY if that's unset) fails or is rate-limited,
+    # each of these is tried next, in order, BEFORE giving up on Gemini
+    # entirely and moving to groq/cerebras/openrouter.
+    #
+    # IMPORTANT: Gemini's free-tier quota is per Google Cloud PROJECT,
+    # not per key. Keys from the same project share one quota — rotating
+    # between them does nothing. Each key in this list needs to come
+    # from a separate Google Cloud project (can be the same Google
+    # account, just create multiple projects at
+    # https://console.cloud.google.com/ and generate one key per project).
+    GEMINI_API_KEYS_POOL_ASSESSMENT: list[str] = [
+        k.strip() for k in os.getenv("GEMINI_API_KEYS_POOL_ASSESSMENT", "").split(",") if k.strip()
     ]
 
     GROQ_API_KEY: str = os.getenv("GROQ_API_KEY", "")
@@ -210,8 +241,21 @@ class Settings:
     AI_GENERATION_MAX_RETRIES: int = int(
         os.getenv("AI_GENERATION_MAX_RETRIES", 1)
     )
+    # Gap between successive difficulty-chunk calls within ONE skill's
+    # diagnostic generation (agents/question_generation_agent.py's
+    # run_chunked) — spaces out the 3 calls/skill so multiple skills
+    # selected back-to-back don't burst past a free-tier requests-per-minute
+    # limit. Small on purpose; this runs 3x per skill, so it adds up fast.
+    AI_CHUNK_DELAY_SECONDS: float = float(os.getenv("AI_CHUNK_DELAY_SECONDS", 1.0))
     VALID_DIFFICULTIES: list[str] = ["Easy", "Medium", "Hard"]
-    VALID_QUESTION_TYPES: list[str] = ["MCQ"]
+    # "FillBlank": plain typed-answer question, works for any skill.
+    # "CodeCompletion": a code snippet with a blank to complete — only
+    # used for skills services/assessment_planner.is_programming_language_skill()
+    # detects. Both are graded by services/answer_equivalence_service.py
+    # (loose match, not exact string comparison) since a typed answer
+    # can be correct with different spacing/casing/punctuation than the
+    # stored CorrectAnswer.
+    VALID_QUESTION_TYPES: list[str] = ["MCQ", "FillBlank", "CodeCompletion"]
 
     # --- AI Study Assistant / Chat (agents/chat_agent.py) ---
     # Per-user conversation, unlike learning_notes which is a GLOBAL cache —

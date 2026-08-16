@@ -72,7 +72,13 @@ class QuestionGenerationAgent(BaseAgent):
         last_error: Exception | None = None
         for attempt in range(settings.AI_GENERATION_MAX_RETRIES + 1):
             try:
-                raw = generate_json(prompt, gemini_api_key=settings.GEMINI_API_KEY_ASSESSMENT)
+                raw = generate_json(
+                    prompt,
+                    gemini_api_key=settings.GEMINI_API_KEY_ASSESSMENT,
+                    # Assessment-only rotation pool — NOT shared with chat/flashcards/
+                    # notes/etc. See config/settings.py's GEMINI_API_KEYS_POOL_ASSESSMENT.
+                    gemini_key_pool=settings.GEMINI_API_KEYS_POOL_ASSESSMENT,
+                )
                 rows = self._extract_rows(raw)
                 self._validate_rows(rows, count)
                 return [
@@ -124,7 +130,13 @@ class QuestionGenerationAgent(BaseAgent):
         last_error: Exception | None = None
         for attempt in range(settings.AI_GENERATION_MAX_RETRIES + 1):
             try:
-                raw = generate_json(prompt, gemini_api_key=settings.GEMINI_API_KEY_ASSESSMENT)
+                raw = generate_json(
+                    prompt,
+                    gemini_api_key=settings.GEMINI_API_KEY_ASSESSMENT,
+                    # Assessment-only rotation pool — NOT shared with chat/flashcards/
+                    # notes/etc. See config/settings.py's GEMINI_API_KEYS_POOL_ASSESSMENT.
+                    gemini_key_pool=settings.GEMINI_API_KEYS_POOL_ASSESSMENT,
+                )
                 rows = self._extract_rows(raw)
                 self._validate_rows(rows, total)
                 self._validate_difficulty_distribution(rows, difficulty_counts)
@@ -229,7 +241,13 @@ class QuestionGenerationAgent(BaseAgent):
         last_error: Exception | None = None
         for attempt in range(settings.AI_GENERATION_MAX_RETRIES + 1):
             try:
-                raw = generate_json(prompt, gemini_api_key=settings.GEMINI_API_KEY_ASSESSMENT)
+                raw = generate_json(
+                    prompt,
+                    gemini_api_key=settings.GEMINI_API_KEY_ASSESSMENT,
+                    # Assessment-only rotation pool — NOT shared with chat/flashcards/
+                    # notes/etc. See config/settings.py's GEMINI_API_KEYS_POOL_ASSESSMENT.
+                    gemini_key_pool=settings.GEMINI_API_KEYS_POOL_ASSESSMENT,
+                )
                 rows = self._extract_rows(raw)
                 self._validate_chunk_rows(rows, difficulty, mcq_count, open_count, open_ended_type)
                 return rows

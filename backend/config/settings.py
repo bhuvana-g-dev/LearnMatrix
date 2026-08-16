@@ -247,6 +247,17 @@ class Settings:
     # selected back-to-back don't burst past a free-tier requests-per-minute
     # limit. Small on purpose; this runs 3x per skill, so it adds up fast.
     AI_CHUNK_DELAY_SECONDS: float = float(os.getenv("AI_CHUNK_DELAY_SECONDS", 1.0))
+    # How many skills' diagnostic generation run CONCURRENTLY (see
+    # services/ai_assessment_service.generate_diagnostic_assessment) —
+    # each skill still does its 3 difficulty chunks sequentially with
+    # AI_CHUNK_DELAY_SECONDS between them (that spacing is about not
+    # bursting ONE skill's own key/quota), but multiple skills' calls
+    # now overlap instead of waiting for each other, which is what
+    # actually cuts wall-clock time for a multi-skill assessment. Capped
+    # rather than unbounded so a 6-skill assessment doesn't fire 18
+    # simultaneous Gemini requests at once — that would trade "server
+    # timeout" for "rate-limited into the ground", which isn't a win.
+    AI_ASSESSMENT_MAX_PARALLEL_SKILLS: int = int(os.getenv("AI_ASSESSMENT_MAX_PARALLEL_SKILLS", 3))
     VALID_DIFFICULTIES: list[str] = ["Easy", "Medium", "Hard"]
     # "FillBlank": plain typed-answer question, works for any skill.
     # "CodeCompletion": a code snippet with a blank to complete — only

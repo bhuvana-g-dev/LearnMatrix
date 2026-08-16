@@ -100,9 +100,18 @@ def generate_diagnostic_assessment(
     skills: list[str], role: str = "", learning_objective: str = ""
 ) -> dict:
     """
-    The real diagnostic assessment: one QuestionGenerationAgent.run_mixed()
-    call PER selected skill (via the Assessment Planner's fixed 2 Easy +
-    2 Medium + 2 Hard plan), aggregated into one question set.
+    The real diagnostic assessment: one QuestionGenerationAgent.run_chunked()
+    call PER selected skill (via the Assessment Planner's fixed 5 Easy +
+    5 Medium + 5 Hard = 15-question plan), aggregated into one question set.
+
+    run_chunked() itself makes 3 smaller Gemini calls per skill (one per
+    difficulty, 5 questions each) instead of one 15-question call — see
+    agents/question_generation_agent.py and services/assessment_planner.py
+    for why: a single big call is more failure-prone, and one skill's
+    total failure used to abort the entire diagnostic (5 skills selected
+    = 5 chances to crash everything). Chunking shrinks the failure
+    surface back down to "one difficulty band of one skill," which
+    should now be about as reliable as the old 6-question-total call was.
 
     Deliberately sequential, not parallel — keeps retry/backoff behavior
     (agents/question_generation_agent.py) simple and predictable, and
@@ -112,10 +121,8 @@ def generate_diagnostic_assessment(
     right here — nothing else in the stack needs to know.
 
     Raises AIAssessmentError with a partial-failure message identifying
-    which specific skill failed, rather than a generic "something broke"
-    — this matters because with 5 sequential calls, knowing skill #3 of 5
-    failed (not #1) is the difference between "just retry" and "there's
-    something wrong with how that skill's topics were phrased".
+    which specific skill (and which difficulty chunk within it) failed,
+    rather than a generic "something broke".
     """
     plan = build_diagnostic_plan(skills)
     agent = QuestionGenerationAgent()
@@ -123,10 +130,12 @@ def generate_diagnostic_assessment(
 
     for skill_plan in plan:
         try:
-            questions = agent.run_mixed(
+            questions = agent.run_chunked(
                 topics=[skill_plan.skill],
                 skill=skill_plan.skill,
                 difficulty_counts=skill_plan.difficulty_counts,
+                open_ended_counts=skill_plan.open_ended_counts,
+                open_ended_type=skill_plan.open_ended_type,
                 learning_objective=learning_objective or (f"for the {role} role" if role else ""),
             )
         except QuestionGenerationError as exc:
@@ -135,8 +144,8 @@ def generate_diagnostic_assessment(
                 f"'{skill_plan.skill}': {exc}"
             ) from exc
 
-        # CRITICAL: each run_mixed() call numbers its own questions
-        # "AI-1".."AI-6" independently — across multiple skills these
+        # CRITICAL: each run_chunked() call numbers its own questions
+        # "AI-1".."AI-15" independently — across multiple skills these
         # collide (every skill would have an "AI-1"). Since evaluation
         # matches answers by TempID, colliding IDs silently corrupt
         # scoring (a later skill's answer overwrites an earlier skill's

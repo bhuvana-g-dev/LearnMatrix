@@ -27,9 +27,16 @@ further justification, whereas a weighting scheme invites the follow-up
 Nothing here touches Firestore — same rule as every other agent. The
 route/service calling this decides whether/how to persist the result
 (§9 Phase 3 in ARCHITECTURE.md: quiz_results / assessment_history).
+
+One exception to "no I/O": grading a FillBlank/CodeCompletion answer can
+make a Gemini call via services/answer_equivalence_service.py (only when
+a cheap normalized string match doesn't already resolve it) — MCQ
+grading stays pure/instant as before.
 """
 
 from dataclasses import dataclass, field
+
+from services.answer_equivalence_service import is_equivalent
 
 STRONG_THRESHOLD = 75
 INTERMEDIATE_THRESHOLD = 40
@@ -111,7 +118,19 @@ def evaluate_diagnostic_assessment(
 
         per_skill[skill][difficulty]["total"] += 1
         chosen = answers.get(q["TempID"])
-        if chosen is not None and chosen == q["CorrectAnswer"]:
+        question_type = q.get("QuestionType", "MCQ")
+        if question_type == "MCQ":
+            is_correct = chosen is not None and chosen == q["CorrectAnswer"]
+        else:
+            # FillBlank / CodeCompletion — a typed answer can be correct
+            # without matching CorrectAnswer byte-for-byte, so this isn't
+            # a plain `==` (see services/answer_equivalence_service.py).
+            is_correct = is_equivalent(
+                question=q.get("Question", ""),
+                correct_answer=q["CorrectAnswer"],
+                student_answer=chosen,
+            )
+        if is_correct:
             per_skill[skill][difficulty]["correct"] += 1
 
     result = EvaluationResult()

@@ -9,10 +9,13 @@ place where they're chained together — routes/ai_assessment_routes.py
 should never need to change shape when that happens, only this file.
 """
 
+import concurrent.futures
+
 from agents.question_generation_agent import (
     QuestionGenerationAgent,
     QuestionGenerationError,
 )
+from config.settings import settings
 from firebase.firebase_config import get_firestore_client
 from services.difficulty_engine import compute_difficulty, DifficultyDecision
 from services.assessment_planner import build_diagnostic_plan
@@ -113,12 +116,26 @@ def generate_diagnostic_assessment(
     surface back down to "one difficulty band of one skill," which
     should now be about as reliable as the old 6-question-total call was.
 
-    Deliberately sequential, not parallel — keeps retry/backoff behavior
-    (agents/question_generation_agent.py) simple and predictable, and
-    Groq's per-call latency is low enough that even 5-6 skills completes
-    well within the frontend's timeout. If this becomes a bottleneck with
-    many more skills, parallelizing these calls is a contained change
-    right here — nothing else in the stack needs to know.
+    Skills run CONCURRENTLY now (up to settings.AI_ASSESSMENT_MAX_PARALLEL_SKILLS
+    at once via a thread pool), not one after another — with 15
+    questions/skill via 3 sequential chunk calls each, a fully sequential
+    multi-skill assessment was slow enough to trip Gunicorn's request
+    timeout on Render (each worker gets killed mid-request past its
+    configured --timeout, logged as a confusing "SIGKILL, perhaps out of
+    memory" even though the real cause is just wall-clock time). Running
+    skills in parallel cuts total wait roughly by the number of skills,
+    up to the concurrency cap. Each skill's own 3 chunks still run
+    sequentially with a small delay between them (see run_chunked) — that
+    spacing is about not bursting ONE skill's key/quota, which parallel
+    OTHER skills doesn't change.
+
+    Every skill's call is submitted before any result is inspected, and
+    concurrent.futures.wait() blocks until all of them have finished
+    (successfully or not) — so a fast-failing skill doesn't get reported
+    while a slower skill is still legitimately mid-call. Results are then
+    read back out in the ORIGINAL skill order (not completion order), so
+    the output and any error message stay deterministic regardless of
+    which thread happened to finish first.
 
     Raises AIAssessmentError with a partial-failure message identifying
     which specific skill (and which difficulty chunk within it) failed,
@@ -126,11 +143,12 @@ def generate_diagnostic_assessment(
     """
     plan = build_diagnostic_plan(skills)
     agent = QuestionGenerationAgent()
-    all_questions: list[dict] = []
 
-    for skill_plan in plan:
-        try:
-            questions = agent.run_chunked(
+    max_workers = max(1, min(len(plan), settings.AI_ASSESSMENT_MAX_PARALLEL_SKILLS))
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = [
+            executor.submit(
+                agent.run_chunked,
                 topics=[skill_plan.skill],
                 skill=skill_plan.skill,
                 difficulty_counts=skill_plan.difficulty_counts,
@@ -138,6 +156,14 @@ def generate_diagnostic_assessment(
                 open_ended_type=skill_plan.open_ended_type,
                 learning_objective=learning_objective or (f"for the {role} role" if role else ""),
             )
+            for skill_plan in plan
+        ]
+        concurrent.futures.wait(futures)
+
+    all_questions: list[dict] = []
+    for skill_plan, future in zip(plan, futures):
+        try:
+            questions = future.result()
         except QuestionGenerationError as exc:
             raise AIAssessmentError(
                 f"Diagnostic assessment generation failed on skill "

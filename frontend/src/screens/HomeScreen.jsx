@@ -24,6 +24,7 @@ import {
   Map,
   Code2,
   RefreshCw,
+  Flame,
 } from "lucide-react";
 import Logo from "../components/common/Logo";
 import { COLORS, GRADIENTS, GLASS_CARD } from "../constants/theme";
@@ -271,68 +272,123 @@ export default function HomeScreen({ onGetStarted, onLogin, onSignup }) {
                 <PlayCircle size={16} /> How It Works
               </motion.button>
             </div>
+
+            {/* Trust row */}
+            <div className="flex items-center gap-3 mt-8">
+              <div className="flex -space-x-2.5">
+                {["S", "A", "R", "P"].map((letter, i) => (
+                  <span
+                    key={letter}
+                    className="w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-bold"
+                    style={{
+                      background: [COLORS.purple, "#8B5CF6", "#16A34A", "#2563EB"][i],
+                      color: "#fff",
+                      border: "2px solid #FBF3E1",
+                    }}
+                  >
+                    {letter}
+                  </span>
+                ))}
+              </div>
+              <p className="text-xs font-medium" style={{ color: COLORS.textMid }}>
+                Learners growing their careers with LearnMatrix
+              </p>
+            </div>
           </motion.div>
 
-          {/* Right side — dashboard-style mockup with floating badge chips */}
+          {/* Right side — mascot illustration + floating "dashboard preview" card */}
           <motion.div
             initial={{ opacity: 0, scale: 0.94 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ duration: 0.5, delay: 0.15 }}
-            className="relative hidden sm:block"
+            className="relative hidden sm:flex justify-center"
           >
-            <div className="p-4 sm:p-5" style={{ ...GLASS_CARD, borderRadius: 28 }}>
-              <div className="flex items-center gap-1.5 mb-4">
-                <span className="w-2.5 h-2.5 rounded-full" style={{ background: "#E4568A" }} />
-                <span className="w-2.5 h-2.5 rounded-full" style={{ background: "#D4A017" }} />
-                <span className="w-2.5 h-2.5 rounded-full" style={{ background: "#16A34A" }} />
-              </div>
-              <div className="space-y-3">
-                {ROLES.slice(0, 3).map((r) => (
-                  <div
-                    key={r.id}
-                    className="flex items-center gap-3 p-3 rounded-2xl"
-                    style={{ background: "rgba(255,255,255,0.5)", border: `1px solid ${COLORS.border}` }}
-                  >
-                    <span className="text-xl">{r.emoji}</span>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-bold truncate" style={{ color: COLORS.textDark }}>
-                        {r.title}
-                      </p>
-                      <div className="h-1.5 rounded-full mt-1.5 overflow-hidden" style={{ background: COLORS.border }}>
-                        <div
-                          className="h-full rounded-full"
-                          style={{ width: `${55 + r.skills * 2}%`, background: GRADIENTS.purpleSky }}
-                        />
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
+            <RobotMascot />
 
             <motion.div
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.5 }}
-              className="hidden sm:flex items-center gap-2 absolute -top-5 -right-4 px-3.5 py-2.5"
-              style={{ ...GLASS_CARD, borderRadius: 16 }}
+              transition={{ delay: 0.4 }}
+              className="absolute top-2 right-0 w-56 p-4"
+              style={{ ...GLASS_CARD, borderRadius: 22 }}
             >
-              <Award size={16} color={COLORS.purple} />
-              <span className="text-xs font-bold" style={{ color: COLORS.textDark }}>
-                Certified Skills
-              </span>
+              <p className="text-[11px] font-semibold" style={{ color: COLORS.textMid }}>
+                Welcome back, Alex!
+              </p>
+              <p className="text-[10px] mt-0.5" style={{ color: COLORS.textLight }}>
+                Let's continue your learning today
+              </p>
+
+              <div className="flex items-center gap-3 mt-3.5">
+                <MiniProgressRing percent={75} />
+                <div>
+                  <p className="text-[10px]" style={{ color: COLORS.textLight }}>
+                    Overall Progress
+                  </p>
+                  <p className="text-xs font-bold" style={{ color: COLORS.textDark }}>
+                    Keep going!
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-3.5 pt-3.5 space-y-1.5" style={{ borderTop: `1px solid ${COLORS.border}` }}>
+                <p className="text-[10px] font-semibold mb-1.5" style={{ color: COLORS.textMid }}>
+                  Next Components
+                </p>
+                {["React Basics", "Data Structures"].map((c) => (
+                  <div key={c} className="flex items-center gap-2">
+                    <BookOpen size={11} color={COLORS.purple} />
+                    <span className="text-[10px]" style={{ color: COLORS.textDark }}>
+                      {c}
+                    </span>
+                  </div>
+                ))}
+              </div>
             </motion.div>
 
             <motion.div
-              initial={{ opacity: 0, y: -10 }}
+              initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.65 }}
-              className="hidden sm:flex items-center gap-2 absolute -bottom-5 -left-4 px-3.5 py-2.5"
-              style={{ ...GLASS_CARD, borderRadius: 16 }}
+              transition={{ delay: 0.6 }}
+              className="absolute bottom-2 left-0 flex items-center gap-4 px-4 py-3"
+              style={{ ...GLASS_CARD, borderRadius: 18 }}
             >
-              <TrendingUp size={16} color="#16A34A" />
-              <span className="text-xs font-bold" style={{ color: COLORS.textDark }}>
-                AI-Tracked Progress
+              <div className="text-center">
+                <p className="text-sm font-bold" style={{ color: COLORS.textDark }}>
+                  12
+                </p>
+                <p className="text-[9px]" style={{ color: COLORS.textLight }}>
+                  Completed
+                </p>
+              </div>
+              <div className="w-px h-7" style={{ background: COLORS.border }} />
+              <div className="text-center">
+                <p className="text-sm font-bold" style={{ color: COLORS.textDark }}>
+                  85
+                </p>
+                <p className="text-[9px]" style={{ color: COLORS.textLight }}>
+                  Skills
+                </p>
+              </div>
+              <div className="w-px h-7" style={{ background: COLORS.border }} />
+              <div className="flex items-center gap-1 text-center">
+                <Flame size={14} color="#D4A017" />
+                <p className="text-sm font-bold" style={{ color: COLORS.textDark }}>
+                  7
+                </p>
+              </div>
+            </motion.div>
+
+            <motion.div
+              initial={{ opacity: 0, scale: 0.8 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ delay: 0.75 }}
+              className="absolute top-1/2 -right-3 flex items-center gap-1.5 px-3 py-1.5"
+              style={{ borderRadius: 9999, background: "rgba(34,192,142,0.14)" }}
+            >
+              <TrendingUp size={13} color="#16A34A" />
+              <span className="text-[10px] font-bold" style={{ color: "#16A34A" }}>
+                Tracked Progress
               </span>
             </motion.div>
           </motion.div>
@@ -605,5 +661,63 @@ export default function HomeScreen({ onGetStarted, onLogin, onSignup }) {
         )}
       </AnimatePresence>
     </div>
+  );
+}
+
+// Small decorative progress ring for the "Welcome back" preview card —
+// illustrative marketing content, not real user data.
+function MiniProgressRing({ percent }) {
+  const r = 22;
+  const c = 2 * Math.PI * r;
+  const offset = c - (percent / 100) * c;
+  return (
+    <div className="relative w-14 h-14 flex-shrink-0">
+      <svg viewBox="0 0 56 56" className="w-14 h-14 -rotate-90">
+        <circle cx="28" cy="28" r={r} fill="none" stroke={COLORS.border} strokeWidth="5" />
+        <circle
+          cx="28"
+          cy="28"
+          r={r}
+          fill="none"
+          stroke={COLORS.purple}
+          strokeWidth="5"
+          strokeLinecap="round"
+          strokeDasharray={c}
+          strokeDashoffset={offset}
+        />
+      </svg>
+      <div className="absolute inset-0 flex items-center justify-center text-[11px] font-bold" style={{ color: COLORS.textDark }}>
+        {percent}%
+      </div>
+    </div>
+  );
+}
+
+// Simple friendly mascot, built entirely from basic shapes (no external
+// image asset) — a small decorative touch behind the hero preview card.
+function RobotMascot() {
+  return (
+    <svg width="150" height="190" viewBox="0 0 150 190" className="flex-shrink-0">
+      {/* antenna */}
+      <line x1="75" y1="18" x2="75" y2="34" stroke={COLORS.purple} strokeWidth="3" strokeLinecap="round" />
+      <circle cx="75" cy="14" r="6" fill={COLORS.purple} />
+
+      {/* head */}
+      <rect x="35" y="34" width="80" height="60" rx="20" fill={COLORS.sky} />
+      <circle cx="58" cy="62" r="7" fill="#fff" />
+      <circle cx="92" cy="62" r="7" fill={COLORS.purple} />
+      <rect x="58" y="78" width="34" height="4" rx="2" fill="rgba(255,255,255,0.4)" />
+
+      {/* body */}
+      <rect x="25" y="100" width="100" height="80" rx="26" fill={COLORS.purple} />
+      <rect x="50" y="122" width="50" height="36" rx="12" fill="rgba(255,255,255,0.18)" />
+      <text x="75" y="146" textAnchor="middle" fontSize="16" fontWeight="700" fill="#fff">
+        LM
+      </text>
+
+      {/* arms */}
+      <circle cx="18" cy="130" r="10" fill={COLORS.sky} />
+      <circle cx="132" cy="130" r="10" fill={COLORS.sky} />
+    </svg>
   );
 }

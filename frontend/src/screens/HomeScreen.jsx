@@ -296,100 +296,139 @@ export default function HomeScreen({ onGetStarted, onLogin, onSignup }) {
             </div>
           </motion.div>
 
-          {/* Right side — mascot illustration + floating "dashboard preview" card */}
+          {/* Right side — student photo + floating "dashboard preview" cards */}
           <motion.div
             initial={{ opacity: 0, scale: 0.94 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ duration: 0.5, delay: 0.15 }}
-            className="relative hidden sm:flex justify-center"
+            className="relative hidden sm:block mx-auto"
+            style={{ width: 420, height: 340 }}
           >
-            <RobotMascot />
+            {/* Student photo — real, free-to-use Pexels photo
+                (pexels.com/photo/girl-sitting-at-desk-studying-on-laptop-6937704),
+                hotlinked directly from Pexels' CDN */}
+            <div
+              className="absolute inset-x-8 inset-y-6 rounded-[28px] overflow-hidden"
+              style={{ boxShadow: "0 20px 50px rgba(13,27,61,0.18)" }}
+            >
+              <img
+                src="https://images.pexels.com/photos/6937704/pexels-photo-6937704.jpeg?auto=compress&cs=tinysrgb&w=900"
+                alt="Student learning on LearnMatrix"
+                className="w-full h-full object-cover"
+                onError={(e) => {
+                  e.currentTarget.style.display = "none";
+                  e.currentTarget.nextSibling.style.display = "flex";
+                }}
+              />
+              <div
+                className="w-full h-full items-center justify-center"
+                style={{ display: "none", background: GRADIENTS.purpleSky }}
+              >
+                <GraduationCap size={40} color="rgba(255,255,255,0.7)" />
+              </div>
+            </div>
 
+            {/* Overall Progress — top-left */}
             <motion.div
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.4 }}
-              className="absolute top-2 right-0 w-56 p-4"
-              style={{ ...GLASS_CARD, borderRadius: 22 }}
+              transition={{ delay: 0.35 }}
+              className="absolute -top-2 -left-4 w-44 p-3.5"
+              style={{ ...GLASS_CARD, borderRadius: 18 }}
             >
-              <p className="text-[11px] font-semibold" style={{ color: COLORS.textMid }}>
-                Welcome back, Alex!
+              <p className="text-[10px] font-semibold" style={{ color: COLORS.textMid }}>
+                Overall Progress
               </p>
-              <p className="text-[10px] mt-0.5" style={{ color: COLORS.textLight }}>
-                Let's continue your learning today
-              </p>
-
-              <div className="flex items-center gap-3 mt-3.5">
-                <MiniProgressRing percent={75} />
+              <div className="flex items-center gap-2.5 mt-1.5">
+                <MiniProgressRing percent={72} />
                 <div>
-                  <p className="text-[10px]" style={{ color: COLORS.textLight }}>
-                    Overall Progress
+                  <p className="text-xs font-bold" style={{ color: "#16A34A" }}>
+                    Great job!
                   </p>
-                  <p className="text-xs font-bold" style={{ color: COLORS.textDark }}>
-                    Keep going!
+                  <p className="text-[9px]" style={{ color: COLORS.textLight }}>
+                    Ahead of most learners
                   </p>
                 </div>
               </div>
+              <p className="text-[10px] font-semibold mt-2" style={{ color: COLORS.purple }}>
+                View Details →
+              </p>
+            </motion.div>
 
-              <div className="mt-3.5 pt-3.5 space-y-1.5" style={{ borderTop: `1px solid ${COLORS.border}` }}>
-                <p className="text-[10px] font-semibold mb-1.5" style={{ color: COLORS.textMid }}>
-                  Next Components
-                </p>
-                {["React Basics", "Data Structures"].map((c) => (
-                  <div key={c} className="flex items-center gap-2">
-                    <BookOpen size={11} color={COLORS.purple} />
-                    <span className="text-[10px]" style={{ color: COLORS.textDark }}>
-                      {c}
+            {/* Today's Plan — top-right */}
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.5 }}
+              className="absolute -top-4 -right-6 w-40 p-3.5"
+              style={{ ...GLASS_CARD, borderRadius: 18 }}
+            >
+              <p className="text-[10px] font-semibold mb-2" style={{ color: COLORS.textMid }}>
+                Today's Plan
+              </p>
+              <div className="space-y-1.5">
+                {[
+                  { label: "React Basics", done: true },
+                  { label: "Components", done: false },
+                  { label: "State & Props", done: false },
+                ].map((t) => (
+                  <div key={t.label} className="flex items-center gap-1.5">
+                    <span
+                      className="w-3 h-3 rounded-full flex items-center justify-center flex-shrink-0"
+                      style={{ background: t.done ? "#16A34A" : COLORS.border }}
+                    >
+                      {t.done && <Check size={8} color="#fff" />}
+                    </span>
+                    <span className="text-[9px]" style={{ color: COLORS.textDark }}>
+                      {t.label}
                     </span>
                   </div>
                 ))}
               </div>
             </motion.div>
 
+            {/* AI Recommendation — bottom-left */}
             <motion.div
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.6 }}
-              className="absolute bottom-2 left-0 flex items-center gap-4 px-4 py-3"
+              transition={{ delay: 0.65 }}
+              className="absolute -bottom-4 -left-6 w-44 p-3.5"
               style={{ ...GLASS_CARD, borderRadius: 18 }}
             >
-              <div className="text-center">
-                <p className="text-sm font-bold" style={{ color: COLORS.textDark }}>
-                  12
-                </p>
-                <p className="text-[9px]" style={{ color: COLORS.textLight }}>
-                  Completed
-                </p>
-              </div>
-              <div className="w-px h-7" style={{ background: COLORS.border }} />
-              <div className="text-center">
-                <p className="text-sm font-bold" style={{ color: COLORS.textDark }}>
-                  85
-                </p>
-                <p className="text-[9px]" style={{ color: COLORS.textLight }}>
-                  Skills
-                </p>
-              </div>
-              <div className="w-px h-7" style={{ background: COLORS.border }} />
-              <div className="flex items-center gap-1 text-center">
-                <Flame size={14} color="#D4A017" />
-                <p className="text-sm font-bold" style={{ color: COLORS.textDark }}>
-                  7
-                </p>
-              </div>
+              <p className="text-[10px] font-semibold flex items-center gap-1.5" style={{ color: COLORS.textMid }}>
+                <Sparkles size={11} color={COLORS.purple} /> AI Recommendation
+              </p>
+              <p className="text-xs font-bold mt-1.5" style={{ color: COLORS.textDark }}>
+                Focus on State & Props
+              </p>
+              <p
+                className="inline-block text-[10px] font-semibold mt-2 px-3 py-1"
+                style={{ borderRadius: 9999, background: GRADIENTS.purplePink, color: "#fff" }}
+              >
+                Start Learning
+              </p>
             </motion.div>
 
+            {/* Streak — bottom-right */}
             <motion.div
-              initial={{ opacity: 0, scale: 0.8 }}
+              initial={{ opacity: 0, scale: 0.85 }}
               animate={{ opacity: 1, scale: 1 }}
-              transition={{ delay: 0.75 }}
-              className="absolute top-1/2 -right-3 flex items-center gap-1.5 px-3 py-1.5"
-              style={{ borderRadius: 9999, background: "rgba(34,192,142,0.14)" }}
+              transition={{ delay: 0.8 }}
+              className="absolute -bottom-2 -right-4 px-4 py-3"
+              style={{ ...GLASS_CARD, borderRadius: 18 }}
             >
-              <TrendingUp size={13} color="#16A34A" />
-              <span className="text-[10px] font-bold" style={{ color: "#16A34A" }}>
-                Tracked Progress
-              </span>
+              <p className="text-[10px] font-semibold" style={{ color: COLORS.textMid }}>
+                Streak
+              </p>
+              <div className="flex items-center gap-1.5 mt-0.5">
+                <Flame size={16} color="#D4A017" />
+                <span className="text-base font-bold" style={{ color: COLORS.textDark }}>
+                  7 Days
+                </span>
+              </div>
+              <p className="text-[9px]" style={{ color: COLORS.textLight }}>
+                Keep it up!
+              </p>
             </motion.div>
           </motion.div>
         </div>

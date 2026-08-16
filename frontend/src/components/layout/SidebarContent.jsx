@@ -332,7 +332,8 @@ export default function SidebarContent({
           const section = NAV_SECTIONS.find((s) => s.key === "profile");
           if (!section) return null;
           const SectionIcon = section.icon;
-          const isOpen = !collapsed && openKey === section.key;
+          const hasChildren = section.children && section.children.length > 0;
+          const isOpen = hasChildren && !collapsed && openKey === section.key;
           const isHeaderActive = activeKey === section.key;
           const displayTitle = profileName || section.title;
           const isLocked = locked;
@@ -389,7 +390,7 @@ export default function SidebarContent({
                   </span>
                 )}
 
-                {!collapsed && !isLocked && (
+                {!collapsed && !isLocked && hasChildren && (
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
@@ -411,7 +412,7 @@ export default function SidebarContent({
               </div>
 
               <AnimatePresence initial={false}>
-                {isOpen && (
+                {hasChildren && isOpen && (
                   <motion.div
                     initial={{ height: 0, opacity: 0 }}
                     animate={{ height: "auto", opacity: 1 }}

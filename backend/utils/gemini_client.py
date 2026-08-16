@@ -11,9 +11,22 @@ generate_json() walks settings.AI_PROVIDER_CHAIN (e.g. "gemini,groq") in
 order and returns the first successful result. A provider is skipped
 automatically if its API key isn't set — no config error, it just moves
 to the next one. This exists because Gemini's free tier intermittently
-returns 503 UNAVAILABLE under load; rather than a human flipping an env
-var and redeploying mid-demo, the code now does that automatically,
-per-request, with zero downtime.
+returns 503 UNAVAILABLE or 429 rate-limited under load; rather than a
+human flipping an env var and redeploying mid-demo, the code now does
+that automatically, per-request, with zero downtime.
+
+Within the "gemini" step specifically, there's an OPTIONAL second
+rotation layer: a caller can pass gemini_key_pool=[...] to generate_json()
+to have extra keys tried, in order, before Gemini as a whole is
+considered failed and the chain moves on to groq/cerebras/openrouter.
+This is opt-in per call, NOT a global setting every feature shares —
+only the diagnostic assessment currently passes one
+(settings.GEMINI_API_KEYS_POOL_ASSESSMENT), since it's the heaviest AI
+feature and giving every other feature the same pool would mean
+assessment is competing with everything else for its own headroom.
+See _gemini_key_candidates() below — and its docstring for why each
+pool key needs to be from a SEPARATE Google Cloud project to actually
+help (Gemini's free-tier quota is per-project, not per-key).
 
 Providers currently supported: "gemini", "groq", "cerebras", "openrouter".
 Cerebras and OpenRouter are both OpenAI-compatible REST APIs, so they
@@ -81,6 +94,76 @@ def _generate_json_gemini(prompt: str, temperature: float, api_key: str | None =
     )
     raw_text = (response.text or "").strip()
     return json.loads(raw_text)
+
+
+def _gemini_key_candidates(override_key: str | None, key_pool: list[str] | None) -> list[str]:
+    """
+    Builds the ordered list of Gemini keys to try for one call: the key
+    that would normally be used first (an override like
+    GEMINI_API_KEY_ASSESSMENT if one was passed, else the plain
+    GEMINI_API_KEY), then every key in key_pool as a fallback rotation,
+    skipping any duplicate already in the list.
+
+    key_pool is None/empty for every caller by default — it's an
+    explicit opt-in (see generate_json()'s gemini_key_pool param), NOT
+    a global setting every feature automatically shares. The diagnostic
+    assessment is the only current caller that passes one
+    (settings.GEMINI_API_KEYS_POOL_ASSESSMENT, from
+    agents/question_generation_agent.py) — chat, flashcards, notes,
+    mind maps, slide decks, and topic quizzes all still get exactly one
+    key attempt before falling to groq/cerebras/openrouter, same as
+    before this rotation feature existed.
+
+    IMPORTANT: rotating keys only helps if each key is from a SEPARATE
+    Google Cloud project — Gemini's free-tier quota is tracked per
+    project, so two keys from the same project share one quota and
+    trying the second one after the first gets rate-limited just fails
+    again immediately.
+    """
+    keys: list[str] = []
+    primary = override_key or settings.GEMINI_API_KEY
+    if primary:
+        keys.append(primary)
+    for pool_key in (key_pool or []):
+        if pool_key and pool_key not in keys:
+            keys.append(pool_key)
+    return keys
+
+
+def _generate_json_gemini_with_rotation(
+    prompt: str,
+    temperature: float,
+    override_key: str | None,
+    key_pool: list[str] | None,
+    attempts_log: list[str],
+) -> dict | list:
+    """
+    Tries every candidate key from _gemini_key_candidates() in order,
+    returning the first success. Raises GeminiClientError (with every
+    key's failure appended to attempts_log for the caller's error
+    message) only if ALL of them failed — that's what tells generate_json()
+    to give up on "gemini" as a provider and move to the next one in
+    AI_PROVIDER_CHAIN.
+    """
+    candidates = _gemini_key_candidates(override_key, key_pool)
+    if not candidates:
+        attempts_log.append("gemini: no API key set, skipped")
+        raise GeminiClientError("gemini: no API key set")
+
+    last_exc: Exception | None = None
+    for i, key in enumerate(candidates):
+        try:
+            result = _generate_json_gemini(prompt, temperature, api_key=key)
+            if i > 0:
+                print(f"[AI_PROVIDER] gemini succeeded on rotation key #{i + 1}/{len(candidates)}", flush=True)
+            return result
+        except Exception as exc:  # noqa: BLE001
+            last_exc = exc
+            print(f"[AI_PROVIDER] gemini key #{i + 1}/{len(candidates)} failed: {exc}", flush=True)
+            attempts_log.append(f"gemini (key #{i + 1}/{len(candidates)}): {exc}")
+            continue
+
+    raise GeminiClientError(f"gemini: all {len(candidates)} key(s) failed, last error: {last_exc}")
 
 
 # ---------------------------------------------------------------------
@@ -187,19 +270,39 @@ def _generate_json_openrouter(prompt: str, temperature: float) -> dict | list:
 
 
 _PROVIDER_NAMES = {
-    "gemini": ("_generate_json_gemini", lambda: settings.GEMINI_API_KEY),
+    # NOTE: "gemini" is NOT in this dict — it's special-cased in
+    # generate_json() to go through _generate_json_gemini_with_rotation()
+    # instead, since it (uniquely) supports trying multiple keys.
     "groq": ("_generate_json_groq", lambda: settings.GROQ_API_KEY),
     "cerebras": ("_generate_json_cerebras", lambda: settings.CEREBRAS_API_KEY),
     "openrouter": ("_generate_json_openrouter", lambda: settings.OPENROUTER_API_KEY),
 }
 
 
-def generate_json(prompt: str, temperature: float = 0.4, gemini_api_key: str | None = None) -> dict | list:
+def generate_json(
+    prompt: str,
+    temperature: float = 0.4,
+    gemini_api_key: str | None = None,
+    gemini_key_pool: list[str] | None = None,
+) -> dict | list:
     """
     Try each provider in settings.AI_PROVIDER_CHAIN, in order, until one
     succeeds. Providers with no API key configured are skipped silently.
     Raises GeminiClientError only if every provider in the chain failed
     (or none had a key set) — the error message lists what was tried.
+
+    The "gemini" step is special: it doesn't just try one key. See
+    _generate_json_gemini_with_rotation() — if gemini_key_pool is given,
+    it's walked as a fallback rotation before Gemini as a whole is
+    considered failed and the chain moves to groq/cerebras/openrouter.
+    gemini_key_pool is None by default, so most callers behave exactly
+    as before this feature existed (one Gemini key attempt, then
+    straight to the next provider). Only the diagnostic assessment
+    passes one currently (settings.GEMINI_API_KEYS_POOL_ASSESSMENT, via
+    agents/question_generation_agent.py) — deliberately NOT shared with
+    chat/flashcards/notes/etc., since assessment generation is the
+    heaviest AI feature and giving everything else access to the same
+    pool would mean it's competing with assessment for its own headroom.
 
     gemini_api_key: optional override, used ONLY when the current
     provider in the chain is "gemini" — lets one caller (e.g. Assessment
@@ -215,19 +318,28 @@ def generate_json(prompt: str, temperature: float = 0.4, gemini_api_key: str | N
     """
     attempts = []
     for provider_name in settings.AI_PROVIDER_CHAIN:
+        if provider_name == "gemini":
+            try:
+                result = _generate_json_gemini_with_rotation(
+                    prompt, temperature, gemini_api_key, gemini_key_pool, attempts
+                )
+                print("[AI_PROVIDER] request served by: gemini", flush=True)
+                return result
+            except GeminiClientError:
+                continue
+
         entry = _PROVIDER_NAMES.get(provider_name)
         if entry is None:
             attempts.append(f"{provider_name}: unknown provider, skipped")
             continue
         func_name, get_key = entry
-        use_override = provider_name == "gemini" and gemini_api_key
-        key = gemini_api_key if use_override else get_key()
+        key = get_key()
         if not key:
             attempts.append(f"{provider_name}: no API key set, skipped")
             continue
         try:
             func = globals()[func_name]
-            result = func(prompt, temperature, api_key=gemini_api_key) if use_override else func(prompt, temperature)
+            result = func(prompt, temperature)
             print(f"[AI_PROVIDER] request served by: {provider_name}", flush=True)
             return result
         except Exception as exc:  # noqa: BLE001

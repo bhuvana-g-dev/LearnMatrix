@@ -26,6 +26,7 @@ import {
   RefreshCw,
   Flame,
   GraduationCap,
+  Check,
 } from "lucide-react";
 import Logo from "../components/common/Logo";
 import { COLORS, GRADIENTS, GLASS_CARD } from "../constants/theme";

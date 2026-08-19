@@ -258,6 +258,15 @@ class Settings:
     # simultaneous Gemini requests at once — that would trade "server
     # timeout" for "rate-limited into the ground", which isn't a win.
     AI_ASSESSMENT_MAX_PARALLEL_SKILLS: int = int(os.getenv("AI_ASSESSMENT_MAX_PARALLEL_SKILLS", 3))
+    # How many services/answer_equivalence_service.py AI-fallback grading
+    # calls run CONCURRENTLY inside one evaluate_diagnostic_assessment()
+    # call (services/evaluation_service.py) — an assessment with several
+    # FillBlank/CodeCompletion misses used to grade them one at a time,
+    # adding a sequential Gemini round-trip per miss to the result's
+    # latency. Same capped-concurrency reasoning as
+    # AI_ASSESSMENT_MAX_PARALLEL_SKILLS above — overlap the calls instead
+    # of serializing them, without firing an unbounded burst.
+    AI_GRADING_MAX_PARALLEL: int = int(os.getenv("AI_GRADING_MAX_PARALLEL", 5))
     VALID_DIFFICULTIES: list[str] = ["Easy", "Medium", "Hard"]
     # "FillBlank": plain typed-answer question, works for any skill.
     # "CodeCompletion": a code snippet with a blank to complete — only

@@ -96,10 +96,22 @@ export async function generateDiagnosticAssessment({ skills, role = "", learning
  * @returns {Promise<{skills: object[], overall: {correct, total, scorePercent}, questionResults: Record<string, boolean>}>}
  */
 export async function evaluateDiagnosticAssessment(questions, answers, uid = null, role = "", skills = []) {
-  // Fast, local, no cold-start/Gemini call involved — default timeout is fine.
+  // NOT "fast, local, no Gemini call involved" — evaluation grades every
+  // FillBlank/CodeCompletion answer via answer_equivalence_service.py,
+  // which calls Gemini for anything that isn't an exact normalized-string
+  // match. Worse, submission happens minutes after generation, with no
+  // requests hitting the backend in between while the student is
+  // answering — long enough for Render's free tier to spin the backend
+  // down, so this request often has to eat a cold start (15-50s) AND
+  // the grading calls. EVALUATION_TIMEOUT_MS gives it room for both;
+  // the previous 10s default timeout is exactly why submission was
+  // intermittently failing after a long assessment.
+  const EVALUATION_TIMEOUT_MS = 90000;
+
   const { data } = await apiClient.post(
     ENDPOINTS.ASSESSMENT.EVALUATE_DIAGNOSTIC_ASSESSMENT,
-    { questions, answers, uid, role, skills }
+    { questions, answers, uid, role, skills },
+    { timeout: EVALUATION_TIMEOUT_MS }
   );
   if (!data.success) {
     throw new Error(data.error || data.message || "Evaluation failed.");

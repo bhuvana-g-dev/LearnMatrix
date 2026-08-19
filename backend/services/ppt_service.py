@@ -31,6 +31,7 @@ written to disk, so there's no cleanup/temp-file lifecycle to manage;
 routes/ppt_routes.py streams the bytes straight back as a file download.
 """
 
+import textwrap
 from io import BytesIO
 
 from pptx import Presentation
@@ -315,7 +316,7 @@ def _add_title_slide(prs: Presentation, layout, title: str, subtitle: str) -> No
     brand_run.font.color.rgb = GOLD_LIGHT
     brand_run.font.name = "Arial"
 
-    title_box = slide.shapes.add_textbox(Inches(0.65), Inches(2.9), Inches(9.5), Inches(2.2))
+    title_box = slide.shapes.add_textbox(Inches(0.65), Inches(2.9), Inches(9.5), Inches(2.4))
     title_tf = title_box.text_frame
     title_tf.word_wrap = True
     title_tf.text = title
@@ -325,7 +326,21 @@ def _add_title_slide(prs: Presentation, layout, title: str, subtitle: str) -> No
     title_run.font.color.rgb = WHITE
     title_run.font.name = "Arial"
 
-    sub_box = slide.shapes.add_textbox(Inches(0.7), Inches(4.9), Inches(9), Inches(0.6))
+    # BUG FIX: the subtitle box used to sit at a FIXED y=4.9in
+    # regardless of how many lines the title wrapped to. A long title
+    # (this deck's ran 3 lines at 40pt bold) reached past that point
+    # and the subtitle got drawn right on top of it. There's no text
+    # measurement API in python-pptx, so this estimates the wrapped
+    # line count from character width (bold-Arial-40pt average glyph
+    # width) the same way the reportlab PDF path uses real
+    # stringWidth() — close enough to guarantee clearance since we
+    # round the estimate up and add a margin.
+    chars_per_line = max(10, int((9.5 * 72) / (40 * 0.52)))
+    est_lines = max(1, len(textwrap.wrap(title, width=chars_per_line)) or 1)
+    line_h_in = 40 * 1.15 / 72
+    sub_top_in = max(4.9, 2.9 + est_lines * line_h_in + 0.2)
+
+    sub_box = slide.shapes.add_textbox(Inches(0.7), Inches(sub_top_in), Inches(9), Inches(0.6))
     sub_tf = sub_box.text_frame
     sub_tf.text = f"{subtitle}"
     sub_run = sub_tf.paragraphs[0].runs[0]
@@ -450,7 +465,18 @@ def _add_text_slide(prs: Presentation, layout, heading: str, body: str, index: i
 
     sidebar_top = Inches(1.85)
     if image_bytes:
-        img_left, img_top, img_w, img_h = Inches(8.45), sidebar_top, Inches(4.2), Inches(3.15)
+        # BUG FIX: the image height was a fixed 3.15in regardless of
+        # how many "Key Points" would be stacked below it, so a
+        # section with 4 subpoints routinely pushed the last one or
+        # two PAST the bottom of the slide — not cropped, just placed
+        # off-page and invisible (that's the "only 3 of 4 key points
+        # showed up" bug). The image now shrinks (within a floor of
+        # 1.9in so it's never a sliver) to whatever height leaves the
+        # subpoints panel enough room to fit above the bottom margin.
+        panel_h_in = _estimate_subpoints_panel_height(subpoints)
+        max_img_h_in = 7.0 - 0.4 - panel_h_in - 1.85
+        img_h_in = max(1.9, min(3.15, max_img_h_in)) if subpoints else 3.15
+        img_left, img_top, img_w, img_h = Inches(8.45), sidebar_top, Inches(4.2), Inches(img_h_in)
         # A plain add_picture() would be a hard-edged rectangle sitting on
         # a page of otherwise all-rounded shapes — a soft accent frame
         # behind it (peeking out on two sides) reads as an intentional
@@ -467,6 +493,23 @@ def _add_text_slide(prs: Presentation, layout, heading: str, body: str, index: i
 
     if subpoints:
         _add_key_points_panel(slide, subpoints, Inches(8.45), sidebar_top, Inches(4.2), accent)
+
+
+def _estimate_subpoints_panel_height(subpoints: list) -> float:
+    """Mirrors _add_key_points_panel's own row-height math (label +
+    per-item wrap estimate) so the text slide can decide the image
+    height BEFORE drawing the panel, instead of finding out after the
+    fact that it ran off the bottom of the slide."""
+    if not subpoints:
+        return 0.0
+    total_in = 0.38  # "KEY POINTS" label + gap before first row
+    for sp in subpoints[:5]:
+        text, _icon = _item_text_icon(sp)
+        if not text:
+            continue
+        line_count = max(1, -(-len(text) // 42))
+        total_in += 0.24 * line_count + 0.16
+    return total_in
 
 
 def _add_key_points_panel(slide, subpoints: list, x, y, width, accent) -> None:
@@ -488,10 +531,21 @@ def _add_key_points_panel(slide, subpoints: list, x, y, width, accent) -> None:
     lrun.font.color.rgb = accent
 
     row_y = y + Inches(0.38)
+    # HARD SAFETY NET: even after sizing the image to leave room (see
+    # _estimate_subpoints_panel_height), stop adding rows once the
+    # next one would cross the slide's bottom margin. An estimate can
+    # still be a little off (wrap-width heuristic vs. actual PowerPoint
+    # font metrics) — better to quietly drop a low-priority trailing
+    # point than draw it off-slide where it's invisible either way.
+    bottom_limit = Inches(7.1)
     for sp in subpoints[:5]:
         text, _icon = _item_text_icon(sp)
         if not text:
             continue
+        line_count = max(1, -(-len(text) // 42))  # rough wrap estimate, matches ~4.2" width at 13pt
+        row_h = Inches(0.24 * line_count + 0.16)
+        if row_y + row_h > bottom_limit:
+            break
         dot = slide.shapes.add_shape(MSO_SHAPE.OVAL, x, row_y + Inches(0.06), Inches(0.09), Inches(0.09))
         _set_fill(dot, accent)
         dot.shadow.inherit = False
@@ -507,8 +561,7 @@ def _add_key_points_panel(slide, subpoints: list, x, y, width, accent) -> None:
         run.font.name = "Arial"
         run.font.color.rgb = NAVY_MID
 
-        line_count = max(1, -(-len(text) // 42))  # rough wrap estimate, matches ~4.2" width at 13pt
-        row_y += Inches(0.24 * line_count + 0.16)
+        row_y += row_h
 
 
 # icon tag (see agents/slide_deck_agent.py's ICON_VOCAB) -> a built-in

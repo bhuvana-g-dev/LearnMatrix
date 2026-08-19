@@ -230,7 +230,12 @@ def _draw_icon(c: canvas.Canvas, icon: str, cx: float, cy: float, r: float, colo
         return
 
     if icon == "gear":
-        _draw_polygon(c, _regular_polygon_points(cx, cy, r, 4, rotate_deg=45))  # diamond stand-in for a gear
+        # BUG FIX: rotate_deg=45 with 4 sides puts vertices at
+        # 45/135/225/315°, which is an axis-aligned SQUARE, not a
+        # diamond (a square's corners point up/down/left/right at
+        # 0/90/180/270°) — that's why this rendered as a plain square
+        # instead of the intended diamond gear stand-in.
+        _draw_polygon(c, _regular_polygon_points(cx, cy, r, 4, rotate_deg=0))  # diamond stand-in for a gear
         return
 
     # database, cloud, book, and anything unrecognized — a plain circle
@@ -334,13 +339,25 @@ def _draw_text_page(c: canvas.Canvas, heading: str, body: str, index: int, accen
     sidebar_top = PAGE_H - 1.85 * inch
 
     if image_bytes:
-        img_left, img_top, img_w, img_h = sidebar_x, PAGE_H - 5.0 * inch, 4.2 * inch, 3.15 * inch
+        # BUG FIX: same issue as ppt_service.py's _add_text_slide — a
+        # fixed 3.15in image height left no guaranteed room for the
+        # "Key Points" panel below it, so a section with 4 subpoints
+        # routinely had its last item or two land below the bottom
+        # margin (or off the page entirely). Height now shrinks
+        # (floor 1.9in) to whatever leaves the panel's real wrapped
+        # height room to fit — reportlab gives us exact stringWidth,
+        # so this estimate is exact, not approximate like the pptx one.
+        panel_h_in = _estimate_subpoints_panel_height(subpoints) if subpoints else 0.0
+        avail_in = 7.5 - 1.85 - 0.5  # content band from below the heading to the bottom margin
+        max_img_h_in = avail_in - 0.4 - panel_h_in  # 0.4in = gap between image and panel
+        img_h_in = max(1.9, min(3.15, max_img_h_in)) if subpoints else 3.15
+        img_left, img_top, img_w, img_h = sidebar_x, PAGE_H - 1.85 * inch, 4.2 * inch, img_h_in * inch
         try:
             from reportlab.lib.utils import ImageReader
             c.setFillColor(accent)
-            c.roundRect(img_left - 0.12 * inch, img_top - 0.12 * inch, img_w + 0.24 * inch, img_h + 0.24 * inch, 10, fill=1, stroke=0)
-            c.drawImage(ImageReader(BytesIO(image_bytes)), img_left, img_top, width=img_w, height=img_h, preserveAspectRatio=True, mask="auto")
-            sidebar_top = img_top - 0.4 * inch
+            c.roundRect(img_left - 0.12 * inch, img_top - img_h - 0.12 * inch, img_w + 0.24 * inch, img_h + 0.24 * inch, 10, fill=1, stroke=0)
+            c.drawImage(ImageReader(BytesIO(image_bytes)), img_left, img_top - img_h, width=img_w, height=img_h, preserveAspectRatio=True, mask="auto")
+            sidebar_top = img_top - img_h - 0.4 * inch
         except Exception:
             image_bytes = None  # corrupt/unsupported download — fall through to full-width text below
 
@@ -389,6 +406,24 @@ def _draw_text_page(c: canvas.Canvas, heading: str, body: str, index: int, accen
         _draw_key_points_panel(c, subpoints, sidebar_x, sidebar_top, 4.2 * inch, accent)
 
 
+def _estimate_subpoints_panel_height(subpoints: list) -> float:
+    """Mirrors _draw_key_points_panel's own row-height math (label +
+    real wrapped-line count per item, via the same _wrap_text used to
+    draw them) so the text page can decide the image height BEFORE
+    drawing the panel, instead of finding out after the fact that it
+    ran off the bottom of the page."""
+    if not subpoints:
+        return 0.0
+    total_in = 0.3  # "KEY POINTS" label + gap before first row
+    for sp in subpoints[:5]:
+        text, _icon = _item_text_icon(sp)
+        if not text:
+            continue
+        lines = _wrap_text(text, "Helvetica", 13, 4.2 * inch - 0.25 * inch)
+        total_in += 0.22 * len(lines) + 0.14
+    return total_in
+
+
 def _draw_key_points_panel(c: canvas.Canvas, subpoints: list, x: float, top: float, width: float, accent) -> None:
     """PDF counterpart to ppt_service.py's _add_key_points_panel — a
     compact 'Key Points' list of short highlight bullets (see
@@ -399,16 +434,25 @@ def _draw_key_points_panel(c: canvas.Canvas, subpoints: list, x: float, top: flo
     c.drawString(x, top, "KEY POINTS")
 
     y = top - 0.3 * inch
+    # HARD SAFETY NET: same as ppt_service.py's panel — stop adding
+    # rows once the next one would cross the page's bottom margin,
+    # instead of drawing it past the edge where it's invisible either
+    # way. Backstops the image-height estimate above for any edge case
+    # (several long, two-line subpoints) it didn't fully anticipate.
+    bottom_limit = 0.5 * inch
     for sp in subpoints[:5]:
         text, _icon = _item_text_icon(sp)
         if not text:
             continue
+        lines = _wrap_text(text, "Helvetica", 13, width - 0.25 * inch)
+        row_h = 0.22 * len(lines) + 0.14
+        if y - row_h < bottom_limit:
+            break
         c.setFillColor(accent)
         c.circle(x + 0.05 * inch, y + 0.04 * inch, 0.045 * inch, fill=1, stroke=0)
 
         c.setFillColor(NAVY_MID)
         c.setFont("Helvetica", 13)
-        lines = _wrap_text(text, "Helvetica", 13, width - 0.25 * inch)
         ty = y
         for line in lines:
             c.drawString(x + 0.22 * inch, ty, line)

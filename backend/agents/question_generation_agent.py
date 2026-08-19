@@ -39,10 +39,6 @@ REQUIRED_MCQ_FIELDS = [
 # models/generated_question_model.py and services/answer_equivalence_service.py.
 REQUIRED_OPEN_ENDED_FIELDS = ["Skill", "Difficulty", "QuestionType", "Question", "CorrectAnswer"]
 
-# Kept as the old name too since some callers/tests may still import it —
-# identical to REQUIRED_MCQ_FIELDS.
-REQUIRED_ROW_FIELDS = REQUIRED_MCQ_FIELDS
-
 
 class QuestionGenerationError(AgentError):
     pass
@@ -543,8 +539,9 @@ Respond with ONLY a JSON array, no prose, no markdown fences, in this exact shap
         )
 
     def _validate_row_shape(self, row: dict, index: int) -> None:
-        """Type-aware version of the old flat REQUIRED_ROW_FIELDS check —
-        MCQ rows need real options; FillBlank/CodeCompletion rows don't."""
+        """Type-aware field check — MCQ rows need real options;
+        FillBlank/CodeCompletion rows don't (see REQUIRED_OPEN_ENDED_FIELDS
+        above)."""
         q_type = str(row.get("QuestionType", "MCQ")).strip() or "MCQ"
         if q_type not in settings.VALID_QUESTION_TYPES:
             raise QuestionGenerationError(f"Row {index + 1} has invalid QuestionType '{q_type}'.")

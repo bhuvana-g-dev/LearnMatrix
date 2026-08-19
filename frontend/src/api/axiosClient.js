@@ -7,9 +7,16 @@ import axios from "axios";
  * When the Flask backend goes live, only the baseURL (and interceptors, if
  * auth changes) need to be updated here — no screen/component code changes.
  */
+// 30s, not 10s — Render's free tier spins the backend down after a
+// stretch of inactivity, and cold-starting it back up alone can take
+// 15-50s (see aiAssessmentService.js). ANY request can land right after
+// an idle gap (not just question generation), so the global default
+// needs enough room to survive a cold start, not just a warm request.
+const DEFAULT_TIMEOUT_MS = 30000;
+
 const apiClient = axios.create({
   baseURL: import.meta.env?.VITE_API_BASE_URL || "http://localhost:5000/api",
-  timeout: 10000,
+  timeout: DEFAULT_TIMEOUT_MS,
   headers: {
     "Content-Type": "application/json",
   },

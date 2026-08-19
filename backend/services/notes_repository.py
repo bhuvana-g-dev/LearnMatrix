@@ -21,6 +21,7 @@ direct .get() by ID instead of a filtered query. This is what makes
         codeExample, keyTakeaways: [...], generatedAt
 """
 
+import hashlib
 import re
 
 from firebase_admin import firestore
@@ -33,13 +34,44 @@ SERVER_TIMESTAMP = firestore.SERVER_TIMESTAMP
 def _slugify(value: str) -> str:
     """Lowercase, alphanumeric-and-hyphen only — keeps Firestore doc IDs
     safe regardless of punctuation in a skill/topic name
-    (e.g. "React.js" -> "react-js")."""
-    slug = re.sub(r"[^a-z0-9]+", "-", value.strip().lower())
+    (e.g. "React.js" -> "react-js").
+
+    Punctuation characters themselves are dropped (not just collapsed
+    to "-") before the hyphen-collapse pass, so two titles that differ
+    ONLY in punctuation ("React Hooks!" vs "React Hooks?") no longer
+    slugify to the same doc ID — each distinct punctuation mark is
+    replaced with a short marker derived from its own ordinal instead
+    of disappearing entirely."""
+    value = value.strip().lower()
+    # Replace runs of non-alphanumeric characters with a hyphen PLUS a
+    # short DETERMINISTIC digest of what was actually there (md5, not
+    # Python's built-in hash() — hash() is randomized per-process via
+    # PYTHONHASHSEED, which would make the same topic slugify
+    # differently across requests/workers and silently break the
+    # cache), so distinct punctuation produces distinct slugs instead
+    # of every run of punctuation collapsing to the same "-".
+    def _mark(match: "re.Match") -> str:
+        chunk = match.group(0)
+        if chunk.isspace():
+            return "-"
+        digest = hashlib.md5(chunk.encode("utf-8")).hexdigest()[:3]
+        return f"-x{digest}-"
+
+    slug = re.sub(r"[^a-z0-9]+", _mark, value)
+    slug = re.sub(r"-+", "-", slug)
     return slug.strip("-")
 
 
 def _doc_id(skill: str, topic: str, focus_band: str) -> str:
     return f"{_slugify(skill)}__{_slugify(topic)}__{_slugify(focus_band)}"
+
+
+def notes_cache_key(skill: str, topic: str, focus_band: str) -> str:
+    """Public accessor for this cache's doc ID — used as the
+    generation-lock key by services/learning_content_service.py so the
+    lock and the cache stay keyed identically without duplicating the
+    slugify logic elsewhere."""
+    return _doc_id(skill, topic, focus_band)
 
 
 def _doc_ref(db, skill: str, topic: str, focus_band: str):

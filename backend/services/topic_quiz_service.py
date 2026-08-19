@@ -20,6 +20,7 @@ from services import topic_quiz_bank_cache as quiz_cache
 from services import learner_classifier, revision_scheduler
 from services.focus_band import determine_content_level, identify_weak_area
 from agents.topic_quiz_agent import TopicQuizAgent, TopicQuizGenerationError
+from utils.generation_lock import run_with_lock
 
 
 class TopicQuizError(Exception):
@@ -45,43 +46,54 @@ def get_topic_quiz(uid: str, skill: str, topic: str) -> dict:
     db = get_firestore_client()
 
     cached = quiz_cache.get_cached_quiz(db, uid, skill, topic)
-    if cached is not None:
-        return {
-            "skill": skill, "topic": topic,
-            "questions": cached["questions"],
-            "totalQuestions": len(cached["questions"]),
-            "source": cached["source"],
-        }
 
-    needed = settings.TOPIC_QUIZ_QUESTION_COUNT
+    if cached is None:
+        # Same per-student cache key, so this only ever collapses truly
+        # simultaneous requests for the SAME (uid, skill, topic) — e.g.
+        # a double-click or two tabs — not different students, whose
+        # keys already differ. See utils/generation_lock.py.
+        def _check() -> dict | None:
+            return quiz_cache.get_cached_quiz(db, uid, skill, topic)
 
-    bank_questions = list_active_questions_by_topic(db, skill=skill, topic=topic)[:needed]
-    shortfall = needed - len(bank_questions)
+        def _generate_and_save() -> dict:
+            needed = settings.TOPIC_QUIZ_QUESTION_COUNT
 
-    ai_questions: list[dict] = []
-    if shortfall > 0:
-        try:
-            ai_questions = TopicQuizAgent().run(skill=skill, topic=topic, count_needed=shortfall)
-        except TopicQuizGenerationError as exc:
-            if not bank_questions:
-                # Nothing to fall back to at all — this is a real failure,
-                # not a "smaller quiz than usual" situation. Deliberately
-                # NOT cached — a transient generation failure shouldn't be
-                # remembered as "this topic has no quiz" forever.
-                raise TopicQuizError(str(exc)) from exc
-            # Partial bank coverage is still a usable (if shorter) quiz.
+            bank_questions = list_active_questions_by_topic(db, skill=skill, topic=topic)[:needed]
+            shortfall = needed - len(bank_questions)
 
-    questions = bank_questions + ai_questions
-    source = "bank+ai" if (bank_questions and ai_questions) else ("bank" if bank_questions else "ai")
+            ai_questions: list[dict] = []
+            if shortfall > 0:
+                try:
+                    ai_questions = TopicQuizAgent().run(skill=skill, topic=topic, count_needed=shortfall)
+                except TopicQuizGenerationError as exc:
+                    if not bank_questions:
+                        # Nothing to fall back to at all — this is a real
+                        # failure, not a "smaller quiz than usual"
+                        # situation. Deliberately NOT cached — a transient
+                        # generation failure shouldn't be remembered as
+                        # "this topic has no quiz" forever.
+                        raise TopicQuizError(str(exc)) from exc
+                    # Partial bank coverage is still a usable (if shorter) quiz.
 
-    quiz_cache.save_quiz(db, uid, skill, topic, questions, source)
+            questions = bank_questions + ai_questions
+            source = "bank+ai" if (bank_questions and ai_questions) else ("bank" if bank_questions else "ai")
+
+            quiz_cache.save_quiz(db, uid, skill, topic, questions, source)
+            return {"questions": questions, "source": source}
+
+        cached = run_with_lock(
+            db,
+            lock_key=f"topicquiz__{quiz_cache.quiz_cache_key(uid, skill, topic)}",
+            check_fn=_check,
+            generate_and_save_fn=_generate_and_save,
+        )
 
     return {
         "skill": skill,
         "topic": topic,
-        "questions": questions,
-        "totalQuestions": len(questions),
-        "source": source,
+        "questions": cached["questions"],
+        "totalQuestions": len(cached["questions"]),
+        "source": cached["source"],
     }
 
 

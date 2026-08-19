@@ -23,8 +23,10 @@ gets marked wrong here; that's a bounded, honest failure mode, not a
 crashed evaluation.
 """
 
+import concurrent.futures
 import re
 
+from config.settings import settings
 from utils.gemini_client import generate_json
 
 _TRAILING_PUNCT_RE = re.compile(r"[;.,:\s]+$")
@@ -92,3 +94,64 @@ def is_equivalent(question: str, correct_answer: str, student_answer: str | None
         return _ai_equivalence_check(question, correct_answer, student_answer)
     except Exception:  # noqa: BLE001 — grading must never crash the result
         return False
+
+
+def resolve_batch(items: list[dict]) -> dict[str, bool]:
+    """
+    Grades many FillBlank/CodeCompletion answers at once, for callers
+    (services/evaluation_service.py) that would otherwise call
+    is_equivalent() in a plain sequential loop — a diagnostic assessment
+    with several open-ended misses used to add a sequential Gemini
+    round-trip PER miss to the result's latency.
+
+    Each item: {"key": <TempID>, "question": str, "correct_answer": str,
+    "student_answer": str | None}. Returns {key: is_correct} for every
+    item, in no particular order.
+
+    Two-pass, same tiers as is_equivalent() itself:
+      1. Normalized string match for every item — free, instant, no
+         network call, resolves the vast majority of typed answers.
+      2. Only the still-unresolved items go to Gemini, and now
+         CONCURRENTLY (bounded by settings.AI_GRADING_MAX_PARALLEL)
+         instead of one after another — this is the actual fix, since
+         tier 1 already handles most items with zero calls either way.
+    """
+    results: dict[str, bool] = {}
+    needs_ai: list[dict] = []
+
+    for item in items:
+        key = item["key"]
+        student_answer = item.get("student_answer")
+        correct_answer = item.get("correct_answer", "")
+
+        if not student_answer or not correct_answer:
+            results[key] = False
+            continue
+
+        if _normalized_match(correct_answer, student_answer):
+            results[key] = True
+        else:
+            needs_ai.append(item)
+
+    if not needs_ai:
+        return results
+
+    max_workers = max(1, min(len(needs_ai), settings.AI_GRADING_MAX_PARALLEL))
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+        future_to_key = {
+            executor.submit(
+                _ai_equivalence_check,
+                item.get("question", ""),
+                item["correct_answer"],
+                item["student_answer"],
+            ): item["key"]
+            for item in needs_ai
+        }
+        for future in concurrent.futures.as_completed(future_to_key):
+            key = future_to_key[future]
+            try:
+                results[key] = future.result()
+            except Exception:  # noqa: BLE001 — grading must never crash the result
+                results[key] = False
+
+    return results

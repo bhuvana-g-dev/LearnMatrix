@@ -17,6 +17,12 @@ def _doc_id(skill: str, topic: str) -> str:
     return f"{skill}__{topic}"
 
 
+def lesson_cache_key(skill: str, topic: str) -> str:
+    """Public accessor for this cache's doc ID — used as the
+    generation-lock key by services/lesson_service.py."""
+    return _doc_id(skill, topic)
+
+
 def get_cached_lesson_plan(db, skill: str, topic: str) -> list[dict] | None:
     snap = db.collection(settings.LESSON_PLANS_COLLECTION).document(_doc_id(skill, topic)).get()
     if not snap.exists:

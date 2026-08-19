@@ -36,7 +36,7 @@ grading stays pure/instant as before.
 
 from dataclasses import dataclass, field
 
-from services.answer_equivalence_service import is_equivalent
+from services.answer_equivalence_service import resolve_batch
 
 STRONG_THRESHOLD = 75
 INTERMEDIATE_THRESHOLD = 40
@@ -117,6 +117,15 @@ def evaluate_diagnostic_assessment(
     per_skill: dict[str, dict[str, dict[str, int]]] = {}
     question_results: dict[str, bool] = {}
 
+    # FillBlank/CodeCompletion questions can't be graded with `==` (a
+    # typed answer can be correct without matching CorrectAnswer
+    # byte-for-byte) — those get queued here and resolved together in
+    # ONE batched pass below, instead of one sequential Gemini call per
+    # question inline in this loop (see
+    # services/answer_equivalence_service.resolve_batch() for why that
+    # used to add a sequential round-trip per open-ended miss).
+    open_ended_items: list[dict] = []
+
     for q in questions:
         skill = q["Skill"]
         difficulty = q["Difficulty"]
@@ -131,18 +140,34 @@ def evaluate_diagnostic_assessment(
         question_type = q.get("QuestionType", "MCQ")
         if question_type == "MCQ":
             is_correct = chosen is not None and chosen == q["CorrectAnswer"]
+            question_results[q["TempID"]] = is_correct
+            if is_correct:
+                per_skill[skill][difficulty]["correct"] += 1
         else:
-            # FillBlank / CodeCompletion — a typed answer can be correct
-            # without matching CorrectAnswer byte-for-byte, so this isn't
-            # a plain `==` (see services/answer_equivalence_service.py).
-            is_correct = is_equivalent(
-                question=q.get("Question", ""),
-                correct_answer=q["CorrectAnswer"],
-                student_answer=chosen,
-            )
-        question_results[q["TempID"]] = is_correct
-        if is_correct:
-            per_skill[skill][difficulty]["correct"] += 1
+            open_ended_items.append({
+                "key": q["TempID"],
+                "question": q.get("Question", ""),
+                "correct_answer": q["CorrectAnswer"],
+                "student_answer": chosen,
+                "skill": skill,
+                "difficulty": difficulty,
+            })
+
+    if open_ended_items:
+        batch_results = resolve_batch([
+            {
+                "key": item["key"],
+                "question": item["question"],
+                "correct_answer": item["correct_answer"],
+                "student_answer": item["student_answer"],
+            }
+            for item in open_ended_items
+        ])
+        for item in open_ended_items:
+            is_correct = batch_results.get(item["key"], False)
+            question_results[item["key"]] = is_correct
+            if is_correct:
+                per_skill[item["skill"]][item["difficulty"]]["correct"] += 1
 
     result = EvaluationResult()
     for skill in skill_order:

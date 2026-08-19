@@ -22,6 +22,7 @@ from services import skill_topic_repository
 from services.learning_content_service import get_topic_package, LearningContentError
 from agents.lesson_planner_agent import LessonPlannerAgent, LessonPlanningError
 from models.lesson_model import Lesson
+from utils.generation_lock import run_with_lock
 
 
 class LessonServiceError(Exception):
@@ -51,18 +52,29 @@ def get_lessons(skill: str, topic: str) -> list[dict]:
     if cached is not None:
         return cached
 
-    metadata = _find_topic_metadata(db, skill, topic)
-    try:
-        lessons = LessonPlannerAgent().run(
-            skill=skill, topic=topic,
-            description=metadata.get("Description", ""),
-            difficulty=metadata.get("Difficulty", ""),
-            estimated_minutes=metadata.get("EstimatedMinutes", 0),
-        )
-    except LessonPlanningError as exc:
-        raise LessonServiceError(str(exc)) from exc
+    # Two students reaching the same never-before-planned (skill, topic)
+    # at nearly the same moment would otherwise both fire a Gemini call
+    # here — collapse that into one real generation. See
+    # utils/generation_lock.py.
+    def _generate_and_save() -> list[dict]:
+        metadata = _find_topic_metadata(db, skill, topic)
+        try:
+            lessons = LessonPlannerAgent().run(
+                skill=skill, topic=topic,
+                description=metadata.get("Description", ""),
+                difficulty=metadata.get("Difficulty", ""),
+                estimated_minutes=metadata.get("EstimatedMinutes", 0),
+            )
+        except LessonPlanningError as exc:
+            raise LessonServiceError(str(exc)) from exc
+        return repo.save_lesson_plan(db, skill, topic, lessons)
 
-    return repo.save_lesson_plan(db, skill, topic, lessons)
+    return run_with_lock(
+        db,
+        lock_key=f"lessons__{repo.lesson_cache_key(skill, topic)}",
+        check_fn=lambda: repo.get_cached_lesson_plan(db, skill, topic),
+        generate_and_save_fn=_generate_and_save,
+    )
 
 
 def get_lesson_content(skill: str, topic: str, lesson_title: str, focus_band: str) -> dict:

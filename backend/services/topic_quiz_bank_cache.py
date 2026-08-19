@@ -25,6 +25,7 @@ spaced-repetition re-testing. Keyed by (uid, skill, topic) — NOT
         uid, skill, topic, questions: [...], source, cachedAt
 """
 
+import hashlib
 import re
 
 from firebase_admin import firestore
@@ -35,12 +36,35 @@ SERVER_TIMESTAMP = firestore.SERVER_TIMESTAMP
 
 
 def _slugify(value: str) -> str:
-    slug = re.sub(r"[^a-z0-9]+", "-", value.strip().lower())
+    """Same collision-resistant slugify as services/notes_repository.py
+    (see that module's docstring) — kept identical here rather than
+    imported so this repository has zero dependency on another
+    repository module, matching the existing "one file per collection"
+    convention. Deterministic md5-based marker, NOT Python's hash()
+    (which is randomized per-process and would break cache lookups
+    across workers)."""
+    value = value.strip().lower()
+
+    def _mark(match: "re.Match") -> str:
+        chunk = match.group(0)
+        if chunk.isspace():
+            return "-"
+        digest = hashlib.md5(chunk.encode("utf-8")).hexdigest()[:3]
+        return f"-x{digest}-"
+
+    slug = re.sub(r"[^a-z0-9]+", _mark, value)
+    slug = re.sub(r"-+", "-", slug)
     return slug.strip("-")
 
 
+def quiz_cache_key(uid: str, skill: str, topic: str) -> str:
+    """Public accessor for this cache's doc ID — used as the
+    generation-lock key by services/topic_quiz_service.py."""
+    return f"{uid}__{_slugify(skill)}__{_slugify(topic)}"
+
+
 def _doc_ref(db, uid: str, skill: str, topic: str):
-    doc_id = f"{uid}__{_slugify(skill)}__{_slugify(topic)}"
+    doc_id = quiz_cache_key(uid, skill, topic)
     return db.collection(settings.TOPIC_QUIZ_BANK_CACHE_COLLECTION).document(doc_id)
 
 

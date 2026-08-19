@@ -63,9 +63,10 @@ de-emphasized behind a single clear recommendation.
 
 from firebase.firebase_config import get_firestore_client
 from agents.notes_generation_agent import NotesGenerationAgent, NotesGenerationError
-from services.notes_repository import get_cached_notes, save_notes
+from services.notes_repository import get_cached_notes, save_notes, notes_cache_key
 from services.resource_repository import list_resources
 from services.youtube_service import search_videos, is_configured as youtube_is_configured, YouTubeServiceError
+from utils.generation_lock import run_with_lock
 
 RESOURCE_TYPES = ["video", "documentation", "article", "pdf", "cheatsheet", "practice", "github"]
 
@@ -203,14 +204,28 @@ def get_topic_package(skill: str, topic: str, focus_band: str) -> dict:
     was_cached = notes is not None
 
     if notes is None:
-        agent = NotesGenerationAgent()
-        try:
-            generated = agent.run(skill=skill, topic=topic, focus_band=focus_band)
-        except NotesGenerationError as exc:
-            raise LearningContentError(
-                f"Couldn't generate notes for '{skill} / {topic}' ({focus_band}): {exc}"
-            ) from exc
-        notes = save_notes(db, skill, topic, focus_band, generated)
+        # Two students opening the same never-before-cached (skill,
+        # topic, focusBand) at nearly the same moment would otherwise
+        # both fall through to a Gemini call here — the lock collapses
+        # that into one real generation; the loser waits for/reuses the
+        # winner's saved result instead of duplicating the call. See
+        # utils/generation_lock.py's module docstring.
+        def _generate_and_save() -> dict:
+            agent = NotesGenerationAgent()
+            try:
+                generated = agent.run(skill=skill, topic=topic, focus_band=focus_band)
+            except NotesGenerationError as exc:
+                raise LearningContentError(
+                    f"Couldn't generate notes for '{skill} / {topic}' ({focus_band}): {exc}"
+                ) from exc
+            return save_notes(db, skill, topic, focus_band, generated)
+
+        notes = run_with_lock(
+            db,
+            lock_key=f"notes__{notes_cache_key(skill, topic, focus_band)}",
+            check_fn=lambda: get_cached_notes(db, skill, topic, focus_band),
+            generate_and_save_fn=_generate_and_save,
+        )
 
     resources_by_type = _resolve_resources_by_type(db, skill, topic, focus_band)
     primary_video, alternate_videos = _select_primary_and_alternates(resources_by_type["video"], focus_band)

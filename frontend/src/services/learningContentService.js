@@ -6,12 +6,13 @@ import apiClient from "../api/axiosClient";
  * skill/topic/focusBand. Returns AI-generated (cached) notes plus any
  * admin-verified curated resources.
  *
- * NOTE on scope: the roadmap currently tracks one focusBand per SKILL,
- * not per finer-grained topic within it — so for now `topic` is passed
- * as the same string as `skill` (one learning session per roadmap
- * week). Splitting a skill into multiple sub-topics is a real future
- * step (would need the Roadmap Agent to output a topic list per skill),
- * not built yet — this is a known, deliberate simplification, not a bug.
+ * NOTE on scope: `skill` and `topic` are independent by now — topics
+ * come from the compressed syllabus / per-topic quiz progress
+ * (utils/buildCourseNavigator.js), and lessons pass a composite
+ * "{topic} — {lessonTitle}" key here as `topic` (see
+ * lessonService.compositeTopicKey()). Earlier revisions of this app
+ * only tracked one focusBand per skill and passed topic === skill;
+ * that's no longer the case anywhere this function is called from.
  *
  * Uses a longer timeout on first load (same reasoning as
  * aiAssessmentService.js) — a cache MISS means a live Gemini/Groq call

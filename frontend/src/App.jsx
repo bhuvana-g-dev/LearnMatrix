@@ -298,6 +298,14 @@ setLearningSession({ skill: entry.skill, topic, focusBand: entry.focusBand || "a
           // state too, so RoleSelectionScreen doesn't show the just-quit
           // role as still "Selected", then send them to Role Selection.
           careerPath.selectRole(null);
+          // workspaceContext still holds the OLD compressedSyllabus (the
+          // Verified/Current/Locked tree) and learningSession still
+          // points at a topic from the quit role — without clearing
+          // these, Course Workspace/Learning Session keep showing pages
+          // as Locked using stale pre-quit data even after the backend
+          // roadmap is gone.
+          setWorkspaceContext(null);
+          setLearningSession(null);
           setActiveKey("role");
         }}
       />

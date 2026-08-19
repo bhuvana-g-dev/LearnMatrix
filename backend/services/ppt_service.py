@@ -262,6 +262,24 @@ def _set_fill(shape, color):
     shape.line.fill.background()
 
 
+def _distribute_fill(n: int, avail_h_in: float, gap_in: float, min_item: float, max_item: float) -> tuple[float, float]:
+    """Shared fix for the "few items -> big blank strip at the bottom
+    of the slide" problem across list/bullet/comparison layouts. Given
+    n stacked items and the available vertical space, grows each
+    item's height to fill that space (clamped to [min_item, max_item]
+    so a 1-2 item slide doesn't get one absurdly tall card), and
+    returns a top offset so any leftover space is centered rather than
+    left as dead space below the last item. Returns (item_height_in,
+    top_offset_in), both in inches."""
+    if n <= 0:
+        return min_item, 0.0
+    ideal = (avail_h_in - gap_in * (n - 1)) / n
+    item_h_in = max(min_item, min(ideal, max_item))
+    content_h_in = item_h_in * n + gap_in * (n - 1)
+    offset_in = max(0.0, (avail_h_in - content_h_in) / 2)
+    return item_h_in, offset_in
+
+
 def _add_title_slide(prs: Presentation, layout, title: str, subtitle: str) -> None:
     slide = prs.slides.add_slide(layout)
 
@@ -379,21 +397,45 @@ def _add_text_slide(prs: Presentation, layout, heading: str, body: str, index: i
 
     has_sidebar = bool(image_bytes) or bool(subpoints)
     text_width = Inches(6.6) if has_sidebar else Inches(11.1)
-    body_box = slide.shapes.add_textbox(Inches(1.55), Inches(1.7), text_width, Inches(5.35))
+    content_h_in = 5.35
+
+    sentences = [s.strip() for s in body.replace("\n", " ").split(". ") if s.strip()]
+    if not sentences:
+        sentences = [body[:2000]]
+
+    # No sidebar (no image/subpoints) means the paragraph is the ONLY
+    # thing on the slide, so a short section (a demoted-to-text
+    # section can legitimately be just 1-2 sentences — see
+    # agents/slide_deck_agent.py) used to leave a big blank strip
+    # below it. Scale font size UP and center the block vertically so
+    # a short paragraph still reads as an intentional, full slide
+    # instead of a stub sitting in the top-left corner.
+    if has_sidebar:
+        body_font_size = Pt(16) if len(sentences) > 5 else Pt(18)
+        body_top_in = 1.7
+    else:
+        if len(sentences) <= 3:
+            body_font_size = Pt(30)
+        elif len(sentences) <= 5:
+            body_font_size = Pt(22)
+        else:
+            body_font_size = Pt(18)
+        # Rough line-count estimate to vertically center the block —
+        # doesn't need to be exact, just close enough that a short
+        # paragraph isn't glued to the top of an otherwise empty slide.
+        chars_per_line = max(20, int(text_width / 914400 * 96 / (body_font_size.pt * 0.55)))
+        total_chars = sum(len(s) for s in sentences)
+        est_lines = max(len(sentences), -(-total_chars // chars_per_line))
+        est_h_in = est_lines * (body_font_size.pt / 72) * 1.7
+        body_top_in = 1.7 + max(0, (content_h_in - est_h_in) / 2)
+
+    body_box = slide.shapes.add_textbox(Inches(1.55), Inches(body_top_in), text_width, Inches(content_h_in))
     text_frame = body_box.text_frame
     text_frame.word_wrap = True
 
     # A single dense paragraph reads poorly on a slide, so split on
     # sentence boundaries into shorter paragraphs rather than dumping
-    # the whole block into one text run. Full-depth "text" sections run
-    # 5-8 sentences (see agents/slide_deck_agent.py), so the font here
-    # is a touch smaller than a thin-summary deck would need, to keep
-    # the whole paragraph readable on one slide rather than overflowing.
-    sentences = [s.strip() for s in body.replace("\n", " ").split(". ") if s.strip()]
-    if not sentences:
-        sentences = [body[:2000]]
-
-    body_font_size = Pt(16) if len(sentences) > 5 else Pt(18)
+    # the whole block into one text run.
     first = True
     for sentence in sentences[:26]:  # cap paragraphs per slide — very long sources shouldn't produce one giant slide
         text = sentence + ("." if not sentence.endswith(".") else "")
@@ -525,8 +567,14 @@ def _add_bullet_slide(prs: Presentation, layout, heading: str, bullets: list, in
     slide = prs.slides.add_slide(layout)
     _add_slide_chrome(prs, slide, heading, index, accent)
 
-    top = Inches(1.85)
-    card_h = Inches(0.72)
+    # Card height scales to fill down to the bottom margin (see
+    # _distribute_fill) — a deck with only 4-5 takeaways used to leave
+    # a tall blank gap under the last card.
+    top_in, gap_in = 1.85, 0.18
+    card_h_in, offset_in = _distribute_fill(len(bullets), 7.5 - top_in - 0.5, gap_in, min_item=0.72, max_item=1.35)
+    top = Inches(top_in + offset_in)
+    card_h = Inches(card_h_in)
+    icon_size = Inches(0.4) if card_h_in <= 0.9 else Inches(0.5)
     for b in bullets:
         text, icon = _item_text_icon(b)
         card = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, Inches(1.55), top, Inches(10.9), card_h)
@@ -534,7 +582,7 @@ def _add_bullet_slide(prs: Presentation, layout, heading: str, bullets: list, in
         _set_fill(card, CREAM)
         card.shadow.inherit = False
 
-        _icon_badge(slide, icon, Inches(1.75), top + Inches(0.16), Inches(0.4), accent)
+        _icon_badge(slide, icon, Inches(1.75), top + (card_h - icon_size) / 2, icon_size, accent)
 
         text_box = slide.shapes.add_textbox(Inches(2.35), top + Inches(0.06), Inches(9.9), card_h - Inches(0.1))
         tf = text_box.text_frame
@@ -542,33 +590,43 @@ def _add_bullet_slide(prs: Presentation, layout, heading: str, bullets: list, in
         tf.vertical_anchor = MSO_ANCHOR.MIDDLE
         tf.text = text
         run = tf.paragraphs[0].runs[0]
-        run.font.size = Pt(16)
+        run.font.size = Pt(16) if card_h_in <= 0.9 else Pt(18)
         run.font.bold = True
         run.font.color.rgb = NAVY
         run.font.name = "Arial"
-        top += card_h + Inches(0.18)
+        top += card_h + Inches(gap_in)
 
 
 def _add_list_slide(prs: Presentation, layout, heading: str, items: list, index: int, accent) -> None:
     """Features/steps/examples — a grid of colored icon cards instead
     of a plain bulleted paragraph, e.g. for a "Key Features" section.
     Each item's icon (see agents/slide_deck_agent.py) is picked per its
-    own meaning rather than a generic sequence number."""
+    own meaning rather than a generic sequence number.
+
+    Card height/row-gap SCALE to fill the available vertical space down
+    to the bottom margin (see _distribute_fill) instead of a fixed
+    1.05in — a 3-4 item list used to leave a big blank strip at the
+    bottom of the slide; now the grid grows to occupy the full content
+    area (with any small leftover centered) regardless of item count."""
     slide = prs.slides.add_slide(layout)
     _add_slide_chrome(prs, slide, heading, index, accent)
 
     cols = 2 if len(items) <= 4 else 3
-    gap = Inches(0.3)
-    area_left, area_top = Inches(1.55), Inches(1.85)
+    gap_in = 0.3
+    area_left, area_top_in = Inches(1.55), 1.85
     area_w = prs.slide_width - area_left - Inches(0.6)
-    card_w = (area_w - gap * (cols - 1)) / cols
-    card_h = Inches(1.05)
+    card_w = (area_w - Inches(gap_in) * (cols - 1)) / cols
+    rows = -(-len(items) // cols)  # ceil
+    avail_h_in = 7.5 - area_top_in - 0.5  # down to bottom margin
+    card_h_in, offset_in = _distribute_fill(rows, avail_h_in, gap_in, min_item=1.05, max_item=2.1)
+    card_h = Inches(card_h_in)
+    area_top = Inches(area_top_in + offset_in)
 
     for i, item in enumerate(items):
         text, icon = _item_text_icon(item)
         r, c = divmod(i, cols)
-        x = area_left + c * (card_w + gap)
-        y = area_top + r * (card_h + gap)
+        x = area_left + c * (card_w + Inches(gap_in))
+        y = area_top + r * (card_h + Inches(gap_in))
 
         card = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, x, y, card_w, card_h)
         card.adjustments[0] = 0.12
@@ -600,10 +658,16 @@ def _add_process_slide(prs: Presentation, layout, heading: str, steps: list, ind
 
     n = len(steps)
     area_left = Inches(1.55)
-    area_top = Inches(2.7)
     area_w = prs.slide_width - area_left - Inches(0.6)
     arrow_w = Inches(0.45)
-    chip_h = Inches(1.6)
+    # Chip height GROWS for a short sequence (2-3 steps), and the whole
+    # row is centered in the available vertical space, instead of a
+    # fixed 1.6in row sitting near the top with a big blank stretch
+    # below it — a 2-step process used to look like a stub.
+    content_top_in, content_bottom_in = 1.7, 7.0
+    chip_h_in = 1.6 if n >= 5 else (2.7 if n <= 2 else 2.1)
+    chip_h = Inches(chip_h_in)
+    area_top = Inches(content_top_in + 0.3 + max(0, (content_bottom_in - content_top_in - 0.3 - chip_h_in) / 2))
     chip_w = (area_w - arrow_w * (n - 1)) / n
 
     x = area_left
@@ -677,23 +741,32 @@ def _add_comparison_slide(prs: Presentation, layout, heading: str, left: dict, r
         label_run.font.bold = True
         label_run.font.color.rgb = WHITE if color != GOLD else NAVY
 
-        item_top = col_top + Inches(0.85)
-        for item in panel.get("items", []):
+        # Item spacing scales to spread the list across the FULL column
+        # height (see _distribute_fill) — a 2-3 item side used to leave
+        # a big blank stretch under the last item while the panel's
+        # colored background kept going.
+        items_list = panel.get("items", [])
+        label_h_in = 0.85
+        avail_h_in = (col_h / 914400) - label_h_in - 0.3  # EMU -> inches, minus bottom padding
+        item_h_in, offset_in = _distribute_fill(len(items_list), avail_h_in, 0.0, min_item=0.5, max_item=1.0)
+        item_top = col_top + Inches(label_h_in + offset_in)
+        for item in items_list:
             marker = slide.shapes.add_shape(MSO_SHAPE.OVAL, x + Inches(0.3), item_top + Inches(0.08), Inches(0.12), Inches(0.12))
             marker.fill.solid()
             marker.fill.fore_color.rgb = WHITE if color != GOLD else NAVY
             marker.line.fill.background()
             marker.shadow.inherit = False
 
-            item_box = slide.shapes.add_textbox(x + Inches(0.58), item_top - Inches(0.08), col_w - Inches(0.9), Inches(0.6))
+            item_box = slide.shapes.add_textbox(x + Inches(0.58), item_top - Inches(0.08), col_w - Inches(0.9), Inches(item_h_in))
             item_tf = item_box.text_frame
             item_tf.word_wrap = True
+            item_tf.vertical_anchor = MSO_ANCHOR.TOP
             item_tf.text = item
             item_run = item_tf.paragraphs[0].runs[0]
             item_run.font.size = Pt(14)
             item_run.font.color.rgb = WHITE if color != GOLD else NAVY
             item_run.font.name = "Arial"
-            item_top += Inches(0.62)
+            item_top += Inches(item_h_in)
 
 
 def _set_transparency(shape, alpha_pct: int) -> None:

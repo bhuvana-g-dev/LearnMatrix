@@ -221,7 +221,14 @@ class Settings:
     ]
 
     GROQ_API_KEY: str = os.getenv("GROQ_API_KEY", "")
-    GROQ_MODEL: str = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+    # BUG FIX (found via a Render log the user shared, Aug 2026):
+    # Groq deprecated llama-3.3-70b-versatile on June 17, 2026 —
+    # requests to it now fail with 404 "model_not_found", which was
+    # silently breaking the Groq fallback provider whenever Gemini's
+    # free-tier quota ran out. openai/gpt-oss-120b is Groq's official
+    # recommended replacement. Override via GROQ_MODEL if this changes
+    # again — see https://console.groq.com/docs/deprecations.
+    GROQ_MODEL: str = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
 
     CEREBRAS_API_KEY: str = os.getenv("CEREBRAS_API_KEY", "")
     CEREBRAS_MODEL: str = os.getenv("CEREBRAS_MODEL", "llama-3.3-70b")
@@ -258,15 +265,6 @@ class Settings:
     # simultaneous Gemini requests at once — that would trade "server
     # timeout" for "rate-limited into the ground", which isn't a win.
     AI_ASSESSMENT_MAX_PARALLEL_SKILLS: int = int(os.getenv("AI_ASSESSMENT_MAX_PARALLEL_SKILLS", 3))
-    # How many services/answer_equivalence_service.py AI-fallback grading
-    # calls run CONCURRENTLY inside one evaluate_diagnostic_assessment()
-    # call (services/evaluation_service.py) — an assessment with several
-    # FillBlank/CodeCompletion misses used to grade them one at a time,
-    # adding a sequential Gemini round-trip per miss to the result's
-    # latency. Same capped-concurrency reasoning as
-    # AI_ASSESSMENT_MAX_PARALLEL_SKILLS above — overlap the calls instead
-    # of serializing them, without firing an unbounded burst.
-    AI_GRADING_MAX_PARALLEL: int = int(os.getenv("AI_GRADING_MAX_PARALLEL", 5))
     VALID_DIFFICULTIES: list[str] = ["Easy", "Medium", "Hard"]
     # "FillBlank": plain typed-answer question, works for any skill.
     # "CodeCompletion": a code snippet with a blank to complete — only

@@ -38,6 +38,7 @@ export default function CareerStatusScreen({
 }) {
   const [checking, setChecking] = useState(true);
   const [hasAssessment, setHasAssessment] = useState(false);
+  const [checkError, setCheckError] = useState(false);
   const [roleTitle, setRoleTitle] = useState("");
   const [overallScore, setOverallScore] = useState(null);
   const [roadmap, setRoadmap] = useState(null);
@@ -49,6 +50,7 @@ export default function CareerStatusScreen({
       return;
     }
     setChecking(true);
+    setCheckError(false);
     try {
       const [assessment, savedRoadmap, dates] = await Promise.all([
         loadSavedAssessmentResult(uid),
@@ -65,7 +67,13 @@ export default function CareerStatusScreen({
         setHasAssessment(false);
       }
     } catch {
+      // Do NOT treat a failed check as "this student never took the
+      // assessment" — that silently sent students who'd already started
+      // learning back through Role Selection -> Skill Selection from
+      // scratch any time this request was slow (e.g. Render free-tier
+      // cold start) or briefly failed. Surface a retry instead.
       setHasAssessment(false);
+      setCheckError(true);
     } finally {
       setChecking(false);
     }
@@ -79,6 +87,23 @@ export default function CareerStatusScreen({
     return (
       <div className="px-4 sm:px-8 pt-16 flex justify-center">
         <Loader2 size={28} className="animate-spin" style={{ color: COLORS.purple }} />
+      </div>
+    );
+  }
+
+  if (checkError) {
+    return (
+      <div className="px-4 sm:px-8 pt-16 flex flex-col items-center gap-3 text-center">
+        <p className="text-sm" style={{ color: COLORS.textMid }}>
+          Couldn't check your progress — the server may still be starting up.
+        </p>
+        <button
+          onClick={check}
+          className="text-sm font-semibold px-4 py-2"
+          style={{ borderRadius: 9999, background: COLORS.purple, color: "#fff", border: "none", cursor: "pointer" }}
+        >
+          Try again
+        </button>
       </div>
     );
   }

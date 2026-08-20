@@ -473,8 +473,17 @@ export default function CourseWorkspaceScreen({ roadmap, compressedSyllabus, ini
             // Refresh so this topic's (and any other's) focus band
             // reflects the attempt just submitted — the content pane
             // re-fetches automatically since focusBand is one of its
-            // fetch dependencies (see TopicContentPane.jsx).
+            // fetch dependencies (see TopicContentPane.jsx). Also what
+            // flips this topic's sidebar status to "Verified" (tick),
+            // see buildCourseNavigator.js.
             fetchTopicProgress();
+
+            // Auto-advance to the next topic in the flat list, if
+            // there is one — same "open a topic" behavior as clicking
+            // it in the sidebar (openTopic), landing on its Lessons view.
+            if (activeIndex < flatTopics.length - 1) {
+              openTopic(activeIndex + 1);
+            }
           }}
         />
       )}

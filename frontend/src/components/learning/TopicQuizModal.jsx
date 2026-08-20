@@ -79,7 +79,7 @@ const WEAK_AREA_LABELS = {
  *
  * State machine: loading -> ready (in-progress) -> submitting -> result | error
  */
-export default function TopicQuizModal({ skill, topic, uid, onComplete, onClose }) {
+export default function TopicQuizModal({ skill, topic, uid, focusBand, onComplete, onClose }) {
   const [state, setState] = useState("loading");
   const [errorMessage, setErrorMessage] = useState("");
   const [questions, setQuestions] = useState([]);
@@ -94,7 +94,7 @@ export default function TopicQuizModal({ skill, topic, uid, onComplete, onClose 
     setCurrentIndex(0);
     setAnswers({});
     try {
-      const quiz = await getTopicQuiz(skill, topic, uid);
+      const quiz = await getTopicQuiz(skill, topic, focusBand);
       setQuestions(quiz.questions);
       startedAtRef.current = Date.now();
       setState("ready");
@@ -102,7 +102,7 @@ export default function TopicQuizModal({ skill, topic, uid, onComplete, onClose 
       setErrorMessage(err.message || "Something went wrong loading the quiz.");
       setState("error");
     }
-  }, [skill, topic]);
+  }, [skill, topic, focusBand]);
 
   useEffect(() => {
     fetchQuiz();

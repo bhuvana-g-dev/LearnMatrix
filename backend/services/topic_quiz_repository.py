@@ -143,6 +143,8 @@ def record_attempt(
     focus_band: str,
     weak_area: str | None,
     next_review_date: str,
+    questions: list[dict] | None = None,
+    answers: dict[str, str] | None = None,
 ) -> dict:
     """
     Writes TWO things in one call:
@@ -158,6 +160,16 @@ def record_attempt(
     which blends with history), since they should reflect what THIS
     topic looks like right now, not an average of an old shaky attempt
     and a since-improved one.
+
+    questions/answers: the exact quiz + the learner's picks for THIS
+    attempt, persisted onto the progress doc as LastQuestions/LastAnswers
+    (overwritten every attempt, latest only — same "current state, not
+    history" split as the rest of this doc). This is what lets
+    services/topic_quiz_service.py::get_topic_quiz_attempt() serve a
+    review of what the learner actually saw and picked, WITHOUT calling
+    get_topic_quiz() again — opening "Test" after a topic is already
+    complete must never trigger a new quiz (bank/AI or cache read), it
+    must only ever show back this saved attempt.
 
     Returns the updated progress dict.
     """
@@ -193,11 +205,15 @@ def record_attempt(
         "Topic": topic,
         "AttemptCount": attempt_number,
         "LastScorePercent": score_percent,
+        "LastCorrect": correct,
+        "LastTotal": total,
         "AverageScorePercent": new_avg,
         "Classification": classification,
         "FocusBand": focus_band,
         "WeakArea": weak_area,
         "NextReviewDate": next_review_date,
+        "LastQuestions": questions or [],
+        "LastAnswers": answers or {},
         "LastAttemptAt": SERVER_TIMESTAMP,
         "UpdatedAt": SERVER_TIMESTAMP,
     }

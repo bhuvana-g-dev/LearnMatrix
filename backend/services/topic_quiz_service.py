@@ -161,6 +161,7 @@ def submit_topic_quiz(
         score_percent=score_percent, correct=correct, total=total,
         time_taken_seconds=time_taken_seconds, classification=classification,
         focus_band=focus_band, weak_area=weak_area, next_review_date=next_review_date,
+        questions=questions, answers=answers,
     )
 
     # NOTE: the quiz question cache (topic_quiz_bank_cache.py) is
@@ -184,6 +185,42 @@ def submit_topic_quiz(
         "nextReviewDate": next_review_date,
         "attemptNumber": progress["AttemptNumber"],
         "averageScorePercent": progress["AverageScorePercent"],
+    }
+
+
+def get_topic_quiz_attempt(uid: str, skill: str, topic: str) -> dict | None:
+    """
+    Review data for the learner's MOST RECENT attempt at this topic's
+    quiz, or None if they've never taken it (first-time entry point —
+    caller should fall back to get_topic_quiz() + the normal take-quiz
+    flow in that case).
+
+    This is the ONLY thing the "Test" entry point should call once a
+    topic already has a recorded attempt — it never touches
+    topic_quiz_bank_cache.py or TopicQuizAgent, so re-opening a
+    completed topic's test (including on a revision retake) can never
+    trigger a new quiz. It just plays back exactly what was asked and
+    exactly what the learner picked, alongside that attempt's already-
+    computed score/classification/next-review-date.
+    """
+    db = get_firestore_client()
+    progress = repo.get_progress(db, uid, skill, topic)
+    if not progress or not progress.get("AttemptCount"):
+        return None
+
+    return {
+        "questions": progress.get("LastQuestions", []),
+        "answers": progress.get("LastAnswers", {}),
+        "scorePercent": progress.get("LastScorePercent"),
+        "correct": progress.get("LastCorrect"),
+        "total": progress.get("LastTotal"),
+        "classification": progress.get("Classification"),
+        "masteryPercent": progress.get("LastScorePercent"),
+        "focusBand": progress.get("FocusBand"),
+        "weakArea": progress.get("WeakArea"),
+        "nextReviewDate": progress.get("NextReviewDate"),
+        "attemptNumber": progress.get("AttemptCount"),
+        "averageScorePercent": progress.get("AverageScorePercent"),
     }
 
 

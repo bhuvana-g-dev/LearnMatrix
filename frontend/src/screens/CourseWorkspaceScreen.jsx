@@ -100,7 +100,7 @@ export default function CourseWorkspaceScreen({ roadmap, compressedSyllabus, ini
   const [viewMode, setViewMode] = useState("lessons"); // "list" | "lessons" | "content"
   const [expandedSkills, setExpandedSkills] = useState(() => new Set(active ? [active.skill] : []));
   const [sidebarExpandedModule, setSidebarExpandedModule] = useState(() => active?.module ?? modules[0]?.name ?? null);
-  const [quizTarget, setQuizTarget] = useState(null); // { skill, topic } | null — Coursera-style "Test" item, opened from the list
+  const [quizTarget, setQuizTarget] = useState(null); // { skill, topic, focusBand } | null — Coursera-style "Test" item, opened from the list
 
   // Lessons layer: Topic -> ordered list of bite-sized Lessons -> content
   // per lesson. Owned here (not inside LessonListPane) because the
@@ -330,7 +330,7 @@ export default function CourseWorkspaceScreen({ roadmap, compressedSyllabus, ini
                 topic={compositeTopicKey(active.topic, lessons[activeLessonIndex].Title)}
                 focusBand={active.focusBand}
                 topicStatus={active.topicStatus}
-                onTakeTest={() => setQuizTarget({ skill: active.skill, topic: active.topic })}
+                onTakeTest={() => setQuizTarget({ skill: active.skill, topic: active.topic, focusBand: active.focusBand })}
                 onNext={() =>
                   activeLessonIndex < lessons.length - 1
                     ? setActiveLessonIndex((i) => i + 1)
@@ -433,7 +433,7 @@ export default function CourseWorkspaceScreen({ roadmap, compressedSyllabus, ini
 
                                   {/* Item 2 — Test */}
                                   <div
-                                    onClick={() => setQuizTarget({ skill: t.skill, topic: t.topic })}
+                                    onClick={() => setQuizTarget({ skill: t.skill, topic: t.topic, focusBand: t.focusBand })}
                                     className="flex items-center gap-3 pl-11 pr-5 py-2.5 pb-3.5 cursor-pointer"
                                   >
                                     <ClipboardCheck size={15} style={{ color: COLORS.purple, flexShrink: 0 }} />
@@ -465,6 +465,7 @@ export default function CourseWorkspaceScreen({ roadmap, compressedSyllabus, ini
         <TopicQuizModal
           skill={quizTarget.skill}
           topic={quizTarget.topic}
+          focusBand={quizTarget.focusBand}
           uid={uid}
           onClose={() => setQuizTarget(null)}
           onComplete={() => {

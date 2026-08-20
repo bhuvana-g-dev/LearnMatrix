@@ -110,6 +110,11 @@ export const ENDPOINTS = {
     // Fired when a learner hits "Next" on a topic in CourseWorkspaceScreen.
     GET_QUIZ: (skill, topic) =>
       `/topic-quiz/${encodeURIComponent(skill)}/${encodeURIComponent(topic)}`, // GET
+    // Review data for the learner's most recent attempt (or null if none yet).
+    // Always call this BEFORE GET_QUIZ — a prior attempt means show the
+    // review, never fetch/generate a new quiz.
+    GET_ATTEMPT: (skill, topic) =>
+      `/topic-quiz/${encodeURIComponent(skill)}/${encodeURIComponent(topic)}/attempt`, // GET ?uid=
     SUBMIT: (skill, topic) =>
       `/topic-quiz/${encodeURIComponent(skill)}/${encodeURIComponent(topic)}/submit`, // POST {uid, questions, answers, timeTakenSeconds}
     PROGRESS: (uid) => `/topic-quiz/${uid}/progress`, // GET -> [ topic_quiz_progress docs, each with FocusBand ]

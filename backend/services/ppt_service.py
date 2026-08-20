@@ -44,20 +44,107 @@ from pptx.oxml.ns import qn
 from firebase.firebase_config import get_firestore_client
 from services import chat_repository, embedding_service, notes_repository
 
-# --- LearnMatrix brand palette (mirrors frontend/src/constants/theme.js) ---
-NAVY = RGBColor(0x0D, 0x1B, 0x3D)
-NAVY_MID = RGBColor(0x3E, 0x4A, 0x66)
-GOLD = RGBColor(0xD4, 0xA0, 0x17)
-GOLD_LIGHT = RGBColor(0xE8, 0xB9, 0x3D)
-CREAM = RGBColor(0xFB, 0xF3, 0xE1)
+# --- Gamma-style theme palettes ---
+# Multiple curated palettes instead of one fixed brand color, per an
+# explicit request ("different users have different choice" of look).
+# THEMES[0] ("Midnight Gold") is the original LearnMatrix brand palette
+# (mirrors frontend/src/constants/theme.js) — every other entry is a
+# deliberate departure from that brand for visual variety, so a deck
+# picks a full palette, not just an accent swap. Each theme provides
+# the same 5 roles so the rest of this file can stay palette-agnostic:
+#   navy       - dark primary (slide headings, one accent slot, dark card fill)
+#   navy_mid   - a lighter tint of navy, used for BODY TEXT (never a fill)
+#   gold       - a mid-tone accent saturated enough for WHITE text on top
+#   gold_light - a paler tint of that same accent that needs DARK text on top
+#   cream      - pale tint used for light card backgrounds
+# White stays constant across all themes (card interiors, chip numbers).
+THEMES = [
+    {  # 0 Midnight Gold — original brand palette, unchanged default look
+        "name": "Midnight Gold",
+        "navy": (0x0D, 0x1B, 0x3D), "navy_mid": (0x3E, 0x4A, 0x66),
+        "gold": (0xD4, 0xA0, 0x17), "gold_light": (0xE8, 0xB9, 0x3D),
+        "cream": (0xFB, 0xF3, 0xE1),
+        "heading_font": "Segoe UI Semibold", "body_font": "Segoe UI",
+    },
+    {  # 1 Ocean Teal
+        "name": "Ocean Teal",
+        "navy": (0x0B, 0x3D, 0x42), "navy_mid": (0x2E, 0x5A, 0x5E),
+        "gold": (0x2F, 0xA4, 0xA9), "gold_light": (0x7F, 0xD8, 0xCE),
+        "cream": (0xEA, 0xF7, 0xF5),
+        "heading_font": "Segoe UI Semibold", "body_font": "Segoe UI",
+    },
+    {  # 2 Sunset Coral
+        "name": "Sunset Coral",
+        "navy": (0x3B, 0x1F, 0x2B), "navy_mid": (0x6B, 0x3F, 0x45),
+        "gold": (0xE8, 0x60, 0x4C), "gold_light": (0xF4, 0xA2, 0x61),
+        "cream": (0xFD, 0xEC, 0xE3),
+        "heading_font": "Segoe UI Semibold", "body_font": "Segoe UI",
+    },
+    {  # 3 Berry Violet
+        "name": "Berry Violet",
+        "navy": (0x2A, 0x1B, 0x3D), "navy_mid": (0x4A, 0x38, 0x62),
+        "gold": (0x8E, 0x44, 0xAD), "gold_light": (0xC9, 0x8F, 0xDE),
+        "cream": (0xF5, 0xEE, 0xFB),
+        "heading_font": "Segoe UI Semibold", "body_font": "Segoe UI",
+    },
+    {  # 4 Forest Sage
+        "name": "Forest Sage",
+        "navy": (0x1E, 0x3B, 0x2C), "navy_mid": (0x39, 0x5C, 0x46),
+        "gold": (0x4C, 0x9A, 0x6B), "gold_light": (0xA8, 0xD5, 0xA2),
+        "cream": (0xEF, 0xF7, 0xEE),
+        "heading_font": "Segoe UI Semibold", "body_font": "Segoe UI",
+    },
+    {  # 5 Slate Blue
+        "name": "Slate Blue",
+        "navy": (0x1C, 0x2B, 0x3A), "navy_mid": (0x3C, 0x56, 0x70),
+        "gold": (0x3E, 0x7C, 0xB1), "gold_light": (0x9C, 0xC6, 0xE8),
+        "cream": (0xEA, 0xF3, 0xFA),
+        "heading_font": "Segoe UI Semibold", "body_font": "Segoe UI",
+    },
+]
+
+NAVY = NAVY_MID = GOLD = GOLD_LIGHT = CREAM = None  # set by _apply_theme() below
+HEADING_FONT = BODY_FONT = "Segoe UI"
 WHITE = RGBColor(0xFF, 0xFF, 0xFF)
 
 SLIDE_W = Inches(13.333)
 SLIDE_H = Inches(7.5)
 
-# Alternating accent color per content slide, cycling through the palette
-# so a long deck doesn't look monotone.
-ACCENT_CYCLE = [GOLD, NAVY, GOLD_LIGHT]
+ACCENT_CYCLE: list = []  # set by _apply_theme() below, alongside NAVY/GOLD/etc.
+
+
+def _apply_theme(theme: dict) -> None:
+    """Rebinds this module's NAVY/GOLD/CREAM/etc. names (and the fonts
+    every _add_*_slide function already references by these names) to
+    one palette from THEMES. Called once per build, before any slide is
+    drawn, from build_pptx_from_deck_content() — every drawing function
+    below reads these as module globals at call time, so nothing else
+    in this file needs to change to support multiple themes.
+
+    Not thread-safe against two concurrent generate calls in the SAME
+    process — fine here since this service runs under a single sync
+    Gunicorn worker (WEB_CONCURRENCY=1), so requests are handled one at
+    a time; revisit if that deployment ever changes to multiple threads
+    per worker."""
+    global NAVY, NAVY_MID, GOLD, GOLD_LIGHT, CREAM, ACCENT_CYCLE, HEADING_FONT, BODY_FONT
+    NAVY = RGBColor(*theme["navy"])
+    NAVY_MID = RGBColor(*theme["navy_mid"])
+    GOLD = RGBColor(*theme["gold"])
+    GOLD_LIGHT = RGBColor(*theme["gold_light"])
+    CREAM = RGBColor(*theme["cream"])
+    HEADING_FONT = theme["heading_font"]
+    BODY_FONT = theme["body_font"]
+    ACCENT_CYCLE = [GOLD, NAVY, GOLD_LIGHT]
+
+
+def _pick_theme(title: str) -> dict:
+    """Deterministic per-topic pick (same title -> same look on
+    regeneration) instead of a random one each time — implemented as a
+    stable hash over the title so it doesn't depend on Python's
+    randomized string hashing (hash() varies per-process)."""
+    import hashlib
+    digest = hashlib.sha256((title or "").encode("utf-8")).digest()
+    return THEMES[digest[0] % len(THEMES)]
 
 
 class PptServiceError(Exception):
@@ -218,6 +305,8 @@ def build_pptx_from_deck_content(notes: dict, subtitle: str) -> BytesIO:
     already-generated deck (e.g. from the AI slide-deck preview the
     student already looked at) and just needs it rendered — no second
     LLM call, so the downloaded file always matches what was previewed."""
+    _apply_theme(_pick_theme(notes.get("title") or ""))
+
     prs = Presentation()
     prs.slide_width = SLIDE_W
     prs.slide_height = SLIDE_H
@@ -314,7 +403,7 @@ def _add_title_slide(prs: Presentation, layout, title: str, subtitle: str) -> No
     brand_run.font.size = Pt(15)
     brand_run.font.bold = True
     brand_run.font.color.rgb = GOLD_LIGHT
-    brand_run.font.name = "Arial"
+    brand_run.font.name = HEADING_FONT
 
     title_box = slide.shapes.add_textbox(Inches(0.65), Inches(2.9), Inches(9.5), Inches(2.4))
     title_tf = title_box.text_frame
@@ -324,7 +413,7 @@ def _add_title_slide(prs: Presentation, layout, title: str, subtitle: str) -> No
     title_run.font.size = Pt(40)
     title_run.font.bold = True
     title_run.font.color.rgb = WHITE
-    title_run.font.name = "Arial"
+    title_run.font.name = HEADING_FONT
 
     # BUG FIX: the subtitle box used to sit at a FIXED y=4.9in
     # regardless of how many lines the title wrapped to. A long title
@@ -346,7 +435,7 @@ def _add_title_slide(prs: Presentation, layout, title: str, subtitle: str) -> No
     sub_run = sub_tf.paragraphs[0].runs[0]
     sub_run.font.size = Pt(18)
     sub_run.font.color.rgb = CREAM
-    sub_run.font.name = "Arial"
+    sub_run.font.name = BODY_FONT
 
 
 def _add_slide_chrome(prs, slide, heading, index, accent):
@@ -378,7 +467,7 @@ def _add_slide_chrome(prs, slide, heading, index, accent):
     badge_run.font.size = Pt(18)
     badge_run.font.bold = True
     badge_run.font.color.rgb = WHITE if accent != GOLD_LIGHT else NAVY
-    badge_run.font.name = "Arial"
+    badge_run.font.name = HEADING_FONT
 
     heading_box = slide.shapes.add_textbox(Inches(1.55), Inches(0.5), Inches(11), Inches(0.75))
     heading_tf = heading_box.text_frame
@@ -388,7 +477,7 @@ def _add_slide_chrome(prs, slide, heading, index, accent):
     heading_run.font.size = Pt(26)
     heading_run.font.bold = True
     heading_run.font.color.rgb = NAVY
-    heading_run.font.name = "Arial"
+    heading_run.font.name = HEADING_FONT
 
     rule = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(1.55), Inches(1.35), Inches(1.4), Pt(3))
     _set_fill(rule, accent)
@@ -461,7 +550,7 @@ def _add_text_slide(prs: Presentation, layout, heading: str, body: str, index: i
         run.text = text
         run.font.size = body_font_size
         run.font.color.rgb = NAVY_MID
-        run.font.name = "Arial"
+        run.font.name = BODY_FONT
 
     sidebar_top = Inches(1.85)
     if image_bytes:
@@ -527,7 +616,7 @@ def _add_key_points_panel(slide, subpoints: list, x, y, width, accent) -> None:
     lrun.text = "KEY POINTS"
     lrun.font.size = Pt(12)
     lrun.font.bold = True
-    lrun.font.name = "Arial"
+    lrun.font.name = HEADING_FONT
     lrun.font.color.rgb = accent
 
     row_y = y + Inches(0.38)
@@ -558,7 +647,7 @@ def _add_key_points_panel(slide, subpoints: list, x, y, width, accent) -> None:
         run = p.add_run()
         run.text = text
         run.font.size = Pt(13)
-        run.font.name = "Arial"
+        run.font.name = BODY_FONT
         run.font.color.rgb = NAVY_MID
 
         row_y += row_h
@@ -646,7 +735,7 @@ def _add_bullet_slide(prs: Presentation, layout, heading: str, bullets: list, in
         run.font.size = Pt(16) if card_h_in <= 0.9 else Pt(18)
         run.font.bold = True
         run.font.color.rgb = NAVY
-        run.font.name = "Arial"
+        run.font.name = HEADING_FONT
         top += card_h + Inches(gap_in)
 
 
@@ -699,7 +788,7 @@ def _add_list_slide(prs: Presentation, layout, heading: str, items: list, index:
         run.font.size = Pt(13)
         run.font.bold = True
         run.font.color.rgb = NAVY
-        run.font.name = "Arial"
+        run.font.name = HEADING_FONT
 
 
 def _add_process_slide(prs: Presentation, layout, heading: str, steps: list, index: int, accent) -> None:
@@ -818,7 +907,7 @@ def _add_comparison_slide(prs: Presentation, layout, heading: str, left: dict, r
             item_run = item_tf.paragraphs[0].runs[0]
             item_run.font.size = Pt(14)
             item_run.font.color.rgb = WHITE if color != GOLD else NAVY
-            item_run.font.name = "Arial"
+            item_run.font.name = BODY_FONT
             item_top += Inches(item_h_in)
 
 

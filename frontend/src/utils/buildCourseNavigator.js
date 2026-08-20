@@ -27,7 +27,11 @@
  * `${skill}::${topic}` -> FocusBand map — always wins over the
  * skill-level default, because it's a fresher, more specific signal:
  * two topics in the same "upcoming" skill can genuinely need different
- * content depth once the learner has actually studied one of them.
+ * content depth once the learner has actually studied one of them. The
+ * same recorded-progress signal also upgrades that topic's
+ * Verified/Current/Locked STATUS to "Verified" (see buildFlatTopicList
+ * below) — submitting a topic's own quiz is stronger evidence than the
+ * one-time diagnostic that scored it Current/Locked originally.
  */
 
 // A skill's roadmap-computed focusBand (fundamentals/application/
@@ -78,12 +82,18 @@ export function buildFlatTopicList(roadmap, compressedSyllabus, topicProgress = 
         const recordedBand = topicProgress?.[topicProgressKey(entry.skill, t.title)];
         const focusBand = recordedBand || skillLevelFocusBand;
 
+        // A topic the learner has actually submitted a quiz for shows
+        // as Verified (tick) even if the original diagnostic scored it
+        // Current/Locked — completing the topic's own test is stronger,
+        // fresher evidence than the one-time whole-skill diagnostic.
+        const topicStatus = recordedBand ? "Verified" : t.status;
+
         flat.push({
           module: group.name,
           skill: entry.skill,
           skillStatus: entry.status,
           topic: t.title,
-          topicStatus: t.status, // "Verified" | "Current" | "Locked" — display-only, never gates access
+          topicStatus, // "Verified" | "Current" | "Locked" — display-only, never gates access
           focusBand,
         });
       }

@@ -63,27 +63,38 @@ export default function App() {
   // SkillProgressScreen) once one does. Re-checked every time this page
   // is opened so it reflects a just-finished assessment or a just-quit
   // role without needing a full reload.
-  const [skillsPageCheck, setSkillsPageCheck] = useState({ checking: true, locked: false });
+  const [skillsPageCheck, setSkillsPageCheck] = useState({ checking: true, locked: false, error: false });
+  // Bumped to force a re-run of the check effect below when the person
+  // taps "Try again" after a failed check (changing this without
+  // changing activeKey/uid still re-triggers the effect).
+  const [skillsCheckRetry, setSkillsCheckRetry] = useState(0);
 
   useEffect(() => {
     if (activeKey !== "skills") return;
     let active = true;
-    setSkillsPageCheck({ checking: true, locked: false });
+    setSkillsPageCheck({ checking: true, locked: false, error: false });
     if (!auth.user?.uid) {
-      setSkillsPageCheck({ checking: false, locked: false });
+      setSkillsPageCheck({ checking: false, locked: false, error: false });
       return;
     }
     loadSavedRoadmap(auth.user.uid)
       .then((roadmap) => {
-        if (active) setSkillsPageCheck({ checking: false, locked: !!roadmap });
+        if (active) setSkillsPageCheck({ checking: false, locked: !!roadmap, error: false });
       })
       .catch(() => {
-        if (active) setSkillsPageCheck({ checking: false, locked: false });
+        // IMPORTANT: a failed check (e.g. the backend cold-starting on
+        // Render's free tier and timing out — see aiAssessmentService.js)
+        // must NOT be treated as "no roadmap yet". Silently falling
+        // through to locked: false here is exactly what made students
+        // who had already started learning get sent back through Skill
+        // Selection from scratch whenever this request happened to be
+        // slow/flaky. Surface a retry instead of guessing.
+        if (active) setSkillsPageCheck({ checking: false, locked: false, error: true });
       });
     return () => {
       active = false;
     };
-  }, [activeKey, auth.user?.uid]);
+  }, [activeKey, auth.user?.uid, skillsCheckRetry]);
 
   useEffect(() => {
     window.scrollTo({ top: 0, left: 0, behavior: "smooth" });
@@ -217,6 +228,24 @@ export default function App() {
       content = (
         <div className="px-4 sm:px-8 pt-24 flex justify-center">
           <p className="text-sm" style={{ color: COLORS.textMid }}>Loading…</p>
+        </div>
+      );
+    } else if (skillsPageCheck.error) {
+      // Couldn't confirm whether this account already has a roadmap —
+      // show Skill Selection anyway and a student who already picked
+      // skills could end up redoing it. Ask them to retry instead.
+      content = (
+        <div className="px-4 sm:px-8 pt-24 flex flex-col items-center gap-3 text-center">
+          <p className="text-sm" style={{ color: COLORS.textMid }}>
+            Couldn't check your progress — the server may still be starting up.
+          </p>
+          <button
+            onClick={() => setSkillsCheckRetry((n) => n + 1)}
+            className="text-sm font-semibold px-4 py-2"
+            style={{ borderRadius: 9999, background: COLORS.purple, color: "#fff", border: "none", cursor: "pointer" }}
+          >
+            Try again
+          </button>
         </div>
       );
     } else if (skillsPageCheck.locked) {

@@ -21,6 +21,22 @@ export async function getTopicQuiz(skill, topic, focusBand) {
   return data.data; // { skill, topic, questions, totalQuestions, source }
 }
 
+// Always call BEFORE getTopicQuiz(). Returns null if the learner hasn't
+// taken this topic's quiz yet (caller should fall back to getTopicQuiz()
+// + the normal take-quiz flow); otherwise returns the review data for
+// their most recent attempt — questions, their picks, and that attempt's
+// already-computed score/classification/next revision date — WITHOUT
+// generating or fetching a new quiz.
+export async function getTopicQuizAttempt(skill, topic, uid) {
+  const { data } = await apiClient.get(ENDPOINTS.TOPIC_QUIZ.GET_ATTEMPT(skill, topic), {
+    params: { uid },
+  });
+  if (!data.success) {
+    throw new Error(data.error || data.message || "Failed to check this topic's quiz history.");
+  }
+  return data.data; // null (no prior attempt) or { questions, answers, scorePercent, ... }
+}
+
 export async function submitTopicQuiz(skill, topic, { uid, questions, answers, timeTakenSeconds }) {
   const { data } = await apiClient.post(ENDPOINTS.TOPIC_QUIZ.SUBMIT(skill, topic), {
     uid,

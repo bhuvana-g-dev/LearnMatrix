@@ -225,7 +225,10 @@ class Settings:
     ]
 
     GROQ_API_KEY: str = os.getenv("GROQ_API_KEY", "")
-    GROQ_MODEL: str = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+    # Groq retired llama-3.3-70b-versatile (see console.groq.com/docs/deprecations) —
+    # requests to it now 404 with "model_not_found". openai/gpt-oss-120b is
+    # their current recommended general-purpose replacement.
+    GROQ_MODEL: str = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
 
     CEREBRAS_API_KEY: str = os.getenv("CEREBRAS_API_KEY", "")
     CEREBRAS_MODEL: str = os.getenv("CEREBRAS_MODEL", "llama-3.3-70b")

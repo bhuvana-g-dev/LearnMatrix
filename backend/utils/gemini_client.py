@@ -65,18 +65,44 @@ def _strip_code_fences(text: str) -> str:
 # ---------------------------------------------------------------------
 # Gemini (google-genai)
 # ---------------------------------------------------------------------
+# BUG FIX (found via a "timeout of 60000ms exceeded" the user hit on
+# slide-deck generation): the google-genai SDK has its OWN internal
+# retry loop for 429/5xx errors — up to 4 attempts with delays that can
+# grow to 60s each (see Google's retry-strategy docs). Our AI_PROVIDER
+# chain above already IS the retry/failover strategy (gemini -> groq ->
+# cerebras -> openrouter), so leaving the SDK's internal retries on
+# means a single rate-limited Gemini call can silently eat the entire
+# 60s frontend timeout by itself, before generate_json() ever gets to
+# try the next provider — exactly what the log showed (a 429 with a
+# ~54s server-suggested retry delay, then the request just hanging).
+# attempts=1 makes a failing Gemini call fail fast so the chain below
+# actually gets a chance to run within the caller's timeout budget.
+_GEMINI_HTTP_OPTIONS = None
+
+
+def _gemini_http_options():
+    global _GEMINI_HTTP_OPTIONS
+    if _GEMINI_HTTP_OPTIONS is None:
+        from google.genai import types
+        _GEMINI_HTTP_OPTIONS = types.HttpOptions(
+            timeout=20_000,  # ms — fail fast, don't eat the frontend's 60s budget
+            retry_options=types.HttpRetryOptions(attempts=1),
+        )
+    return _GEMINI_HTTP_OPTIONS
+
+
 def _get_gemini_client(api_key: str | None = None):
     if api_key:
         # An override key is a distinct client, never cached on the
         # shared _gemini_client global — that global is specifically
         # for the default (no-override) case.
         from google import genai
-        return genai.Client(api_key=api_key)
+        return genai.Client(api_key=api_key, http_options=_gemini_http_options())
     global _gemini_client
     if _gemini_client is not None:
         return _gemini_client
     from google import genai
-    _gemini_client = genai.Client(api_key=settings.GEMINI_API_KEY)
+    _gemini_client = genai.Client(api_key=settings.GEMINI_API_KEY, http_options=_gemini_http_options())
     return _gemini_client
 
 
@@ -206,7 +232,11 @@ def _get_groq_client():
     if _groq_client is not None:
         return _groq_client
     from groq import Groq
-    _groq_client = Groq(api_key=settings.GROQ_API_KEY)
+    # Same reasoning as _gemini_http_options above: our own provider
+    # chain is the retry strategy, so the SDK's own internal retries
+    # (which would otherwise also eat into the frontend's timeout
+    # budget before ever reaching cerebras/openrouter) are turned off.
+    _groq_client = Groq(api_key=settings.GROQ_API_KEY, max_retries=0, timeout=20.0)
     return _groq_client
 
 
@@ -246,7 +276,7 @@ def _generate_json_openai_compatible(
                 {"role": "user", "content": prompt},
             ],
         },
-        timeout=30,
+        timeout=20,  # matches the fail-fast budget on gemini/groq above — this can be provider #3 or #4 in the chain, so it can't afford 30s on its own
     )
     resp.raise_for_status()
     raw_text = _strip_code_fences(resp.json()["choices"][0]["message"]["content"] or "")

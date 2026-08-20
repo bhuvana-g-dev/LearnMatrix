@@ -5,9 +5,16 @@ Canonical shape of a TopicQuizProgress — one learner's revision state
 for one topic, mirroring the Firestore document structure exactly:
 
     topic_quiz_progress/{uid}__{skill}__{topic}
-        Uid, Skill, Topic, AttemptCount, LastScorePercent,
-        AverageScorePercent, Classification, LastAttemptAt,
-        NextReviewDate, CreatedAt, UpdatedAt
+        Uid, Skill, Topic, AttemptCount, LastScorePercent, LastCorrect,
+        LastTotal, AverageScorePercent, Classification, LastQuestions,
+        LastAnswers, LastAttemptAt, NextReviewDate, CreatedAt, UpdatedAt
+
+    LastQuestions/LastAnswers: the exact quiz + the learner's picks from
+    their MOST RECENT attempt only (overwritten every attempt, like every
+    other "Last*" field here) — lets the "Test" entry point show a review
+    of what was already taken instead of ever generating a new quiz once
+    a topic has one recorded attempt. See
+    services/topic_quiz_service.py::get_topic_quiz_attempt().
 
 Doc ID is a deterministic composite key (not auto-generated) so upserting
 "the current state for this uid+skill+topic" is a single known-ID write,
@@ -48,6 +55,10 @@ class TopicQuizProgress:
     WeakArea: Optional[str]  # "fundamentals" | "application" | "advanced" | None — content EMPHASIS, from this attempt's weakest difficulty tier
     NextReviewDate: str  # "YYYY-MM-DD"
 
+    LastCorrect: Optional[int] = None
+    LastTotal: Optional[int] = None
+    LastQuestions: Optional[list] = None  # most recent attempt's quiz, for review
+    LastAnswers: Optional[dict] = None  # most recent attempt's picks, for review
     LastAttemptAt: Optional[object] = None
     CreatedAt: Optional[object] = None
     UpdatedAt: Optional[object] = None

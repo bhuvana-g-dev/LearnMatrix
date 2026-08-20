@@ -2,10 +2,10 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { motion } from "framer-motion";
 import {
   Loader2, XCircle, RotateCcw, ArrowRight, ArrowLeft as ArrowLeftIcon,
-  X, Trophy, CalendarClock, Target, Layers,
+  X, Trophy, CalendarClock, Target, Layers, Check,
 } from "lucide-react";
 import { COLORS, GRADIENTS, GLASS_CARD } from "../../constants/theme";
-import { getTopicQuiz, submitTopicQuiz } from "../../services/topicQuizService";
+import { getTopicQuiz, getTopicQuizAttempt, submitTopicQuiz } from "../../services/topicQuizService";
 
 const OPTION_KEYS = ["OptionA", "OptionB", "OptionC", "OptionD"];
 const OPTION_LETTERS = { OptionA: "A", OptionB: "B", OptionC: "C", OptionD: "D" };
@@ -77,7 +77,17 @@ const WEAK_AREA_LABELS = {
  * Scikit-Learn classifier and revision_scheduler.py computed — then
  * calls onComplete() so the caller can advance to the next topic.
  *
+ * On open, this ALWAYS checks getTopicQuizAttempt() first. If the
+ * learner already has a recorded attempt for this topic (first open
+ * after completing it, OR a revision retake from RevisionScheduleScreen),
+ * it goes straight to "review" — the exact questions + their picks from
+ * that attempt, replayed read-only. It does NOT call getTopicQuiz()
+ * (no new/cached quiz fetch, no AI call) in that case. Only a learner
+ * with zero attempts on this topic goes through the normal
+ * loading -> ready (take quiz) -> submitting -> result flow.
+ *
  * State machine: loading -> ready (in-progress) -> submitting -> result | error
+ *                        -> review (prior attempt found)
  */
 export default function TopicQuizModal({ skill, topic, uid, focusBand, onComplete, onClose }) {
   const [state, setState] = useState("loading");
@@ -94,6 +104,19 @@ export default function TopicQuizModal({ skill, topic, uid, focusBand, onComplet
     setCurrentIndex(0);
     setAnswers({});
     try {
+      // Always check for a prior attempt FIRST — a topic that's already
+      // been taken once must show that attempt's review, never a new
+      // (or newly-generated) quiz, whether this is the first re-open or
+      // a revision retake.
+      const priorAttempt = await getTopicQuizAttempt(skill, topic, uid);
+      if (priorAttempt) {
+        setQuestions(priorAttempt.questions || []);
+        setAnswers(priorAttempt.answers || {});
+        setResult(priorAttempt);
+        setState("review");
+        return;
+      }
+
       const quiz = await getTopicQuiz(skill, topic, focusBand);
       setQuestions(quiz.questions);
       startedAtRef.current = Date.now();
@@ -102,7 +125,7 @@ export default function TopicQuizModal({ skill, topic, uid, focusBand, onComplet
       setErrorMessage(err.message || "Something went wrong loading the quiz.");
       setState("error");
     }
-  }, [skill, topic, focusBand]);
+  }, [skill, topic, focusBand, uid]);
 
   useEffect(() => {
     fetchQuiz();
@@ -333,6 +356,11 @@ export default function TopicQuizModal({ skill, topic, uid, focusBand, onComplet
           {state === "result" && result && (
             <ResultView result={result} onContinue={onComplete} />
           )}
+
+          {/* ---------------- Review (prior attempt, read-only) ---------------- */}
+          {state === "review" && result && (
+            <ReviewView result={result} questions={questions} answers={answers} onClose={onComplete} />
+          )}
         </div>
       </motion.div>
     </div>
@@ -437,6 +465,130 @@ function ResultView({ result, onContinue }) {
         style={{ borderRadius: 9999, border: "none", color: "#fff", background: GRADIENTS.purpleSky, cursor: "pointer" }}
       >
         Continue <ArrowRight size={16} />
+      </motion.button>
+    </div>
+  );
+}
+
+/**
+ * ReviewView — read-only playback of a topic's most recent attempt.
+ * Shown instead of the take-quiz flow whenever
+ * getTopicQuizAttempt() finds a prior attempt (see fetchQuiz() above):
+ * this topic's "Test" already has a result on record, so we never fetch
+ * or generate a new quiz — we just replay exactly what was asked and
+ * exactly what the learner picked, with each option colored by
+ * correct/wrong/missed.
+ */
+function ReviewView({ result, questions, answers, onClose }) {
+  const copy = CLASSIFICATION_COPY[result.classification] || CLASSIFICATION_COPY.Moderate;
+
+  return (
+    <div className="flex flex-col gap-5">
+      <div className="flex flex-col items-center text-center gap-1.5 pb-1">
+        <span
+          className="px-3 py-1 text-[11px] font-bold rounded-full mb-1"
+          style={{ background: "rgba(212,160,23,0.14)", color: COLORS.purple }}
+        >
+          Already taken · reviewing your last attempt
+        </span>
+        <h3 className="text-2xl font-extrabold" style={{ color: COLORS.textDark }}>
+          {result.scorePercent}%
+        </h3>
+        <p className="text-sm" style={{ color: COLORS.textMid }}>
+          {result.correct} of {result.total} correct
+        </p>
+        <span
+          className="px-4 py-1 text-xs font-bold rounded-full mt-1"
+          style={{ background: copy.color, color: "#fff" }}
+        >
+          {copy.headline}
+        </span>
+        {result.nextReviewDate && (
+          <div
+            className="flex items-center gap-2 px-4 py-2.5 mt-2 w-full"
+            style={{ borderRadius: 14, background: "rgba(212,160,23,0.10)" }}
+          >
+            <CalendarClock size={16} style={{ color: COLORS.purple, flexShrink: 0 }} />
+            <span className="text-xs text-left" style={{ color: COLORS.textDark }}>
+              Next revision scheduled for{" "}
+              <strong>
+                {new Date(result.nextReviewDate).toLocaleDateString(undefined, {
+                  weekday: "long", month: "short", day: "numeric",
+                })}
+              </strong>
+            </span>
+          </div>
+        )}
+      </div>
+
+      <div className="flex flex-col gap-4">
+        {questions.map((q, idx) => {
+          const qid = q.QuestionID || q.TempID;
+          const chosen = answers[qid];
+          const correctKey = q.CorrectAnswer;
+          return (
+            <div key={qid || idx} className="pb-4" style={{ borderBottom: `1px solid ${COLORS.border}` }}>
+              <p className="text-xs font-bold uppercase tracking-wide mb-1.5" style={{ color: COLORS.textLight }}>
+                Question {idx + 1} of {questions.length}
+              </p>
+              <p className="text-sm font-bold mb-3 leading-snug" style={{ color: COLORS.textDark }}>
+                {q.Question}
+              </p>
+              <div className="flex flex-col gap-2">
+                {OPTION_KEYS.map((key) => {
+                  const text = q[key];
+                  if (!text) return null;
+                  const isChosen = chosen === key;
+                  const isCorrectOption = correctKey === key;
+                  let borderColor = COLORS.border;
+                  let bg = "rgba(255,255,255,0.5)";
+                  if (isCorrectOption) {
+                    borderColor = "#22C55E";
+                    bg = "rgba(34,197,94,0.10)";
+                  } else if (isChosen && !isCorrectOption) {
+                    borderColor = "#E0559C";
+                    bg = "rgba(224,85,156,0.10)";
+                  }
+                  return (
+                    <div
+                      key={key}
+                      className="flex items-center gap-3 px-4 py-2.5"
+                      style={{ borderRadius: 12, border: `2px solid ${borderColor}`, background: bg }}
+                    >
+                      <span
+                        className="flex items-center justify-center flex-shrink-0 text-xs font-bold"
+                        style={{
+                          width: 22, height: 22, borderRadius: "50%",
+                          background: isCorrectOption ? "#22C55E" : isChosen ? "#E0559C" : "transparent",
+                          border: `1.5px solid ${isCorrectOption || isChosen ? "transparent" : COLORS.border}`,
+                          color: isCorrectOption || isChosen ? "#fff" : COLORS.textLight,
+                        }}
+                      >
+                        {isCorrectOption ? <Check size={12} /> : isChosen ? <XCircle size={12} /> : OPTION_LETTERS[key]}
+                      </span>
+                      <span className="text-sm" style={{ color: COLORS.textDark }}>{text}</span>
+                      {isChosen && (
+                        <span className="ml-auto text-[10px] font-bold uppercase" style={{ color: isCorrectOption ? "#22C55E" : "#E0559C" }}>
+                          Your answer
+                        </span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <motion.button
+        onClick={onClose}
+        whileHover={{ y: -2 }}
+        whileTap={{ scale: 0.98 }}
+        className="flex items-center justify-center gap-2 text-sm font-bold px-7 py-3 self-center"
+        style={{ borderRadius: 9999, border: "none", color: "#fff", background: GRADIENTS.purpleSky, cursor: "pointer" }}
+      >
+        Close <ArrowRight size={16} />
       </motion.button>
     </div>
   );

@@ -67,6 +67,10 @@ class Settings:
     ROADMAP_COLLECTION: str = os.getenv("ROADMAP_COLLECTION", "roadmaps")
     ASSESSMENT_RESULTS_COLLECTION: str = os.getenv("ASSESSMENT_RESULTS_COLLECTION", "assessment_results")
     LEARNING_NOTES_COLLECTION: str = os.getenv("LEARNING_NOTES_COLLECTION", "learning_notes")
+    # Was referenced by services/topic_quiz_bank_cache.py but never
+    # defined here — every cache read/write raised AttributeError and
+    # was silently swallowed, so quiz caching never actually worked.
+    TOPIC_QUIZ_BANK_CACHE_COLLECTION: str = os.getenv("TOPIC_QUIZ_BANK_CACHE_COLLECTION", "topic_quiz_bank_cache")
     LEARNING_RESOURCES_COLLECTION: str = os.getenv("LEARNING_RESOURCES_COLLECTION", "learning_resources")
     ACTIVITY_COLLECTION: str = os.getenv("ACTIVITY_COLLECTION", "learning_activity")
     CERTIFICATES_COLLECTION: str = os.getenv("CERTIFICATES_COLLECTION", "certificates")
@@ -221,14 +225,7 @@ class Settings:
     ]
 
     GROQ_API_KEY: str = os.getenv("GROQ_API_KEY", "")
-    # BUG FIX (found via a Render log the user shared, Aug 2026):
-    # Groq deprecated llama-3.3-70b-versatile on June 17, 2026 —
-    # requests to it now fail with 404 "model_not_found", which was
-    # silently breaking the Groq fallback provider whenever Gemini's
-    # free-tier quota ran out. openai/gpt-oss-120b is Groq's official
-    # recommended replacement. Override via GROQ_MODEL if this changes
-    # again — see https://console.groq.com/docs/deprecations.
-    GROQ_MODEL: str = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
+    GROQ_MODEL: str = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
 
     CEREBRAS_API_KEY: str = os.getenv("CEREBRAS_API_KEY", "")
     CEREBRAS_MODEL: str = os.getenv("CEREBRAS_MODEL", "llama-3.3-70b")

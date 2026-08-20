@@ -30,18 +30,35 @@ from reportlab.pdfbase.pdfmetrics import stringWidth
 
 from firebase.firebase_config import get_firestore_client
 from services import chat_repository, embedding_service, notes_repository
-from services.ppt_service import build_deck_sections, PptServiceError, _safe_filename
+from services.ppt_service import build_deck_sections, PptServiceError, _safe_filename, THEMES, _pick_theme
 
-# --- LearnMatrix brand palette (mirrors frontend/src/constants/theme.js) ---
-NAVY = HexColor("#0D1B3D")
-NAVY_MID = HexColor("#3E4A66")
-GOLD = HexColor("#D4A017")
-GOLD_LIGHT = HexColor("#E8B93D")
-CREAM = HexColor("#FBF3E1")
+# --- Gamma-style theme palettes ---
+# Mirrors ppt_service.py's _apply_theme/THEMES exactly (same THEMES list,
+# same per-title pick) so a deck's PDF and PPTX always match — see that
+# module's THEMES for what each of the 6 palettes looks like and why.
+# One real difference: reportlab can only use its 14 built-in PDF-safe
+# font names (Helvetica/Helvetica-Bold) without embedding a TTF file, so
+# unlike the pptx side this does NOT vary the font by theme — colors are
+# themed, typography stays Helvetica everywhere.
+NAVY = NAVY_MID = GOLD = GOLD_LIGHT = CREAM = None  # set by _apply_theme() below
 WHITE = HexColor("#FFFFFF")
 
 PAGE_W, PAGE_H = 13.333 * inch, 7.5 * inch
-ACCENT_CYCLE = [GOLD, NAVY, GOLD_LIGHT]
+ACCENT_CYCLE: list = []  # set by _apply_theme() below, alongside NAVY/GOLD/etc.
+
+
+def _apply_theme(theme: dict) -> None:
+    """PDF counterpart to ppt_service.py's _apply_theme — same
+    reasoning (single sync Gunicorn worker, so rebinding module
+    globals per-build is safe) and same THEMES source, just RGB tuples
+    -> HexColor instead of RGBColor."""
+    global NAVY, NAVY_MID, GOLD, GOLD_LIGHT, CREAM, ACCENT_CYCLE
+    NAVY = HexColor("#%02X%02X%02X" % theme["navy"])
+    NAVY_MID = HexColor("#%02X%02X%02X" % theme["navy_mid"])
+    GOLD = HexColor("#%02X%02X%02X" % theme["gold"])
+    GOLD_LIGHT = HexColor("#%02X%02X%02X" % theme["gold_light"])
+    CREAM = HexColor("#%02X%02X%02X" % theme["cream"])
+    ACCENT_CYCLE = [GOLD, NAVY, GOLD_LIGHT]
 
 PdfServiceError = PptServiceError  # same precondition errors as the pptx service
 
@@ -117,6 +134,8 @@ def _build_pdf_from_notes(notes: dict, subtitle: str) -> BytesIO:
 def build_pdf_from_deck_content(notes: dict, subtitle: str) -> BytesIO:
     """Public entry point — same "from-content" purpose as
     ppt_service.py's build_pptx_from_deck_content."""
+    _apply_theme(_pick_theme(notes.get("title") or ""))
+
     buffer = BytesIO()
     c = canvas.Canvas(buffer, pagesize=(PAGE_W, PAGE_H))
 

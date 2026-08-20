@@ -1,31 +1,31 @@
 """
 services/topic_quiz_bank_cache.py
 
-Fixes "leave the quiz page before submitting and reopening it burns
-another Gemini call" WITHOUT losing per-student differentiation or
-spaced-repetition re-testing. Keyed by (uid, skill, topic) — NOT
-(skill, topic) alone:
+Quiz questions are cached per (skill, topic, focusBand) — generated
+ONCE by TopicQuizAgent for a given category, then reused by EVERY
+student who lands on that skill/topic/category after that, forever.
+Never regenerated per-student and never regenerated on a revision
+retake — same "cache-check-then-generate, never call AI twice for the
+same key" pattern as services/notes_repository.py, mirrored here
+deliberately so both caches behave identically.
 
-  - Same student, same topic, hasn't submitted yet, comes back
-    (refresh, accidental close, browser crash) -> gets back the EXACT
-    SAME quiz, no new Gemini call. This is the actual bug being fixed.
-  - Different students, same topic -> different quizzes. A shared
-    per-topic cache would mean every student sees identical questions,
-    which breaks the Fast/Moderate/Slow differentiation this whole
-    system exists for — deliberately NOT done that way.
-  - Same student, SAME topic, but taking it again after a revision
-    cycle (Objective 4 — they already submitted once and it's now
-    NextReviewDate) -> a FRESH quiz, not a replay of what they already
-    answered. See services/topic_quiz_service.py's submit_topic_quiz(),
-    which calls delete_cached_quiz() right after recording the
-    attempt — that's what makes the NEXT open regenerate instead of
-    replaying stale answers.
+This exists because a live Gemini/Groq call on every quiz open doesn't
+scale — different students land on the same skill/topic/focusBand
+constantly, and each one used to trigger its own AI call, which is
+exactly what was hitting provider rate limits and failing. Since the
+initial assessment already buckets every student into one of four
+categories (fundamentals/application/advanced/polish — see
+services/focus_band.py), reusing one generated quiz per category is
+enough to keep questions relevant to the student's level while
+cutting AI calls from "one per student" to "one per category, ever."
 
-    topic_quiz_bank_cache/{uid}__{skill}__{topic}  (skill/topic slugified)
-        uid, skill, topic, questions: [...], source, cachedAt
+Doc ID is a deterministic slug of (skill, topic, focus_band) — a
+direct .get() by ID, no query needed:
+
+    topic_quiz_bank_cache/{skill}__{topic}__{focusBand}  (slugified)
+        skill, topic, focusBand, questions: [...], source, cachedAt
 """
 
-import hashlib
 import re
 
 from firebase_admin import firestore
@@ -36,64 +36,32 @@ SERVER_TIMESTAMP = firestore.SERVER_TIMESTAMP
 
 
 def _slugify(value: str) -> str:
-    """Same collision-resistant slugify as services/notes_repository.py
-    (see that module's docstring) — kept identical here rather than
-    imported so this repository has zero dependency on another
-    repository module, matching the existing "one file per collection"
-    convention. Deterministic md5-based marker, NOT Python's hash()
-    (which is randomized per-process and would break cache lookups
-    across workers)."""
-    value = value.strip().lower()
-
-    def _mark(match: "re.Match") -> str:
-        chunk = match.group(0)
-        if chunk.isspace():
-            return "-"
-        digest = hashlib.md5(chunk.encode("utf-8")).hexdigest()[:3]
-        return f"-x{digest}-"
-
-    slug = re.sub(r"[^a-z0-9]+", _mark, value)
-    slug = re.sub(r"-+", "-", slug)
+    slug = re.sub(r"[^a-z0-9]+", "-", value.strip().lower())
     return slug.strip("-")
 
 
-def quiz_cache_key(uid: str, skill: str, topic: str) -> str:
-    """Public accessor for this cache's doc ID — used as the
-    generation-lock key by services/topic_quiz_service.py."""
-    return f"{uid}__{_slugify(skill)}__{_slugify(topic)}"
-
-
-def _doc_ref(db, uid: str, skill: str, topic: str):
-    doc_id = quiz_cache_key(uid, skill, topic)
+def _doc_ref(db, skill: str, topic: str, focus_band: str):
+    doc_id = f"{_slugify(skill)}__{_slugify(topic)}__{_slugify(focus_band)}"
     return db.collection(settings.TOPIC_QUIZ_BANK_CACHE_COLLECTION).document(doc_id)
 
 
-def get_cached_quiz(db, uid: str, skill: str, topic: str) -> dict | None:
-    """None = this student has no in-progress (unsubmitted) quiz cached
-    for this topic right now — either they've never opened it, or they
-    already submitted last time (which deletes the cache, see module
-    docstring), so it's time to generate a fresh one."""
-    snap = _doc_ref(db, uid, skill, topic).get()
+def get_cached_quiz(db, skill: str, topic: str, focus_band: str) -> dict | None:
+    """None = no quiz has ever been generated for this skill/topic/category
+    yet — the normal signal to generate once now and save it, not an
+    error."""
+    snap = _doc_ref(db, skill, topic, focus_band).get()
     if not snap.exists:
         return None
     data = snap.to_dict()
     return {"questions": data.get("questions", []), "source": data.get("source", "cached")}
 
 
-def save_quiz(db, uid: str, skill: str, topic: str, questions: list[dict], source: str) -> None:
-    _doc_ref(db, uid, skill, topic).set({
-        "uid": uid,
+def save_quiz(db, skill: str, topic: str, focus_band: str, questions: list[dict], source: str) -> None:
+    _doc_ref(db, skill, topic, focus_band).set({
         "skill": skill,
         "topic": topic,
+        "focusBand": focus_band,
         "questions": questions,
         "source": source,
         "cachedAt": SERVER_TIMESTAMP,
     })
-
-
-def delete_cached_quiz(db, uid: str, skill: str, topic: str) -> None:
-    """Called right after a submitted attempt is recorded — clears this
-    student's cache for this topic so their NEXT open (their next
-    revision cycle) generates a fresh quiz instead of replaying the one
-    they already answered."""
-    _doc_ref(db, uid, skill, topic).delete()

@@ -33,15 +33,19 @@
  * below) — submitting a topic's own quiz is stronger evidence than the
  * one-time diagnostic that scored it Current/Locked originally.
  *
- * LESSON COMPLETION (this revision): a topic can ALSO reach "Verified"
- * by the learner finishing every lesson in its Lessons breakdown (see
- * utils/lessonProgress.js) — read synchronously from localStorage, no
- * extra network round trip. This is what keeps the tick honest for a
- * topic like "React.js" with 4 lessons: finishing 1 of 4 no longer
- * shows it as done, because that signal simply didn't exist before —
- * only quiz/diagnostic status did.
+ * LESSON COMPLETION (this revision): once a topic's Lessons breakdown
+ * has actually been opened (utils/lessonProgress.js caches its lesson
+ * count the first time), lesson completion becomes the ONLY signal
+ * that decides its tick — it overrides both the whole-topic quiz
+ * (recordedBand) and the original diagnostic pre-tick, not just adds
+ * to them. Earlier this file OR'd lesson completion in alongside those
+ * two, which meant a topic pre-ticked by the diagnostic (or already
+ * quizzed at the whole-topic level before any lesson existed) stayed
+ * ticked forever regardless of actual lesson progress — e.g. "Bootstrap"
+ * showing fully done with only 2 of 4 lessons passed. Read synchronously
+ * from localStorage, no extra network round trip.
  */
-import { isTopicFullyComplete } from "./lessonProgress";
+import { isTopicFullyComplete, hasLessonData } from "./lessonProgress";
 
 // A skill's roadmap-computed focusBand (fundamentals/application/
 // advanced/polish) only exists for status="upcoming" skills — that's
@@ -95,10 +99,18 @@ export function buildFlatTopicList(roadmap, compressedSyllabus, topicProgress = 
         // as Verified (tick) even if the original diagnostic scored it
         // Current/Locked — completing the topic's own test is stronger,
         // fresher evidence than the one-time whole-skill diagnostic.
-        // Finishing every lesson in its breakdown is the same kind of
-        // stronger evidence (see module docstring) — either one ticks it.
-        const lessonsDone = isTopicFullyComplete(uid, entry.skill, t.title);
-        const topicStatus = recordedBand || lessonsDone ? "Verified" : t.status;
+        //
+        // BUT once the learner has actually opened this topic's Lessons
+        // breakdown, lesson progress OVERRIDES both of the above rather
+        // than just adding to them — it's the freshest, most granular
+        // signal there is, and a stale pre-tick from before lessons
+        // existed (or from a whole-topic quiz taken once, unrelated to
+        // which lessons are actually done) must not keep showing this
+        // topic as finished when it isn't. See module docstring.
+        const lessonsStarted = hasLessonData(uid, entry.skill, t.title);
+        const topicStatus = lessonsStarted
+          ? (isTopicFullyComplete(uid, entry.skill, t.title) ? "Verified" : "Current")
+          : (recordedBand ? "Verified" : t.status);
 
         flat.push({
           module: group.name,

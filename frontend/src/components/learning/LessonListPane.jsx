@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { Loader2, XCircle, RotateCcw, BookOpen, ChevronRight, ListChecks } from "lucide-react";
+import { Loader2, XCircle, RotateCcw, BookOpen, ChevronRight, ListChecks, CheckCircle2 } from "lucide-react";
 import { COLORS, GRADIENTS, GLASS_CARD } from "../../constants/theme";
 
 /**
@@ -14,7 +14,10 @@ import { COLORS, GRADIENTS, GLASS_CARD } from "../../constants/theme";
  * avoids a second, possibly-inconsistent fetch when the content view
  * takes over.
  */
-export default function LessonListPane({ topic, state, errorMessage, lessons, onSelectLesson, onRetry }) {
+export default function LessonListPane({
+  topic, state, errorMessage, lessons, onSelectLesson, onRetry,
+  completedOrders = new Set(), // Set of lesson.Order values already finished — see utils/lessonProgress.js
+}) {
   if (state === "loading") {
     return (
       <div className="flex flex-col items-center text-center gap-4 py-16">
@@ -62,28 +65,36 @@ export default function LessonListPane({ topic, state, errorMessage, lessons, on
       </div>
 
       <div className="flex flex-col gap-2.5">
-        {lessons.map((lesson, i) => (
-          <motion.div
-            key={lesson.Order}
-            onClick={() => onSelectLesson(i)}
-            whileHover={{ x: 3 }}
-            className="flex items-center gap-3.5 p-4 cursor-pointer"
-            style={{ ...GLASS_CARD, borderRadius: 16 }}
-          >
-            <div
-              className="flex items-center justify-center flex-shrink-0 text-sm font-bold"
-              style={{ width: 34, height: 34, borderRadius: "50%", background: GRADIENTS.purplePink, color: "#fff" }}
+        {lessons.map((lesson, i) => {
+          const isDone = completedOrders.has(lesson.Order);
+          return (
+            <motion.div
+              key={lesson.Order}
+              onClick={() => onSelectLesson(i)}
+              whileHover={{ x: 3 }}
+              className="flex items-center gap-3.5 p-4 cursor-pointer"
+              style={{ ...GLASS_CARD, borderRadius: 16, opacity: isDone ? 0.85 : 1 }}
             >
-              {lesson.Order}
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-bold" style={{ color: COLORS.textDark }}>{lesson.Title}</p>
-              <p className="text-xs mt-0.5 line-clamp-1" style={{ color: COLORS.textMid }}>{lesson.Summary}</p>
-            </div>
-            <BookOpen size={14} style={{ color: COLORS.textLight, flexShrink: 0 }} />
-            <ChevronRight size={16} style={{ color: COLORS.textLight, flexShrink: 0 }} />
-          </motion.div>
-        ))}
+              <div
+                className="flex items-center justify-center flex-shrink-0 text-sm font-bold"
+                style={{
+                  width: 34, height: 34, borderRadius: "50%", color: "#fff",
+                  background: isDone ? "#22C55E" : GRADIENTS.purplePink,
+                }}
+              >
+                {isDone ? <CheckCircle2 size={18} /> : lesson.Order}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-bold" style={{ color: COLORS.textDark }}>{lesson.Title}</p>
+                <p className="text-xs mt-0.5 line-clamp-1" style={{ color: COLORS.textMid }}>
+                  {isDone ? "Completed" : lesson.Summary}
+                </p>
+              </div>
+              <BookOpen size={14} style={{ color: COLORS.textLight, flexShrink: 0 }} />
+              <ChevronRight size={16} style={{ color: COLORS.textLight, flexShrink: 0 }} />
+            </motion.div>
+          );
+        })}
       </div>
     </div>
   );

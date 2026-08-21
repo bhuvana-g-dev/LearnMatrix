@@ -32,7 +32,16 @@
  * Verified/Current/Locked STATUS to "Verified" (see buildFlatTopicList
  * below) — submitting a topic's own quiz is stronger evidence than the
  * one-time diagnostic that scored it Current/Locked originally.
+ *
+ * LESSON COMPLETION (this revision): a topic can ALSO reach "Verified"
+ * by the learner finishing every lesson in its Lessons breakdown (see
+ * utils/lessonProgress.js) — read synchronously from localStorage, no
+ * extra network round trip. This is what keeps the tick honest for a
+ * topic like "React.js" with 4 lessons: finishing 1 of 4 no longer
+ * shows it as done, because that signal simply didn't exist before —
+ * only quiz/diagnostic status did.
  */
+import { isTopicFullyComplete } from "./lessonProgress";
 
 // A skill's roadmap-computed focusBand (fundamentals/application/
 // advanced/polish) only exists for status="upcoming" skills — that's
@@ -50,7 +59,7 @@ export function topicProgressKey(skill, topic) {
   return `${skill}::${topic}`;
 }
 
-export function buildFlatTopicList(roadmap, compressedSyllabus, topicProgress = null) {
+export function buildFlatTopicList(roadmap, compressedSyllabus, topicProgress = null, uid = null) {
   if (!roadmap) return [];
 
   const groups =
@@ -86,7 +95,10 @@ export function buildFlatTopicList(roadmap, compressedSyllabus, topicProgress = 
         // as Verified (tick) even if the original diagnostic scored it
         // Current/Locked — completing the topic's own test is stronger,
         // fresher evidence than the one-time whole-skill diagnostic.
-        const topicStatus = recordedBand ? "Verified" : t.status;
+        // Finishing every lesson in its breakdown is the same kind of
+        // stronger evidence (see module docstring) — either one ticks it.
+        const lessonsDone = isTopicFullyComplete(uid, entry.skill, t.title);
+        const topicStatus = recordedBand || lessonsDone ? "Verified" : t.status;
 
         flat.push({
           module: group.name,

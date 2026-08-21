@@ -99,7 +99,7 @@ export default function RevisionScheduleScreen({ uid }) {
         <RevisionScheduleSection
           due={due}
           upcoming={upcoming}
-          onRetake={(item) => setQuizTarget({ skill: item.skill, topic: item.topic })}
+          onRetake={(item) => setQuizTarget({ skill: item.skill, topic: item.topic, focusBand: item.focusBand })}
           onSnooze={handleSnooze}
         />
       </div>
@@ -108,6 +108,7 @@ export default function RevisionScheduleScreen({ uid }) {
         <TopicQuizModal
           skill={quizTarget.skill}
           topic={quizTarget.topic}
+          focusBand={quizTarget.focusBand}
           uid={uid}
           onClose={() => setQuizTarget(null)}
           onComplete={handleQuizComplete}

@@ -2,20 +2,32 @@
  * lessonProgress.js
  *
  * Client-side (localStorage) tracking of which lessons a learner has
- * actually finished, keyed by uid::skill::topic. Before this file,
- * NOTHING tracked lesson-level progress anywhere in the app —
- * LessonListPane.jsx just listed lessons with no completed/incomplete
+ * actually PASSED — a lesson only counts as complete once its quiz
+ * (same TopicQuizModal/topic_quiz_service the topic-level Test already
+ * uses, just keyed by the composite "{topic} — {lessonTitle}" string —
+ * see lessonService.compositeTopicKey()) is scored at or above
+ * LESSON_PASS_THRESHOLD. Just opening/reading a lesson, or clicking
+ * Next/Previous, never marks it done — Coursera-style: score to
+ * complete, not scroll to complete.
+ *
+ * Before this file, NOTHING tracked lesson-level progress anywhere in
+ * the app — LessonListPane.jsx just listed lessons with no completed
  * state, and a topic's sidebar tick (buildCourseNavigator.js) came
  * ONLY from its quiz/diagnostic status, completely disconnected from
- * how many of its lessons were opened. That's why finishing 1 of 4
- * lessons could show a topic as fully ticked (or not ticked at all,
- * depending on quiz status) regardless of actual lesson progress.
+ * lessons.
  *
  * Not backend-synced (capstone scope) — lives in localStorage only,
- * per browser/device.
+ * per browser/device. (The quiz ATTEMPT itself is still recorded
+ * server-side as usual, via submitTopicQuiz — this file only tracks
+ * the derived "which lessons are done" state for the UI.)
  */
 
 const STORAGE_KEY = "lm_lesson_progress_v1";
+
+// Score needed on a lesson's quiz (see TopicQuizModal's result.scorePercent)
+// for that lesson to count as complete — Coursera-style: opening/reading a
+// lesson is never enough on its own, only a passing quiz score marks it done.
+export const LESSON_PASS_THRESHOLD = 70;
 
 function readAll() {
   try {

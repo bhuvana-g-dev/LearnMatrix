@@ -45,7 +45,7 @@
  * showing fully done with only 2 of 4 lessons passed. Read synchronously
  * from localStorage, no extra network round trip.
  */
-import { isTopicFullyComplete, hasLessonData } from "./lessonProgress";
+import { isTopicFullyComplete, hasLessonData, getLessonProgressCounts } from "./lessonProgress";
 
 // A skill's roadmap-computed focusBand (fundamentals/application/
 // advanced/polish) only exists for status="upcoming" skills — that's
@@ -119,6 +119,10 @@ export function buildFlatTopicList(roadmap, compressedSyllabus, topicProgress = 
           topic: t.title,
           topicStatus, // "Verified" | "Current" | "Locked" — display-only, never gates access
           focusBand,
+          // { completed, total } lessons for this topic, or null if its
+          // Lessons breakdown was never opened — lets the sidebar draw a
+          // partial progress ring (e.g. 2/4) instead of a plain circle.
+          lessonProgress: lessonsStarted ? getLessonProgressCounts(uid, entry.skill, t.title) : null,
         });
       }
     }

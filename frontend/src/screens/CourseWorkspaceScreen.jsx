@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  ChevronDown, CheckCircle2, PlayCircle, ArrowLeft, Circle, BookOpen, ClipboardCheck,
+  ChevronDown, CheckCircle2, PlayCircle, ArrowLeft, Circle, BookOpen,
 } from "lucide-react";
 import BackButton from "../components/common/BackButton";
 import TopicContentPane from "../components/learning/TopicContentPane";
@@ -109,7 +109,6 @@ export default function CourseWorkspaceScreen({ roadmap, compressedSyllabus, ini
   const [viewMode, setViewMode] = useState("lessons"); // "list" | "lessons" | "content"
   const [expandedSkills, setExpandedSkills] = useState(() => new Set(active ? [active.skill] : []));
   const [sidebarExpandedModule, setSidebarExpandedModule] = useState(() => active?.module ?? modules[0]?.name ?? null);
-  const [quizTarget, setQuizTarget] = useState(null); // { skill, topic, focusBand } | null — Coursera-style "Test" item, opened from the list
 
   // Lessons layer: Topic -> ordered list of bite-sized Lessons -> content
   // per lesson. Owned here (not inside LessonListPane) because the
@@ -161,9 +160,10 @@ export default function CourseWorkspaceScreen({ roadmap, compressedSyllabus, ini
 
   // { skill, topic (composite "{topic} — {lessonTitle}"), focusBand,
   // lessonOrder } | null — the per-LESSON quiz, opened from inside a
-  // lesson's content view (TopicContentPane's onTakeLessonQuiz). Kept
-  // separate from `quizTarget` below, which is the existing TOPIC-level
-  // Test (its own thing, unaffected by lesson completion).
+  // lesson's content view (TopicContentPane's onTakeLessonQuiz). This is
+  // now the ONLY quiz in Course Workspace — the old whole-topic "Test"
+  // list item (10 questions covering the whole topic at once) was
+  // removed as a duplicate once every lesson got its own pass/fail test.
   const [lessonQuizTarget, setLessonQuizTarget] = useState(null);
 
   // Refetch whenever the ACTIVE TOPIC changes (not on every render, and
@@ -464,10 +464,16 @@ export default function CourseWorkspaceScreen({ roadmap, compressedSyllabus, ini
                                     )}
                                   </div>
 
-                                  {/* Item 1 — Learning Resources */}
+                                  {/* Item 1 — Learning Resources. The old "Item 2 — Test" (whole-topic
+                                      quiz, 10 questions across all lessons) was removed here — each
+                                      lesson now has its own pass/fail test inside its content view
+                                      (TopicContentPane's "Ready to test yourself?" CTA), which is what
+                                      actually marks that lesson complete. Keeping both was a duplicate:
+                                      two different tests for the same topic, only one of which lesson
+                                      completion depends on. */}
                                   <div
                                     onClick={() => openTopic(flatIdx)}
-                                    className="flex items-center gap-3 pl-11 pr-5 py-2.5 cursor-pointer"
+                                    className="flex items-center gap-3 pl-11 pr-5 py-2.5 pb-3.5 cursor-pointer"
                                   >
                                     <BookOpen size={15} style={{ color: COLORS.purple, flexShrink: 0 }} />
                                     <div className="flex-1 min-w-0">
@@ -476,22 +482,6 @@ export default function CourseWorkspaceScreen({ roadmap, compressedSyllabus, ini
                                       </p>
                                       <p className="text-[11px]" style={{ color: COLORS.textLight }}>
                                         Notes, videos &amp; articles for this topic
-                                      </p>
-                                    </div>
-                                  </div>
-
-                                  {/* Item 2 — Test */}
-                                  <div
-                                    onClick={() => setQuizTarget({ skill: t.skill, topic: t.topic, focusBand: t.focusBand })}
-                                    className="flex items-center gap-3 pl-11 pr-5 py-2.5 pb-3.5 cursor-pointer"
-                                  >
-                                    <ClipboardCheck size={15} style={{ color: COLORS.purple, flexShrink: 0 }} />
-                                    <div className="flex-1 min-w-0">
-                                      <p className="text-sm font-semibold" style={{ color: COLORS.textDark }}>
-                                        Test
-                                      </p>
-                                      <p className="text-[11px]" style={{ color: COLORS.textLight }}>
-                                        10-question quiz · sets your next revision date
                                       </p>
                                     </div>
                                   </div>
@@ -510,37 +500,12 @@ export default function CourseWorkspaceScreen({ roadmap, compressedSyllabus, ini
         </div>
       </div>
 
-      {quizTarget && (
-        <TopicQuizModal
-          skill={quizTarget.skill}
-          topic={quizTarget.topic}
-          focusBand={quizTarget.focusBand}
-          uid={uid}
-          onClose={() => setQuizTarget(null)}
-          onComplete={() => {
-            setQuizTarget(null);
-            // Refresh so this topic's (and any other's) focus band
-            // reflects the attempt just submitted — the content pane
-            // re-fetches automatically since focusBand is one of its
-            // fetch dependencies (see TopicContentPane.jsx). Also what
-            // flips this topic's sidebar status to "Verified" (tick),
-            // see buildCourseNavigator.js.
-            fetchTopicProgress();
-
-            // Auto-advance to the next topic in the flat list, if
-            // there is one — same "open a topic" behavior as clicking
-            // it in the sidebar (openTopic), landing on its Lessons view.
-            if (activeIndex < flatTopics.length - 1) {
-              openTopic(activeIndex + 1);
-            }
-          }}
-        />
-      )}
-
-      {/* Per-LESSON quiz — same modal/engine as the topic Test above, just
-          keyed by the composite "{topic} — {lessonTitle}" string. A lesson
-          only gets marked complete (passLesson) when the score clears
-          LESSON_PASS_THRESHOLD — Coursera-style, score to complete. */}
+      {/* Per-LESSON quiz — the only quiz left in Course Workspace now that
+          the whole-topic "Test" list item is gone (see the Learning
+          Resources item above). Keyed by the composite "{topic} —
+          {lessonTitle}" string. A lesson only gets marked complete
+          (passLesson) when the score clears LESSON_PASS_THRESHOLD —
+          Coursera-style, score to complete. */}
       {lessonQuizTarget && (
         <TopicQuizModal
           skill={lessonQuizTarget.skill}

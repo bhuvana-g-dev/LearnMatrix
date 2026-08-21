@@ -354,12 +354,12 @@ export default function TopicQuizModal({ skill, topic, uid, focusBand, onComplet
 
           {/* ---------------- Result ---------------- */}
           {state === "result" && result && (
-            <ResultView result={result} onContinue={onComplete} />
+            <ResultView result={result} onContinue={() => onComplete(result)} />
           )}
 
           {/* ---------------- Review (prior attempt, read-only) ---------------- */}
           {state === "review" && result && (
-            <ReviewView result={result} questions={questions} answers={answers} onClose={onComplete} />
+            <ReviewView result={result} questions={questions} answers={answers} onClose={() => onComplete(result)} />
           )}
         </div>
       </motion.div>

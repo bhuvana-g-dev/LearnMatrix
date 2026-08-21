@@ -86,6 +86,19 @@ export function firstIncompleteIndex(uid, skill, topic, lessons) {
   return idx === -1 ? 0 : idx;
 }
 
+/** Synchronous, no network — true once this topic's Lessons breakdown
+ * has actually been opened at least once (its lesson count got cached
+ * via setLessonTotal). Used by buildCourseNavigator.js: once a topic
+ * has real lesson data, that data becomes the ONLY thing that decides
+ * its tick — a stale diagnostic "mastered" status or an old whole-topic
+ * quiz attempt from before the learner ever opened a lesson must not
+ * out-vote actual (possibly partial) lesson progress. */
+export function hasLessonData(uid, skill, topic) {
+  const all = readAll();
+  const entry = all[key(uid, skill, topic)];
+  return !!(entry && entry.total > 0);
+}
+
 /** Synchronous, no network — used by buildCourseNavigator.js so a
  * topic's sidebar tick reflects real lesson completion once the
  * learner has actually finished every lesson in it. A topic never

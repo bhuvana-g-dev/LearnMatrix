@@ -12,7 +12,7 @@ import { buildFlatTopicList, findStartingIndex, topicProgressKey } from "../util
 import { getLessons, compositeTopicKey } from "../services/lessonService";
 import { getTopicProgress } from "../services/topicQuizService";
 import {
-  setLessonTotal, markLessonComplete, getCompletedLessons, firstIncompleteIndex,
+  setLessonTotal, markLessonComplete, getCompletedLessons, firstIncompleteIndex, LESSON_PASS_THRESHOLD,
 } from "../utils/lessonProgress";
 
 /**
@@ -146,15 +146,25 @@ export default function CourseWorkspaceScreen({ roadmap, compressedSyllabus, ini
     }
   }, [active, uid]);
 
-  // Marks the CURRENT lesson as finished and refreshes everything that
-  // depends on it: this topic's local tick set, the sidebar's topic
-  // tick (via lessonProgressVersion), and the topic list's checkmark.
-  const completeCurrentLesson = useCallback(() => {
-    if (!active || !lessons[activeLessonIndex]) return;
-    markLessonComplete(uid, active.skill, active.topic, lessons[activeLessonIndex].Order);
+  // Marks the lesson identified by `lessonOrder` as finished — called
+  // ONLY from the lesson-quiz modal's onComplete, and only when the
+  // score clears LESSON_PASS_THRESHOLD (see the lessonQuizTarget modal
+  // near the bottom of this file). Refreshes this topic's local tick
+  // set, the sidebar's topic tick (via lessonProgressVersion), and
+  // LessonListPane's checkmarks.
+  const passLesson = useCallback((lessonOrder) => {
+    if (!active) return;
+    markLessonComplete(uid, active.skill, active.topic, lessonOrder);
     setCompletedLessons(getCompletedLessons(uid, active.skill, active.topic));
     setLessonProgressVersion((v) => v + 1);
-  }, [active, lessons, activeLessonIndex, uid]);
+  }, [active, uid]);
+
+  // { skill, topic (composite "{topic} — {lessonTitle}"), focusBand,
+  // lessonOrder } | null — the per-LESSON quiz, opened from inside a
+  // lesson's content view (TopicContentPane's onTakeLessonQuiz). Kept
+  // separate from `quizTarget` below, which is the existing TOPIC-level
+  // Test (its own thing, unaffected by lesson completion).
+  const [lessonQuizTarget, setLessonQuizTarget] = useState(null);
 
   // Refetch whenever the ACTIVE TOPIC changes (not on every render, and
   // not when only activeLessonIndex/viewMode change within the same topic).
@@ -350,14 +360,7 @@ export default function CourseWorkspaceScreen({ roadmap, compressedSyllabus, ini
           ) : viewMode === "content" && active && lessons[activeLessonIndex] ? (
             <div>
               <button
-                onClick={() => {
-                  // Leaving a lesson deliberately (vs. Previous) counts
-                  // as finishing it — matches "I finished lesson 1, went
-                  // back" so lesson 1 shows done, not lesson 4 unlocking
-                  // the whole topic on its own.
-                  completeCurrentLesson();
-                  setViewMode("lessons");
-                }}
+                onClick={() => setViewMode("lessons")}
                 className="flex items-center gap-1.5 text-xs font-semibold mb-4"
                 style={{ background: "none", border: "none", cursor: "pointer", color: COLORS.textMid }}
               >
@@ -368,14 +371,21 @@ export default function CourseWorkspaceScreen({ roadmap, compressedSyllabus, ini
                 topic={compositeTopicKey(active.topic, lessons[activeLessonIndex].Title)}
                 focusBand={active.focusBand}
                 topicStatus={active.topicStatus}
+                lessonQuizDone={completedLessons.has(lessons[activeLessonIndex].Order)}
+                onTakeLessonQuiz={() =>
+                  setLessonQuizTarget({
+                    skill: active.skill,
+                    topic: compositeTopicKey(active.topic, lessons[activeLessonIndex].Title),
+                    focusBand: active.focusBand,
+                    lessonOrder: lessons[activeLessonIndex].Order,
+                  })
+                }
                 onTakeTest={() => setQuizTarget({ skill: active.skill, topic: active.topic, focusBand: active.focusBand })}
-                onNext={() => {
-                  // Moving past a lesson via Next means it's finished.
-                  completeCurrentLesson();
+                onNext={() =>
                   activeLessonIndex < lessons.length - 1
                     ? setActiveLessonIndex((i) => i + 1)
-                    : setViewMode("lessons");
-                }}
+                    : setViewMode("lessons")
+                }
                 onPrevious={() =>
                   activeLessonIndex > 0
                     ? setActiveLessonIndex((i) => i - 1)
@@ -524,6 +534,26 @@ export default function CourseWorkspaceScreen({ roadmap, compressedSyllabus, ini
             if (activeIndex < flatTopics.length - 1) {
               openTopic(activeIndex + 1);
             }
+          }}
+        />
+      )}
+
+      {/* Per-LESSON quiz — same modal/engine as the topic Test above, just
+          keyed by the composite "{topic} — {lessonTitle}" string. A lesson
+          only gets marked complete (passLesson) when the score clears
+          LESSON_PASS_THRESHOLD — Coursera-style, score to complete. */}
+      {lessonQuizTarget && (
+        <TopicQuizModal
+          skill={lessonQuizTarget.skill}
+          topic={lessonQuizTarget.topic}
+          focusBand={lessonQuizTarget.focusBand}
+          uid={uid}
+          onClose={() => setLessonQuizTarget(null)}
+          onComplete={(result) => {
+            if (result?.scorePercent >= LESSON_PASS_THRESHOLD) {
+              passLesson(lessonQuizTarget.lessonOrder);
+            }
+            setLessonQuizTarget(null);
           }}
         />
       )}

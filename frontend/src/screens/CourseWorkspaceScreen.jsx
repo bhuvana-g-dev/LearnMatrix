@@ -13,7 +13,7 @@ import { buildFlatTopicList, findStartingIndex, topicProgressKey } from "../util
 import { getLessons, compositeTopicKey } from "../services/lessonService";
 import { getTopicProgress } from "../services/topicQuizService";
 import {
-  setLessonTotal, markLessonComplete, getCompletedLessons, firstIncompleteIndex, LESSON_PASS_THRESHOLD,
+  setLessonTotal, markLessonComplete, getCompletedLessons, getLessonScores, firstIncompleteIndex, LESSON_PASS_THRESHOLD,
 } from "../utils/lessonProgress";
 
 /**
@@ -124,6 +124,10 @@ export default function CourseWorkspaceScreen({ roadmap, compressedSyllabus, ini
   // utils/lessonProgress.js. Drives LessonListPane's per-lesson ticks
   // and where "Resume" lands when the topic is reopened.
   const [completedLessons, setCompletedLessons] = useState(new Set());
+  // { [lessonOrder]: scorePercent } for the current topic's passed
+  // lessons — drives the "Scored X%" mark shown on the quiz card once
+  // lessonQuizDone is true (TopicContentPane).
+  const [lessonScores, setLessonScores] = useState({});
 
   const fetchLessonsForActiveTopic = useCallback(async () => {
     if (!active) return;
@@ -137,6 +141,7 @@ export default function CourseWorkspaceScreen({ roadmap, compressedSyllabus, ini
       // synchronously (no network) — see buildCourseNavigator.js.
       setLessonTotal(uid, active.skill, active.topic, result.length);
       setCompletedLessons(getCompletedLessons(uid, active.skill, active.topic));
+      setLessonScores(getLessonScores(uid, active.skill, active.topic));
       // Resume where the learner left off in THIS topic, instead of
       // always restarting at lesson 1.
       setActiveLessonIndex(firstIncompleteIndex(uid, active.skill, active.topic, result));
@@ -152,10 +157,11 @@ export default function CourseWorkspaceScreen({ roadmap, compressedSyllabus, ini
   // near the bottom of this file). Refreshes this topic's local tick
   // set, the sidebar's topic tick (via lessonProgressVersion), and
   // LessonListPane's checkmarks.
-  const passLesson = useCallback((lessonOrder) => {
+  const passLesson = useCallback((lessonOrder, scorePercent) => {
     if (!active) return;
-    markLessonComplete(uid, active.skill, active.topic, lessonOrder);
+    markLessonComplete(uid, active.skill, active.topic, lessonOrder, scorePercent);
     setCompletedLessons(getCompletedLessons(uid, active.skill, active.topic));
+    setLessonScores(getLessonScores(uid, active.skill, active.topic));
     setLessonProgressVersion((v) => v + 1);
   }, [active, uid]);
 
@@ -396,6 +402,7 @@ export default function CourseWorkspaceScreen({ roadmap, compressedSyllabus, ini
                 focusBand={active.focusBand}
                 topicStatus={active.topicStatus}
                 lessonQuizDone={completedLessons.has(lessons[activeLessonIndex].Order)}
+                lessonQuizScore={lessonScores[lessons[activeLessonIndex].Order]}
                 onTakeLessonQuiz={() =>
                   setLessonQuizTarget({
                     skill: active.skill,
@@ -539,7 +546,7 @@ export default function CourseWorkspaceScreen({ roadmap, compressedSyllabus, ini
           onClose={() => setLessonQuizTarget(null)}
           onComplete={(result) => {
             if (result?.scorePercent >= LESSON_PASS_THRESHOLD) {
-              passLesson(lessonQuizTarget.lessonOrder);
+              passLesson(lessonQuizTarget.lessonOrder, result.scorePercent);
             }
             setLessonQuizTarget(null);
             // Perfect score (10/10) only — auto-advance to the next

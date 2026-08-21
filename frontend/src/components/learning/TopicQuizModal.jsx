@@ -3,6 +3,7 @@ import { motion } from "framer-motion";
 import {
   Loader2, XCircle, RotateCcw, ArrowRight, ArrowLeft as ArrowLeftIcon,
   X, Trophy, CalendarClock, Target, Layers, Check,
+  Sparkles, Lightbulb, ListChecks, BookOpen, Rocket,
 } from "lucide-react";
 import { COLORS, GRADIENTS, GLASS_CARD } from "../../constants/theme";
 import { getTopicQuiz, getTopicQuizAttempt, submitTopicQuiz } from "../../services/topicQuizService";
@@ -13,20 +14,25 @@ const OPTION_LETTERS = { OptionA: "A", OptionB: "B", OptionC: "C", OptionD: "D" 
 // Revision PACE only — Fast/Moderate/Slow never decides content (that's
 // CONTENT_LEVEL_COPY below, driven by Topic Mastery % instead). See
 // backend/services/focus_band.py's module docstring for the split.
+// `emoji` + `headline` are the ResultView's big "Keep Going! 🚀"-style
+// banner text — kept separate from `detail` (the smaller explanatory line).
 const CLASSIFICATION_COPY = {
   Fast: {
     color: "#22C55E",
-    headline: "Fast learner",
+    emoji: "🚀",
+    headline: "Excellent work!",
     detail: "Strong grasp of this topic — you're on the quick track. Next check-in in 7 days.",
   },
   Moderate: {
     color: "#F59E0B",
-    headline: "Moderate learner",
+    emoji: "💪",
+    headline: "Nice progress!",
     detail: "Solid progress with room to firm up. One more pass recommended — next check-in in 5 days.",
   },
   Slow: {
     color: "#E0559C",
-    headline: "Needs more practice",
+    emoji: "🌱",
+    headline: "Keep Going!",
     detail: "This topic needs another round with simpler material. Next check-in in 3 days.",
   },
 };
@@ -36,27 +42,48 @@ const CLASSIFICATION_COPY = {
 // values as FOCUS_BAND_LABELS in TopicContentPane.jsx; the `items` list
 // here is just this modal's own display of what that level means, so a
 // learner (or evaluator) can see WHY the content pane below will look
-// the way it does for this specific topic.
+// the way it does for this specific topic. Each item now carries its own
+// icon + one-line description (Content Overview cards in ResultView).
 const CONTENT_LEVEL_COPY = {
   fundamentals: {
     label: "FOUNDATION",
     color: "#E0559C",
-    items: ["Basic concepts", "Step-by-step explanation", "Simple examples", "Easy practice"],
+    items: [
+      { icon: Lightbulb, title: "Basic concepts", desc: "Understand the basics" },
+      { icon: ListChecks, title: "Step-by-step explanation", desc: "Learn with clear steps" },
+      { icon: BookOpen, title: "Simple examples", desc: "Real-world examples" },
+      { icon: Target, title: "Easy practice", desc: "Practice makes perfect" },
+    ],
   },
   application: {
     label: "APPLICATION",
     color: "#F59E0B",
-    items: ["Applied concepts", "Worked examples", "Guided practice", "Medium-difficulty questions"],
+    items: [
+      { icon: Lightbulb, title: "Applied concepts", desc: "Put theory into practice" },
+      { icon: ListChecks, title: "Worked examples", desc: "Follow guided solutions" },
+      { icon: BookOpen, title: "Guided practice", desc: "Build with support" },
+      { icon: Target, title: "Medium-difficulty questions", desc: "Test your understanding" },
+    ],
   },
   advanced: {
     label: "ADVANCED",
     color: "#7C6FE0",
-    items: ["Deeper explanations", "Edge-case awareness", "Harder practice", "Less hand-holding"],
+    items: [
+      { icon: Lightbulb, title: "Deeper explanations", desc: "Go beyond the basics" },
+      { icon: ListChecks, title: "Edge-case awareness", desc: "Spot the tricky bits" },
+      { icon: BookOpen, title: "Harder practice", desc: "Push your limits" },
+      { icon: Target, title: "Less hand-holding", desc: "Work more independently" },
+    ],
   },
   polish: {
     label: "POLISH",
     color: "#22C55E",
-    items: ["Edge cases", "Complex examples", "Real-world problems", "Hard practice"],
+    items: [
+      { icon: Lightbulb, title: "Edge cases", desc: "Cover every scenario" },
+      { icon: ListChecks, title: "Complex examples", desc: "Real production patterns" },
+      { icon: BookOpen, title: "Real-world problems", desc: "Solve like a pro" },
+      { icon: Target, title: "Hard practice", desc: "Sharpen your mastery" },
+    ],
   },
 };
 
@@ -367,39 +394,88 @@ export default function TopicQuizModal({ skill, topic, uid, focusBand, onComplet
   );
 }
 
+/** Small SVG ring showing scorePercent, colored by classification —
+ * the "20% / Score" circle in the redesigned ResultView. */
+function ScoreRing({ percent, color, size = 116 }) {
+  const stroke = 10;
+  const r = (size - stroke) / 2;
+  const c = 2 * Math.PI * r;
+  return (
+    <div style={{ position: "relative", width: size, height: size, flexShrink: 0 }}>
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={COLORS.border} strokeWidth={stroke} />
+        <circle
+          cx={size / 2} cy={size / 2} r={r} fill="none" stroke={color} strokeWidth={stroke}
+          strokeDasharray={c} strokeDashoffset={c * (1 - percent / 100)} strokeLinecap="round"
+          transform={`rotate(-90 ${size / 2} ${size / 2})`}
+          style={{ transition: "stroke-dashoffset 0.8s ease" }}
+        />
+      </svg>
+      <div
+        className="flex flex-col items-center justify-center"
+        style={{ position: "absolute", inset: 0 }}
+      >
+        <span className="text-2xl font-extrabold" style={{ color: COLORS.textDark }}>{percent}%</span>
+        <span className="text-[10px] font-bold uppercase tracking-wide" style={{ color: COLORS.textLight }}>Score</span>
+      </div>
+    </div>
+  );
+}
+
 function ResultView({ result, onContinue }) {
   const copy = CLASSIFICATION_COPY[result.classification] || CLASSIFICATION_COPY.Moderate;
   const contentCopy = CONTENT_LEVEL_COPY[result.focusBand] || CONTENT_LEVEL_COPY.application;
   const weakAreaLabel = WEAK_AREA_LABELS[result.weakArea];
 
   return (
-    <div className="flex flex-col items-center text-center gap-2 py-2">
-      <motion.div
-        initial={{ scale: 0.6, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        className="flex items-center justify-center mb-1"
-        style={{ width: 64, height: 64, borderRadius: "50%", background: `${copy.color}22` }}
+    <div className="flex flex-col gap-5">
+      {/* Illustrated header: score ring + trophy badge on the left,
+          headline/subtext on the right — mirrors a Duolingo/Coursera-
+          style "Keep Going!" result card. */}
+      <div
+        className="flex items-center gap-5 p-5 relative overflow-hidden"
+        style={{ borderRadius: 22, background: `linear-gradient(135deg, ${copy.color}14, ${COLORS.lavender})` }}
       >
-        <Trophy size={30} style={{ color: copy.color }} />
-      </motion.div>
+        <Sparkles size={16} style={{ position: "absolute", top: 14, left: 14, color: copy.color, opacity: 0.6 }} />
+        <Sparkles size={11} style={{ position: "absolute", bottom: 16, left: 40, color: copy.color, opacity: 0.4 }} />
+        <div style={{ position: "relative", flexShrink: 0 }}>
+          <ScoreRing percent={result.scorePercent} color={copy.color} />
+          <div
+            className="flex items-center justify-center"
+            style={{
+              position: "absolute", top: -8, right: -8, width: 34, height: 34, borderRadius: "50%",
+              background: `${copy.color}22`, border: `2px solid #fff`,
+            }}
+          >
+            <Trophy size={16} style={{ color: copy.color }} />
+          </div>
+        </div>
+        <div className="flex-1 min-w-0">
+          <h3 className="text-lg font-extrabold leading-tight" style={{ color: COLORS.textDark }}>
+            {copy.headline} {copy.emoji}
+          </h3>
+          <p className="text-xs mt-1" style={{ color: COLORS.textMid }}>
+            You're learning and improving every day.
+          </p>
+          <span
+            className="inline-block mt-2 px-3 py-1 text-[11px] font-bold rounded-full"
+            style={{ background: `${copy.color}22`, color: copy.color }}
+          >
+            {result.correct} of {result.total} correct
+          </span>
+        </div>
+      </div>
 
-      <h3 className="text-2xl font-extrabold" style={{ color: COLORS.textDark }}>
-        {result.scorePercent}%
-      </h3>
-      <p className="text-sm mb-1" style={{ color: COLORS.textMid }}>
-        {result.correct} of {result.total} correct
-      </p>
-
-      {/* ---- Content decision: driven by Topic Mastery %, NOT the
-          Fast/Moderate/Slow badge below. Same topic, different mastery,
+      {/* ---- Content Overview: driven by Topic Mastery %, NOT the
+          Fast/Moderate/Slow badge above. Same topic, different mastery,
           different content — this is the block that proves it. ---- */}
       <div
-        className="flex flex-col gap-2.5 px-4 py-4 mb-3 w-full max-w-sm text-left"
-        style={{ borderRadius: 14, border: `1.5px solid ${contentCopy.color}33`, background: `${contentCopy.color}0F` }}
+        className="flex flex-col gap-3.5 px-4 py-4 w-full"
+        style={{ borderRadius: 18, border: `1.5px solid ${contentCopy.color}33`, background: `${contentCopy.color}0A` }}
       >
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between flex-wrap gap-2">
           <span className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide" style={{ color: COLORS.textLight }}>
-            <Layers size={13} /> Content Level
+            <Layers size={13} /> Content Overview
           </span>
           <span
             className="px-3 py-1 text-[11px] font-extrabold rounded-full"
@@ -416,34 +492,44 @@ function ResultView({ result, onContinue }) {
             </>
           )}
         </p>
-        <div className="flex flex-wrap gap-1.5">
-          {contentCopy.items.map((item) => (
-            <span
-              key={item}
-              className="flex items-center gap-1 px-2.5 py-1 text-[10px] font-semibold rounded-full"
-              style={{ background: "rgba(255,255,255,0.7)", color: COLORS.textDark }}
-            >
-              <Target size={10} style={{ color: contentCopy.color }} /> {item}
-            </span>
-          ))}
+        <div className="grid grid-cols-2 gap-2.5">
+          {contentCopy.items.map((item) => {
+            const Icon = item.icon;
+            return (
+              <div
+                key={item.title}
+                className="flex flex-col gap-1.5 px-3 py-3"
+                style={{ borderRadius: 14, background: "rgba(255,255,255,0.75)" }}
+              >
+                <div
+                  className="flex items-center justify-center"
+                  style={{ width: 26, height: 26, borderRadius: 8, background: `${contentCopy.color}1F` }}
+                >
+                  <Icon size={13} style={{ color: contentCopy.color }} />
+                </div>
+                <span className="text-[11px] font-bold leading-tight" style={{ color: COLORS.textDark }}>{item.title}</span>
+                <span className="text-[10px] leading-snug" style={{ color: COLORS.textLight }}>{item.desc}</span>
+              </div>
+            );
+          })}
         </div>
       </div>
 
       {/* ---- Revision pace: Fast/Moderate/Slow. Separate axis, never
           decides content — see backend/services/learner_classifier.py. ---- */}
-      <span
-        className="px-4 py-1.5 text-xs font-bold rounded-full mb-3"
-        style={{ background: copy.color, color: "#fff" }}
+      <div
+        className="flex items-start gap-2.5 px-4 py-3.5 w-full"
+        style={{ borderRadius: 16, background: `${copy.color}12` }}
       >
-        {copy.headline}
-      </span>
-
-      <p className="text-sm leading-relaxed mb-5 max-w-sm" style={{ color: COLORS.textMid }}>
-        {copy.detail}
-      </p>
+        <Rocket size={16} style={{ color: copy.color, flexShrink: 0, marginTop: 2 }} />
+        <div>
+          <p className="text-xs font-bold" style={{ color: copy.color }}>{copy.headline}</p>
+          <p className="text-[11px] leading-relaxed mt-0.5" style={{ color: COLORS.textMid }}>{copy.detail}</p>
+        </div>
+      </div>
 
       <div
-        className="flex items-center gap-2.5 px-4 py-3 mb-6 w-full max-w-sm"
+        className="flex items-center gap-2.5 px-4 py-3 w-full"
         style={{ borderRadius: 14, background: "rgba(212,160,23,0.10)" }}
       >
         <CalendarClock size={18} style={{ color: COLORS.purple, flexShrink: 0 }} />
@@ -461,7 +547,7 @@ function ResultView({ result, onContinue }) {
         onClick={onContinue}
         whileHover={{ y: -2 }}
         whileTap={{ scale: 0.98 }}
-        className="flex items-center gap-2 text-sm font-bold px-7 py-3"
+        className="flex items-center justify-center gap-2 text-sm font-bold px-7 py-3.5 w-full"
         style={{ borderRadius: 9999, border: "none", color: "#fff", background: GRADIENTS.purpleSky, cursor: "pointer" }}
       >
         Continue <ArrowRight size={16} />

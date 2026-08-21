@@ -61,12 +61,17 @@ export function setLessonTotal(uid, skill, topic, total) {
   writeAll(all);
 }
 
-/** Mark ONE lesson (by its Order) as completed for this topic. */
-export function markLessonComplete(uid, skill, topic, lessonOrder) {
+/** Mark ONE lesson (by its Order) as completed for this topic, and
+ * (optionally) record the passing quiz score — see result.scorePercent
+ * from TopicQuizModal's onComplete. Re-passing with a higher score
+ * (e.g. a retake) overwrites the stored score for that lesson. */
+export function markLessonComplete(uid, skill, topic, lessonOrder, scorePercent) {
   const all = readAll();
   const k = key(uid, skill, topic);
-  const entry = all[k] || { completed: [], total: 0 };
+  const entry = all[k] || { completed: [], total: 0, scores: {} };
   if (!entry.completed.includes(lessonOrder)) entry.completed.push(lessonOrder);
+  if (!entry.scores) entry.scores = {};
+  if (typeof scorePercent === "number") entry.scores[lessonOrder] = scorePercent;
   all[k] = entry;
   writeAll(all);
 }
@@ -74,6 +79,15 @@ export function markLessonComplete(uid, skill, topic, lessonOrder) {
 export function getCompletedLessons(uid, skill, topic) {
   const all = readAll();
   return new Set((all[key(uid, skill, topic)] || {}).completed || []);
+}
+
+/** { [lessonOrder]: scorePercent } for every passed lesson in this
+ * topic that has a stored score — used to show "Scored 90%" on the
+ * lesson's quiz card once it's marked done (TopicContentPane). Lessons
+ * completed before scores were tracked simply won't have an entry. */
+export function getLessonScores(uid, skill, topic) {
+  const all = readAll();
+  return (all[key(uid, skill, topic)] || {}).scores || {};
 }
 
 /** Index (0-based) of the first not-yet-completed lesson, given the

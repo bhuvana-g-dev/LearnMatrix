@@ -7,6 +7,7 @@ import BackButton from "../components/common/BackButton";
 import TopicContentPane from "../components/learning/TopicContentPane";
 import TopicQuizModal from "../components/learning/TopicQuizModal";
 import LessonListPane from "../components/learning/LessonListPane";
+import ProgressRing from "../components/learning/ProgressRing";
 import { COLORS, GRADIENTS, GLASS_CARD } from "../constants/theme";
 import { buildFlatTopicList, findStartingIndex, topicProgressKey } from "../utils/buildCourseNavigator";
 import { getLessons, compositeTopicKey } from "../services/lessonService";
@@ -86,24 +87,6 @@ export default function CourseWorkspaceScreen({ roadmap, compressedSyllabus, ini
   );
   const [activeIndex, setActiveIndex] = useState(() => findStartingIndex(flatTopics, initialEntry));
   const active = flatTopics[activeIndex] || null;
-
-  // Keep a pointer to whichever topic is actually being viewed right now
-  // (not just the one Course Workspace was opened on) so App.jsx can
-  // rebuild this exact screen after a full page refresh — see
-  // App.jsx's "lm_workspacePointer" restore effect. Cheap, synchronous,
-  // and only ever read back on a fresh mount.
-  useEffect(() => {
-    if (!active) return;
-    try {
-      localStorage.setItem(
-        "lm_workspacePointer",
-        JSON.stringify({ skill: active.skill, currentTopic: active.topic })
-      );
-    } catch {
-      // Non-fatal — worst case a refresh lands on the topic Course
-      // Workspace was originally opened with instead of the latest one.
-    }
-  }, [active]);
 
   const modules = useMemo(() => {
     const list = [];
@@ -242,6 +225,23 @@ export default function CourseWorkspaceScreen({ roadmap, compressedSyllabus, ini
     return { total, verified };
   };
 
+  // Lesson-level completion fraction (0-100) across a set of topics —
+  // only counting topics whose Lessons breakdown has actually been
+  // opened (see utils/lessonProgress.js). Returns null when none of
+  // them have lesson data yet, so the sidebar falls back to its plain
+  // empty/complete icon instead of drawing an empty ring. Powers the
+  // partial ProgressRing shown for a skill/module that's e.g. 2 of 4
+  // lessons done, sitting between the empty Circle and solid
+  // CheckCircle2 states.
+  const lessonPercent = (topics) => {
+    const withData = topics.filter((t) => t.lessonProgress);
+    if (withData.length === 0) return null;
+    const completed = withData.reduce((n, t) => n + t.lessonProgress.completed, 0);
+    const total = withData.reduce((n, t) => n + t.lessonProgress.total, 0);
+    if (!total) return null;
+    return (completed / total) * 100;
+  };
+
   const STATUS_SUBTITLE = {
     Verified: "Already verified on your diagnostic",
     Current: "Recommended next",
@@ -264,6 +264,7 @@ export default function CourseWorkspaceScreen({ roadmap, compressedSyllabus, ini
               const { total, verified } = moduleProgress(mod);
               const isActive = mod.name === activeModuleName;
               const isComplete = total > 0 && verified === total;
+              const modPercent = lessonPercent(mod.skills.flatMap((s) => s.topics));
               const isExpanded = sidebarExpandedModule === mod.name;
               return (
                 <div key={mod.name || "all"}>
@@ -278,6 +279,8 @@ export default function CourseWorkspaceScreen({ roadmap, compressedSyllabus, ini
                     >
                       {isComplete ? (
                         <CheckCircle2 size={16} style={{ color: "#22C55E", flexShrink: 0 }} />
+                      ) : modPercent > 0 ? (
+                        <ProgressRing percent={modPercent} size={16} strokeWidth={2} color={COLORS.purple} />
                       ) : (
                         <Circle size={16} style={{ color: isActive ? COLORS.purple : COLORS.border, flexShrink: 0 }} />
                       )}
@@ -312,6 +315,7 @@ export default function CourseWorkspaceScreen({ roadmap, compressedSyllabus, ini
                           {mod.skills.map((sk) => {
                             const skVerified = sk.topics.filter((t) => t.topicStatus === "Verified").length;
                             const skComplete = sk.topics.length > 0 && skVerified === sk.topics.length;
+                            const skPercent = lessonPercent(sk.topics);
                             const isSkillActive = isActive && expandedSkills.has(sk.name) && viewMode === "list";
                             return (
                               <button
@@ -327,6 +331,8 @@ export default function CourseWorkspaceScreen({ roadmap, compressedSyllabus, ini
                               >
                                 {skComplete ? (
                                   <CheckCircle2 size={12} style={{ color: "#22C55E", flexShrink: 0 }} />
+                                ) : skPercent > 0 ? (
+                                  <ProgressRing percent={skPercent} size={12} strokeWidth={2} color={COLORS.purple} />
                                 ) : (
                                   <Circle size={12} style={{ color: COLORS.border, flexShrink: 0 }} />
                                 )}

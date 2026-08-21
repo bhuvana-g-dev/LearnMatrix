@@ -86,7 +86,7 @@ function formatPublishedDate(iso) {
 export default function TopicContentPane({
   skill, topic, focusBand, topicStatus,
   onNext, onPrevious, hasNext = false, hasPrevious = false, onTakeTest,
-  onTakeLessonQuiz, lessonQuizDone, // optional — lesson-scoped quiz CTA, only passed from the Lessons flow (CourseWorkspaceScreen)
+  onTakeLessonQuiz, lessonQuizDone, lessonQuizScore, // optional — lesson-scoped quiz CTA, only passed from the Lessons flow (CourseWorkspaceScreen)
 }) {
   const [state, setState] = useState("loading"); // loading | error | ready
   const [errorMessage, setErrorMessage] = useState("");
@@ -423,16 +423,30 @@ export default function TopicContentPane({
                 {lessonQuizDone ? "Lesson completed" : "Ready to test yourself?"}
               </p>
               <p className="text-[11px]" style={{ color: COLORS.textLight }}>
-                {lessonQuizDone ? "You scored high enough to mark this lesson done" : "Quick quiz on this lesson · pass it to mark this lesson done"}
+                {lessonQuizDone
+                  ? (typeof lessonQuizScore === "number"
+                      ? `You scored ${lessonQuizScore}% · high enough to mark this lesson done`
+                      : "You scored high enough to mark this lesson done")
+                  : "Quick quiz on this lesson · pass it to mark this lesson done"}
               </p>
             </div>
           </div>
-          <span
-            className="text-xs font-bold px-4 py-2 rounded-full flex-shrink-0"
-            style={{ background: lessonQuizDone ? "#22C55E" : GRADIENTS.purplePink, color: "#fff" }}
-          >
-            {lessonQuizDone ? "Retake" : "Take Test"}
-          </span>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            {lessonQuizDone && typeof lessonQuizScore === "number" && (
+              <span
+                className="text-xs font-bold px-3 py-2 rounded-full"
+                style={{ background: "rgba(34,197,94,0.12)", color: "#22C55E" }}
+              >
+                {lessonQuizScore}%
+              </span>
+            )}
+            <span
+              className="text-xs font-bold px-4 py-2 rounded-full"
+              style={{ background: lessonQuizDone ? "#22C55E" : GRADIENTS.purplePink, color: "#fff" }}
+            >
+              {lessonQuizDone ? "Retake" : "Take Test"}
+            </span>
+          </div>
         </motion.button>
       )}
 

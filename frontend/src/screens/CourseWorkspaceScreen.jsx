@@ -518,6 +518,18 @@ export default function CourseWorkspaceScreen({ roadmap, compressedSyllabus, ini
               passLesson(lessonQuizTarget.lessonOrder);
             }
             setLessonQuizTarget(null);
+            // Perfect score (10/10) only — auto-advance to the next
+            // lesson, same as clicking Next inside the lesson content
+            // view. Anything less stays put: the modal's own button
+            // already turned into "Retake Quiz" for that case instead
+            // of calling onComplete at all (see TopicQuizModal.jsx).
+            if (result?.scorePercent === 100) {
+              if (activeLessonIndex < lessons.length - 1) {
+                setActiveLessonIndex((i) => i + 1);
+              } else {
+                setViewMode("lessons");
+              }
+            }
           }}
         />
       )}

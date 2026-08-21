@@ -380,7 +380,6 @@ export default function CourseWorkspaceScreen({ roadmap, compressedSyllabus, ini
                     lessonOrder: lessons[activeLessonIndex].Order,
                   })
                 }
-                onTakeTest={() => setQuizTarget({ skill: active.skill, topic: active.topic, focusBand: active.focusBand })}
                 onNext={() =>
                   activeLessonIndex < lessons.length - 1
                     ? setActiveLessonIndex((i) => i + 1)

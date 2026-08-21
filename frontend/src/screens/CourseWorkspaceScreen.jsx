@@ -87,6 +87,24 @@ export default function CourseWorkspaceScreen({ roadmap, compressedSyllabus, ini
   const [activeIndex, setActiveIndex] = useState(() => findStartingIndex(flatTopics, initialEntry));
   const active = flatTopics[activeIndex] || null;
 
+  // Keep a pointer to whichever topic is actually being viewed right now
+  // (not just the one Course Workspace was opened on) so App.jsx can
+  // rebuild this exact screen after a full page refresh — see
+  // App.jsx's "lm_workspacePointer" restore effect. Cheap, synchronous,
+  // and only ever read back on a fresh mount.
+  useEffect(() => {
+    if (!active) return;
+    try {
+      localStorage.setItem(
+        "lm_workspacePointer",
+        JSON.stringify({ skill: active.skill, currentTopic: active.topic })
+      );
+    } catch {
+      // Non-fatal — worst case a refresh lands on the topic Course
+      // Workspace was originally opened with instead of the latest one.
+    }
+  }, [active]);
+
   const modules = useMemo(() => {
     const list = [];
     for (const t of flatTopics) {

@@ -154,6 +154,30 @@ export default function TopicQuizModal({ skill, topic, uid, focusBand, onComplet
     }
   }, [skill, topic, focusBand, uid]);
 
+  // Fresh attempt, skipping the getTopicQuizAttempt() check above on
+  // purpose — that check is what makes a normal re-open show the read-
+  // only review of the LAST attempt; retaking needs a brand new quiz
+  // instead. Only reachable from ResultView/ReviewView's bottom button
+  // when the last score was under 100% — see CONTINUE_OR_RETAKE below.
+  // The backend already supports this (submitTopicQuiz returns an
+  // incrementing attemptNumber); this modal just never triggered it.
+  const startRetake = useCallback(async () => {
+    setState("loading");
+    setErrorMessage("");
+    setCurrentIndex(0);
+    setAnswers({});
+    setResult(null);
+    try {
+      const quiz = await getTopicQuiz(skill, topic, focusBand);
+      setQuestions(quiz.questions);
+      startedAtRef.current = Date.now();
+      setState("ready");
+    } catch (err) {
+      setErrorMessage(err.message || "Something went wrong loading the quiz.");
+      setState("error");
+    }
+  }, [skill, topic, focusBand]);
+
   useEffect(() => {
     fetchQuiz();
   }, [fetchQuiz]);
@@ -381,12 +405,12 @@ export default function TopicQuizModal({ skill, topic, uid, focusBand, onComplet
 
           {/* ---------------- Result ---------------- */}
           {state === "result" && result && (
-            <ResultView result={result} onContinue={() => onComplete(result)} />
+            <ResultView result={result} onContinue={() => onComplete(result)} onRetake={startRetake} />
           )}
 
           {/* ---------------- Review (prior attempt, read-only) ---------------- */}
           {state === "review" && result && (
-            <ReviewView result={result} questions={questions} answers={answers} onClose={() => onComplete(result)} />
+            <ReviewView result={result} questions={questions} answers={answers} onClose={() => onComplete(result)} onRetake={startRetake} />
           )}
         </div>
       </motion.div>
@@ -422,10 +446,15 @@ function ScoreRing({ percent, color, size = 116 }) {
   );
 }
 
-function ResultView({ result, onContinue }) {
+function ResultView({ result, onContinue, onRetake }) {
   const copy = CLASSIFICATION_COPY[result.classification] || CLASSIFICATION_COPY.Moderate;
   const contentCopy = CONTENT_LEVEL_COPY[result.focusBand] || CONTENT_LEVEL_COPY.application;
   const weakAreaLabel = WEAK_AREA_LABELS[result.weakArea];
+  // Perfect score only — auto-advances to the next lesson. Anything less
+  // (even a passing score) turns this into a genuine retake instead of a
+  // plain dismiss, so a learner who wants to nail a topic isn't stuck
+  // with whatever they scored the first try.
+  const isPerfect = result.scorePercent === 100;
 
   return (
     <div className="flex flex-col gap-5">
@@ -543,15 +572,27 @@ function ResultView({ result, onContinue }) {
         </span>
       </div>
 
-      <motion.button
-        onClick={onContinue}
-        whileHover={{ y: -2 }}
-        whileTap={{ scale: 0.98 }}
-        className="flex items-center justify-center gap-2 text-sm font-bold px-7 py-3.5 w-full"
-        style={{ borderRadius: 9999, border: "none", color: "#fff", background: GRADIENTS.purpleSky, cursor: "pointer" }}
-      >
-        Continue <ArrowRight size={16} />
-      </motion.button>
+      {isPerfect ? (
+        <motion.button
+          onClick={onContinue}
+          whileHover={{ y: -2 }}
+          whileTap={{ scale: 0.98 }}
+          className="flex items-center justify-center gap-2 text-sm font-bold px-7 py-3.5 w-full"
+          style={{ borderRadius: 9999, border: "none", color: "#fff", background: GRADIENTS.purpleSky, cursor: "pointer" }}
+        >
+          Perfect score — Next Lesson <ArrowRight size={16} />
+        </motion.button>
+      ) : (
+        <motion.button
+          onClick={onRetake}
+          whileHover={{ y: -2 }}
+          whileTap={{ scale: 0.98 }}
+          className="flex items-center justify-center gap-2 text-sm font-bold px-7 py-3.5 w-full"
+          style={{ borderRadius: 9999, border: `1.5px solid ${COLORS.purple}`, color: COLORS.purple, background: "rgba(212,160,23,0.08)", cursor: "pointer" }}
+        >
+          <RotateCcw size={16} /> Retake Quiz — Aim for 10/10
+        </motion.button>
+      )}
     </div>
   );
 }
@@ -565,8 +606,9 @@ function ResultView({ result, onContinue }) {
  * exactly what the learner picked, with each option colored by
  * correct/wrong/missed.
  */
-function ReviewView({ result, questions, answers, onClose }) {
+function ReviewView({ result, questions, answers, onClose, onRetake }) {
   const copy = CLASSIFICATION_COPY[result.classification] || CLASSIFICATION_COPY.Moderate;
+  const isPerfect = result.scorePercent === 100;
 
   return (
     <div className="flex flex-col gap-5">
@@ -667,15 +709,27 @@ function ReviewView({ result, questions, answers, onClose }) {
         })}
       </div>
 
-      <motion.button
-        onClick={onClose}
-        whileHover={{ y: -2 }}
-        whileTap={{ scale: 0.98 }}
-        className="flex items-center justify-center gap-2 text-sm font-bold px-7 py-3 self-center"
-        style={{ borderRadius: 9999, border: "none", color: "#fff", background: GRADIENTS.purpleSky, cursor: "pointer" }}
-      >
-        Close <ArrowRight size={16} />
-      </motion.button>
+      {isPerfect ? (
+        <motion.button
+          onClick={onClose}
+          whileHover={{ y: -2 }}
+          whileTap={{ scale: 0.98 }}
+          className="flex items-center justify-center gap-2 text-sm font-bold px-7 py-3 self-center"
+          style={{ borderRadius: 9999, border: "none", color: "#fff", background: GRADIENTS.purpleSky, cursor: "pointer" }}
+        >
+          Perfect score — Next Lesson <ArrowRight size={16} />
+        </motion.button>
+      ) : (
+        <motion.button
+          onClick={onRetake}
+          whileHover={{ y: -2 }}
+          whileTap={{ scale: 0.98 }}
+          className="flex items-center justify-center gap-2 text-sm font-bold px-7 py-3 self-center"
+          style={{ borderRadius: 9999, border: `1.5px solid ${COLORS.purple}`, color: COLORS.purple, background: "rgba(212,160,23,0.08)", cursor: "pointer" }}
+        >
+          <RotateCcw size={16} /> Retake Quiz — Aim for 10/10
+        </motion.button>
+      )}
     </div>
   );
 }

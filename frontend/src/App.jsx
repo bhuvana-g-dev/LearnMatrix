@@ -49,24 +49,47 @@ export default function App() {
   // "Profile" (or any page) reloads that same page instead of bouncing
   // back to Home/Login.
   //
-  // "course-workspace" and "learning-session" are excluded from that
-  // restore: both need in-memory context (workspaceContext /
-  // learningSession below) that is NEVER persisted, only held in
-  // useState. Reloading — or just leaving the tab and coming back —
-  // brought activeKey back from localStorage as one of these two with
-  // that context gone, and since "course-workspace"/"learning-session"
-  // aren't real nav keys either, the app fell all the way through to
-  // the generic Coming Soon screen. Land on Learning Hub instead — the
-  // same place each screen's own Back button already goes.
+  // "course-workspace" and "learning-session" used to be excluded from
+  // this restore because both need in-memory context (workspaceContext /
+  // learningSession below) that only ever lived in useState. Now each
+  // one has its own small, persisted "pointer" (see lm_learningSession
+  // and lm_workspacePointer below) that's enough to rebuild that
+  // context after a refresh — so we only fall back to Learning Hub
+  // when that pointer is actually missing (e.g. an older session from
+  // before this existed, or someone landed here with no in-progress
+  // session at all).
   const [activeKey, setActiveKey] = useState(() => {
     const saved = localStorage.getItem("lm_activeKey");
-    if (saved === "course-workspace" || saved === "learning-session") return "roadmap";
+    if (saved === "course-workspace") {
+      return localStorage.getItem("lm_workspacePointer") ? "course-workspace" : "roadmap";
+    }
+    if (saved === "learning-session") {
+      return localStorage.getItem("lm_learningSession") ? "learning-session" : "roadmap";
+    }
     return saved || "home";
   });
   const [showSignup, setShowSignup] = useState(false);
   const [showLanding, setShowLanding] = useState(true);
-  const [learningSession, setLearningSession] = useState(null); // { skill, topic, focusBand }
-  const [workspaceContext, setWorkspaceContext] = useState(null); // { roadmap, compressedSyllabus, initialEntry }
+  // { skill, topic, focusBand } — restored synchronously from
+  // localStorage on a fresh mount when we're reopening straight into
+  // Learning Session, since this is just plain strings (no roadmap
+  // object needed).
+  const [learningSession, setLearningSession] = useState(() => {
+    if (localStorage.getItem("lm_activeKey") !== "learning-session") return null;
+    try {
+      const raw = localStorage.getItem("lm_learningSession");
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  });
+  // { roadmap, compressedSyllabus, initialEntry } — NOT restorable
+  // synchronously (needs a network round trip keyed by uid), so this
+  // starts null even when reopening into Course Workspace; the effect
+  // below fills it back in once auth.user.uid is known. See the
+  // "workspaceRestoring" content branch further down for the brief
+  // loading state in between.
+  const [workspaceContext, setWorkspaceContext] = useState(null);
 
   // "Skill Selection" (My Career Path submenu) means two different things
   // depending on whether a role is locked in: the initial "what do you
@@ -115,6 +138,66 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem("lm_activeKey", activeKey);
   }, [activeKey]);
+
+  // Keep the Learning Session pointer in sync so a refresh while on
+  // that screen can restore it directly (see the lazy useState above).
+  useEffect(() => {
+    if (learningSession) {
+      localStorage.setItem("lm_learningSession", JSON.stringify(learningSession));
+    } else {
+      localStorage.removeItem("lm_learningSession");
+    }
+  }, [learningSession]);
+
+  // Rebuild Course Workspace's context after a refresh. Unlike Learning
+  // Session, this can't be done synchronously — roadmap/compressedSyllabus
+  // have to be re-fetched from the backend (they're never persisted
+  // client-side), and that fetch needs auth.user.uid, which isn't known
+  // until Firebase finishes initializing. The actual "which topic" pointer
+  // (lm_workspacePointer) is written continuously by CourseWorkspaceScreen
+  // itself as the learner moves between topics, so this restores the
+  // exact topic last viewed, not just the one Course Workspace was
+  // originally opened on.
+  useEffect(() => {
+    if (activeKey !== "course-workspace" || workspaceContext || !auth.user?.uid) return;
+    const raw = localStorage.getItem("lm_workspacePointer");
+    if (!raw) {
+      setActiveKey("roadmap");
+      return;
+    }
+    let pointer;
+    try {
+      pointer = JSON.parse(raw);
+    } catch {
+      setActiveKey("roadmap");
+      return;
+    }
+    let active = true;
+    loadSavedRoadmap(auth.user.uid)
+      .then((roadmap) => {
+        if (!active) return;
+        if (!roadmap) {
+          // No saved roadmap for this account (e.g. role was quit in
+          // another tab) — nothing to rebuild the workspace from.
+          setActiveKey("roadmap");
+          return;
+        }
+        setWorkspaceContext({
+          roadmap,
+          compressedSyllabus: roadmap.compressedSyllabus,
+          initialEntry: pointer,
+        });
+      })
+      .catch(() => {
+        // Backend hiccup (e.g. Render cold start) — same "don't guess,
+        // just fall back to a page that definitely works" approach as
+        // the Skill Selection check above.
+        if (active) setActiveKey("roadmap");
+      });
+    return () => {
+      active = false;
+    };
+  }, [activeKey, workspaceContext, auth.user?.uid]);
 
   useEffect(() => {
     if (auth.isAuthenticated && auth.user?.uid) {
@@ -351,6 +434,16 @@ setLearningSession({ skill: entry.skill, topic, focusBand: entry.focusBand || "a
         }}
       />
     );
+  } else if (activeKey === "course-workspace" && !workspaceContext) {
+    // Waiting on the restore effect above to re-fetch the roadmap after
+    // a refresh (or, on a fresh navigation within the same session,
+    // this simply never matches since workspaceContext is set
+    // synchronously by onStartJourney before activeKey changes).
+    content = (
+      <div className="px-4 sm:px-8 pt-24 flex justify-center">
+        <p className="text-sm" style={{ color: COLORS.textMid }}>Loading…</p>
+      </div>
+    );
   } else if (activeKey === "course-workspace" && workspaceContext) {
     content = (
       <CourseWorkspaceScreen
@@ -388,6 +481,8 @@ setLearningSession({ skill: entry.skill, topic, focusBand: entry.focusBand || "a
   const handleLogout = async () => {
     await auth.logout();
     localStorage.removeItem("lm_activeKey");
+    localStorage.removeItem("lm_learningSession");
+    localStorage.removeItem("lm_workspacePointer");
     setActiveKey("home");
   };
 

@@ -45,11 +45,16 @@ function formatDueLabel(nextReviewDateIso) {
 // Shapes one backend progress doc into what RevisionScheduleSection.jsx
 // renders — id is the same composite key the backend uses, so
 // snooze/retake calls can round-trip skill+topic without re-parsing it.
+// focusBand is carried through too (not just for display — TopicQuizModal
+// needs it as a fallback if a retake ever has to fetch a fresh quiz
+// instead of showing a review, e.g. a progress doc with no LastQuestions
+// saved from before this field existed).
 function toDisplayItem(doc) {
   return {
     id: `${doc.Uid}__${doc.Skill}__${doc.Topic}`,
     skill: doc.Skill,
     topic: doc.Topic,
+    focusBand: doc.FocusBand,
     date: formatDueLabel(doc.NextReviewDate),
     nextReviewDate: doc.NextReviewDate,
     priority: PRIORITY_BY_CLASSIFICATION[doc.Classification] || "Medium",

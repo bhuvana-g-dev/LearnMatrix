@@ -11,6 +11,9 @@ import { COLORS, GRADIENTS, GLASS_CARD } from "../constants/theme";
 import { buildFlatTopicList, findStartingIndex, topicProgressKey } from "../utils/buildCourseNavigator";
 import { getLessons, compositeTopicKey } from "../services/lessonService";
 import { getTopicProgress } from "../services/topicQuizService";
+import {
+  setLessonTotal, markLessonComplete, getCompletedLessons, firstIncompleteIndex,
+} from "../utils/lessonProgress";
 
 /**
  * CourseWorkspaceScreen — Coursera-style layout, THREE-level main pane:
@@ -71,9 +74,15 @@ export default function CourseWorkspaceScreen({ roadmap, compressedSyllabus, ini
     fetchTopicProgress();
   }, [fetchTopicProgress]);
 
+  // Bumped whenever a lesson is marked complete, so flatTopics (and the
+  // sidebar ticks derived from it) recompute even though roadmap/
+  // compressedSyllabus/topicProgress themselves didn't change — see
+  // utils/lessonProgress.js, read synchronously from localStorage.
+  const [lessonProgressVersion, setLessonProgressVersion] = useState(0);
+
   const flatTopics = useMemo(
-    () => buildFlatTopicList(roadmap, compressedSyllabus, topicProgress),
-    [roadmap, compressedSyllabus, topicProgress]
+    () => buildFlatTopicList(roadmap, compressedSyllabus, topicProgress, uid),
+    [roadmap, compressedSyllabus, topicProgress, uid, lessonProgressVersion]
   );
   const [activeIndex, setActiveIndex] = useState(() => findStartingIndex(flatTopics, initialEntry));
   const active = flatTopics[activeIndex] || null;
@@ -111,6 +120,10 @@ export default function CourseWorkspaceScreen({ roadmap, compressedSyllabus, ini
   const [lessonErrorMessage, setLessonErrorMessage] = useState("");
   const [lessons, setLessons] = useState([]);
   const [activeLessonIndex, setActiveLessonIndex] = useState(0);
+  // Which of the CURRENT topic's lessons are already finished — see
+  // utils/lessonProgress.js. Drives LessonListPane's per-lesson ticks
+  // and where "Resume" lands when the topic is reopened.
+  const [completedLessons, setCompletedLessons] = useState(new Set());
 
   const fetchLessonsForActiveTopic = useCallback(async () => {
     if (!active) return;
@@ -120,11 +133,28 @@ export default function CourseWorkspaceScreen({ roadmap, compressedSyllabus, ini
       const result = await getLessons(active.skill, active.topic);
       setLessons(result);
       setLessonState("ready");
+      // Cache the lesson count so isTopicFullyComplete() can answer
+      // synchronously (no network) — see buildCourseNavigator.js.
+      setLessonTotal(uid, active.skill, active.topic, result.length);
+      setCompletedLessons(getCompletedLessons(uid, active.skill, active.topic));
+      // Resume where the learner left off in THIS topic, instead of
+      // always restarting at lesson 1.
+      setActiveLessonIndex(firstIncompleteIndex(uid, active.skill, active.topic, result));
     } catch (err) {
       setLessonErrorMessage(err.message || "Something went wrong loading the lesson breakdown.");
       setLessonState("error");
     }
-  }, [active]);
+  }, [active, uid]);
+
+  // Marks the CURRENT lesson as finished and refreshes everything that
+  // depends on it: this topic's local tick set, the sidebar's topic
+  // tick (via lessonProgressVersion), and the topic list's checkmark.
+  const completeCurrentLesson = useCallback(() => {
+    if (!active || !lessons[activeLessonIndex]) return;
+    markLessonComplete(uid, active.skill, active.topic, lessons[activeLessonIndex].Order);
+    setCompletedLessons(getCompletedLessons(uid, active.skill, active.topic));
+    setLessonProgressVersion((v) => v + 1);
+  }, [active, lessons, activeLessonIndex, uid]);
 
   // Refetch whenever the ACTIVE TOPIC changes (not on every render, and
   // not when only activeLessonIndex/viewMode change within the same topic).
@@ -311,6 +341,7 @@ export default function CourseWorkspaceScreen({ roadmap, compressedSyllabus, ini
                   state={lessonState}
                   errorMessage={lessonErrorMessage}
                   lessons={lessons}
+                  completedOrders={completedLessons}
                   onSelectLesson={openLesson}
                   onRetry={fetchLessonsForActiveTopic}
                 />
@@ -319,7 +350,14 @@ export default function CourseWorkspaceScreen({ roadmap, compressedSyllabus, ini
           ) : viewMode === "content" && active && lessons[activeLessonIndex] ? (
             <div>
               <button
-                onClick={() => setViewMode("lessons")}
+                onClick={() => {
+                  // Leaving a lesson deliberately (vs. Previous) counts
+                  // as finishing it — matches "I finished lesson 1, went
+                  // back" so lesson 1 shows done, not lesson 4 unlocking
+                  // the whole topic on its own.
+                  completeCurrentLesson();
+                  setViewMode("lessons");
+                }}
                 className="flex items-center gap-1.5 text-xs font-semibold mb-4"
                 style={{ background: "none", border: "none", cursor: "pointer", color: COLORS.textMid }}
               >
@@ -331,18 +369,20 @@ export default function CourseWorkspaceScreen({ roadmap, compressedSyllabus, ini
                 focusBand={active.focusBand}
                 topicStatus={active.topicStatus}
                 onTakeTest={() => setQuizTarget({ skill: active.skill, topic: active.topic, focusBand: active.focusBand })}
-                onNext={() =>
+                onNext={() => {
+                  // Moving past a lesson via Next means it's finished.
+                  completeCurrentLesson();
                   activeLessonIndex < lessons.length - 1
                     ? setActiveLessonIndex((i) => i + 1)
-                    : setViewMode("lessons")
-                }
+                    : setViewMode("lessons");
+                }}
                 onPrevious={() =>
                   activeLessonIndex > 0
                     ? setActiveLessonIndex((i) => i - 1)
                     : setViewMode("lessons")
                 }
                 hasNext
-                hasPrevious
+                hasPrevious={activeLessonIndex > 0}
               />
             </div>
           ) : (

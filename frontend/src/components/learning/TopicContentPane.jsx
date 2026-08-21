@@ -86,6 +86,7 @@ function formatPublishedDate(iso) {
 export default function TopicContentPane({
   skill, topic, focusBand, topicStatus,
   onNext, onPrevious, hasNext = false, hasPrevious = false, onTakeTest,
+  onTakeLessonQuiz, lessonQuizDone, // optional — lesson-scoped quiz CTA, only passed from the Lessons flow (CourseWorkspaceScreen)
 }) {
   const [state, setState] = useState("loading"); // loading | error | ready
   const [errorMessage, setErrorMessage] = useState("");
@@ -398,6 +399,42 @@ export default function TopicContentPane({
           </div>
         )}
       </div>
+
+      {onTakeLessonQuiz && (
+        <motion.button
+          onClick={onTakeLessonQuiz}
+          whileHover={{ y: -2 }}
+          whileTap={{ scale: 0.98 }}
+          className="w-full flex items-center justify-between gap-3 p-5 mb-4 text-left"
+          style={{
+            ...GLASS_CARD, borderRadius: 20, cursor: "pointer",
+            border: `1px solid ${lessonQuizDone ? "#22C55E" : COLORS.border}`,
+          }}
+        >
+          <div className="flex items-center gap-3">
+            <div
+              className="flex items-center justify-center flex-shrink-0"
+              style={{ width: 40, height: 40, borderRadius: 12, background: lessonQuizDone ? "#22C55E" : GRADIENTS.purpleSky }}
+            >
+              {lessonQuizDone ? <CheckCircle2 size={20} style={{ color: "#fff" }} /> : <ClipboardCheck size={20} style={{ color: "#fff" }} />}
+            </div>
+            <div>
+              <p className="text-sm font-bold" style={{ color: COLORS.textDark }}>
+                {lessonQuizDone ? "Lesson completed" : "Complete this lesson"}
+              </p>
+              <p className="text-[11px]" style={{ color: COLORS.textLight }}>
+                {lessonQuizDone ? "You scored high enough to mark this lesson done" : "Score well on a short quiz to mark it done — Coursera-style"}
+              </p>
+            </div>
+          </div>
+          <span
+            className="text-xs font-bold px-4 py-2 rounded-full flex-shrink-0"
+            style={{ background: lessonQuizDone ? "#22C55E" : GRADIENTS.purpleSky, color: "#fff" }}
+          >
+            {lessonQuizDone ? "Retake" : "Take Quiz"}
+          </span>
+        </motion.button>
+      )}
 
       {onTakeTest && (
         <motion.button

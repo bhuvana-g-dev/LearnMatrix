@@ -110,3 +110,16 @@ export function isTopicFullyComplete(uid, skill, topic) {
   if (!entry || !entry.total) return false;
   return entry.completed.length >= entry.total;
 }
+
+/** Raw { completed, total } lesson counts for a topic — the fraction
+ * behind isTopicFullyComplete()'s boolean. Returns null if this
+ * topic's Lessons breakdown has never been opened (no cached total
+ * yet), so callers can tell "not started" apart from "0 of N done".
+ * Used by the Course Material sidebar to draw a partial progress ring
+ * (e.g. 2/4 lessons) instead of a plain empty/filled circle. */
+export function getLessonProgressCounts(uid, skill, topic) {
+  const all = readAll();
+  const entry = all[key(uid, skill, topic)];
+  if (!entry || !entry.total) return null;
+  return { completed: entry.completed.length, total: entry.total };
+}

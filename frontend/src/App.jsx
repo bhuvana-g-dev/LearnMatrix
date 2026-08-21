@@ -48,9 +48,21 @@ export default function App() {
   // Remembers which page was open across a browser refresh, so refreshing
   // "Profile" (or any page) reloads that same page instead of bouncing
   // back to Home/Login.
-  const [activeKey, setActiveKey] = useState(
-    () => localStorage.getItem("lm_activeKey") || "home"
-  );
+  //
+  // "course-workspace" and "learning-session" are excluded from that
+  // restore: both need in-memory context (workspaceContext /
+  // learningSession below) that is NEVER persisted, only held in
+  // useState. Reloading — or just leaving the tab and coming back —
+  // brought activeKey back from localStorage as one of these two with
+  // that context gone, and since "course-workspace"/"learning-session"
+  // aren't real nav keys either, the app fell all the way through to
+  // the generic Coming Soon screen. Land on Learning Hub instead — the
+  // same place each screen's own Back button already goes.
+  const [activeKey, setActiveKey] = useState(() => {
+    const saved = localStorage.getItem("lm_activeKey");
+    if (saved === "course-workspace" || saved === "learning-session") return "roadmap";
+    return saved || "home";
+  });
   const [showSignup, setShowSignup] = useState(false);
   const [showLanding, setShowLanding] = useState(true);
   const [learningSession, setLearningSession] = useState(null); // { skill, topic, focusBand }

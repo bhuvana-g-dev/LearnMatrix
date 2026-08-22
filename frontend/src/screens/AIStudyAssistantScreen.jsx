@@ -551,8 +551,8 @@ export default function AIStudyAssistantScreen({ uid }) {
   }
 
   return (
-    <div className="h-screen flex flex-col overflow-hidden px-4 sm:px-6 py-4">
-      <div className="max-w-7xl mx-auto w-full flex flex-col flex-1 min-h-0">
+    <div className="min-h-screen flex flex-col px-4 sm:px-6 py-4">
+      <div className="max-w-7xl mx-auto w-full flex flex-col">
         <div className="flex items-center gap-3 mb-4 shrink-0">
           <div className="flex items-center justify-center rounded-full" style={{ width: 40, height: 40, background: GRADIENTS.purpleSky }}>
             <Bot size={20} color={COLORS.white} />
@@ -568,8 +568,8 @@ export default function AIStudyAssistantScreen({ uid }) {
         </div>
 
         <div
-          className={`grid grid-cols-1 rounded-2xl overflow-hidden flex-1 min-h-0 ${historyCollapsed ? "lg:grid-cols-[56px_220px_1fr_280px]" : "lg:grid-cols-[224px_220px_1fr_280px]"}`}
-          style={{ ...GLASS_CARD }}
+          className={`grid grid-cols-1 rounded-2xl overflow-hidden ${historyCollapsed ? "lg:grid-cols-[56px_220px_1fr_280px]" : "lg:grid-cols-[224px_220px_1fr_280px]"}`}
+          style={{ ...GLASS_CARD, height: "min(72vh, 680px)" }}
         >
           {/* ---------------- HISTORY (permanent, collapsible sidebar) ---------------- */}
           <div
@@ -923,7 +923,7 @@ export default function AIStudyAssistantScreen({ uid }) {
               </div>
             )}
 
-            <div className="flex flex-col gap-3">
+            <div className="flex flex-col gap-2">
               <StudioActionGroup
                 icon={PresentationIcon}
                 label="Slide Deck"
@@ -1113,7 +1113,7 @@ function StudioActionGroup({ icon: Icon, label, theme = "blue", onGenerate, load
   return (
     <div
       style={{
-        borderRadius: 26,
+        borderRadius: 20,
         padding: 2,
         background: `linear-gradient(135deg, ${t.cardFrom}, ${t.cardTo})`,
         border: `1px solid ${t.border}`,
@@ -1123,35 +1123,35 @@ function StudioActionGroup({ icon: Icon, label, theme = "blue", onGenerate, load
       <button
         type="button"
         onClick={() => setExpanded((v) => !v)}
-        className="flex items-center gap-3.5 w-full text-left"
-        style={{ cursor: "pointer", padding: "10px 14px 10px 10px" }}
+        className="flex items-center gap-2.5 w-full text-left"
+        style={{ cursor: "pointer", padding: "8px 12px 8px 8px" }}
       >
         <div
           className="flex items-center justify-center rounded-full shrink-0"
           style={{
-            width: 52,
-            height: 52,
+            width: 38,
+            height: 38,
             background: `linear-gradient(150deg, ${t.badgeFrom}, ${t.badgeTo})`,
             boxShadow: "0 3px 8px rgba(20,20,40,0.14), inset 0 1px 2px rgba(255,255,255,0.85)",
           }}
         >
           {loading ? (
-            <Loader2 size={22} className="animate-spin" color={t.iconColor} />
+            <Loader2 size={16} className="animate-spin" color={t.iconColor} />
           ) : (
-            <Icon size={22} color={t.iconColor} strokeWidth={2.1} />
+            <Icon size={16} color={t.iconColor} strokeWidth={2.1} />
           )}
         </div>
-        <p className="text-base font-semibold flex-1 leading-tight" style={{ color: t.textColor }}>
+        <p className="text-sm font-semibold flex-1 leading-tight" style={{ color: t.textColor }}>
           {label}
         </p>
         <ChevronDown
-          size={18}
+          size={16}
           color={t.textColor}
           style={{ transform: expanded ? "rotate(180deg)" : "none", transition: "transform 0.15s", opacity: 0.7 }}
         />
       </button>
       {expanded && (
-        <div className="px-3.5 pb-3.5 pt-0.5">
+        <div className="px-3 pb-3 pt-0.5">
           {extra}
           <div className="flex gap-1.5 flex-wrap">
             {modes.map((m) => (

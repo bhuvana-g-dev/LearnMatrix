@@ -237,7 +237,21 @@ export default function TopicQuizModal({ skill, topic, uid, focusBand, onComplet
       >
         {state !== "submitting" && (
           <button
-            onClick={onClose}
+            onClick={() => {
+              // If a result already exists (the quiz was scored — either
+              // the "result" screen just now, or "review" of a prior
+              // attempt), closing via this X must still report it up,
+              // exactly like Continue/onClose below do. Otherwise a user
+              // who scores 10/10 and dismisses via X instead of clicking
+              // "Continue" would never trigger passLesson() in the
+              // parent, leaving the lesson stuck un-marked despite a
+              // passing score.
+              if ((state === "result" || state === "review") && result) {
+                onComplete(result);
+              } else {
+                onClose();
+              }
+            }}
             className="absolute top-4 right-4"
             style={{ background: "none", border: "none", cursor: "pointer", color: COLORS.textLight }}
             aria-label="Close quiz"

@@ -44,6 +44,7 @@ import {
   RotateCw,
   History,
   Search,
+  Mic,
 } from "lucide-react";
 import {
   sendChatMessage,
@@ -122,6 +123,11 @@ export default function AIStudyAssistantScreen({ uid }) {
   const [chatError, setChatError] = useState("");
   const [loadingChat, setLoadingChat] = useState(true);
   const scrollRef = useRef(null);
+
+  // --- voice input (Web Speech API — browser-native, no dependency) ---
+  const [isListening, setIsListening] = useState(false);
+  const [voiceError, setVoiceError] = useState("");
+  const recognitionRef = useRef(null);
 
   // --- studio modal ---
   // null | "flashcards" | "mindmap" | "audio" | "custom-input"
@@ -220,6 +226,46 @@ export default function AIStudyAssistantScreen({ uid }) {
     const lastUser = [...messages].reverse().find((m) => m.role === "user");
     if (lastUser) handleSend(lastUser.content);
   }
+
+  // Voice input — dictate the chat message via the browser's built-in
+  // Web Speech API (SpeechRecognition), same "no extra dependency"
+  // approach as the Audio Overview player, which already uses
+  // window.speechSynthesis for the reverse direction (text-to-speech).
+  function handleToggleListening() {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      setVoiceError("Voice input isn't supported in this browser.");
+      return;
+    }
+    if (isListening) {
+      recognitionRef.current?.stop();
+      return;
+    }
+    setVoiceError("");
+    const recognition = new SpeechRecognition();
+    recognition.lang = "en-US";
+    recognition.interimResults = true;
+    recognition.continuous = false;
+
+    recognition.onresult = (event) => {
+      let transcript = "";
+      for (let i = 0; i < event.results.length; i++) transcript += event.results[i][0].transcript;
+      setInput(transcript);
+    };
+    recognition.onerror = (event) => {
+      setVoiceError(event.error === "not-allowed" ? "Microphone access was blocked." : "Couldn't hear that — try again.");
+      setIsListening(false);
+    };
+    recognition.onend = () => setIsListening(false);
+
+    recognitionRef.current = recognition;
+    recognition.start();
+    setIsListening(true);
+  }
+
+  useEffect(() => {
+    return () => recognitionRef.current?.stop();
+  }, []);
 
   const filteredSessions = useMemo(() => {
     const q = historySearch.trim().toLowerCase();
@@ -883,11 +929,28 @@ export default function AIStudyAssistantScreen({ uid }) {
                   type="text"
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
-                  placeholder="Ask me anything..."
+                  placeholder={isListening ? "Listening..." : "Ask me anything..."}
                   disabled={sending || loadingChat}
                   className="flex-1 text-sm px-1 py-1.5 outline-none bg-transparent"
                   style={{ color: COLORS.textDark }}
                 />
+                <button
+                  type="button"
+                  onClick={handleToggleListening}
+                  disabled={sending || loadingChat}
+                  title={isListening ? "Stop listening" : "Speak your question"}
+                  aria-label={isListening ? "Stop listening" : "Speak your question"}
+                  className="flex items-center justify-center rounded-full shrink-0"
+                  style={{
+                    width: 32,
+                    height: 32,
+                    color: isListening ? "#fff" : COLORS.textLight,
+                    background: isListening ? "#DC2626" : "transparent",
+                    cursor: "pointer",
+                  }}
+                >
+                  <Mic size={15} className={isListening ? "animate-pulse" : ""} />
+                </button>
                 <button
                   type="submit"
                   disabled={sending || loadingChat || !input.trim()}
@@ -897,6 +960,11 @@ export default function AIStudyAssistantScreen({ uid }) {
                   <Send size={14} color={COLORS.white} />
                 </button>
               </div>
+              {voiceError && (
+                <p className="text-[10px] text-center mt-1.5" style={{ color: "#DC2626" }}>
+                  {voiceError}
+                </p>
+              )}
               <p className="text-[10px] text-center mt-1.5" style={{ color: COLORS.textLight }}>
                 LearnMatrix AI can make mistakes. Please verify important information.
               </p>

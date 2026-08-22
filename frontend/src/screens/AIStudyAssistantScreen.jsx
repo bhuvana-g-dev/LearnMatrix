@@ -680,29 +680,6 @@ export default function AIStudyAssistantScreen({ uid }) {
               )}
             </div>
 
-            {/* Static promo — not wired to a real plan/billing flow yet;
-             * purely a visual placeholder until Studio has a paid tier. */}
-            {!historyCollapsed && (
-              <div
-                className="mt-3 p-3 rounded-2xl text-center shrink-0"
-                style={{ background: "linear-gradient(135deg, rgba(212,160,23,0.16), rgba(232,185,61,0.28))", border: `1px solid rgba(212,160,23,0.3)` }}
-              >
-                <Star size={16} color={COLORS.purple} className="mx-auto mb-1" />
-                <p className="text-[11px] font-bold" style={{ color: COLORS.textDark }}>
-                  Upgrade to Pro
-                </p>
-                <p className="text-[10px] mt-0.5 mb-2" style={{ color: COLORS.textMid }}>
-                  Unlock unlimited AI chats and advanced study tools.
-                </p>
-                <button
-                  type="button"
-                  className="text-[10px] font-bold px-3 py-1.5 rounded-full w-full"
-                  style={{ background: GRADIENTS.purplePink, color: "#fff", border: "none", cursor: "pointer" }}
-                >
-                  Upgrade Now
-                </button>
-              </div>
-            )}
           </div>
 
           {/* ---------------- SOURCES ---------------- */}

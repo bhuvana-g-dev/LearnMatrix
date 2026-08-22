@@ -25,20 +25,33 @@ import { getCompressedRoleSyllabus } from "../services/syllabusService";
  * deletes the saved assessment + roadmap and calls onRoleQuit (wired in
  * App.jsx) to reset careerPath state and navigate to Role Selection.
  */
-export default function RoadmapScreen({ uid, onNavigate, onSelectTopic, onStartJourney, onRoleQuit }) {
-  const [state, setState] = useState("loading"); // loading | empty | error | ready
-  const [roadmap, setRoadmap] = useState(null);
+export default function RoadmapScreen({
+  uid, onNavigate, onSelectTopic, onStartJourney, onRoleQuit,
+  // Cache lifted up to App.jsx so it survives this screen unmounting when
+  // the learner navigates elsewhere (Course Workspace, Learning Session,
+  // etc.) and back — without it, every return trip to "My Roadmap" remounts
+  // this component from scratch and flashes the full "Loading your
+  // roadmap…" spinner again even though nothing changed server-side.
+  // cachedRoadmap: { roadmap, compressedSyllabus } | null
+  cachedRoadmap, onRoadmapLoaded,
+}) {
+  const [state, setState] = useState(cachedRoadmap?.roadmap ? "ready" : "loading"); // loading | empty | error | ready
+  const [roadmap, setRoadmap] = useState(cachedRoadmap?.roadmap ?? null);
   const [errorMessage, setErrorMessage] = useState("");
-  const [compressedSyllabus, setCompressedSyllabus] = useState(null);
+  const [compressedSyllabus, setCompressedSyllabus] = useState(cachedRoadmap?.compressedSyllabus ?? null);
   const [showQuitModal, setShowQuitModal] = useState(false);
 
-  const fetchRoadmap = useCallback(async () => {
+  const fetchRoadmap = useCallback(async (opts) => {
+    // silent = refresh in the background without dropping back to the
+    // full-page spinner — used when we already have a cached roadmap to
+    // show while the fresh copy loads.
+    const silent = !!(opts && opts.silent);
     if (!uid) {
       setState("error");
       setErrorMessage("You need to be logged in to view your roadmap.");
       return;
     }
-    setState("loading");
+    if (!silent) setState("loading");
     try {
       const result = await loadSavedRoadmap(uid);
       if (result === null) {
@@ -46,15 +59,20 @@ export default function RoadmapScreen({ uid, onNavigate, onSelectTopic, onStartJ
       } else {
         setRoadmap(result);
         setState("ready");
+        onRoadmapLoaded?.({ roadmap: result });
       }
     } catch (err) {
+      if (silent) return; // keep showing the cached roadmap; don't disrupt the learner
       setErrorMessage(err.message || "Couldn't load your roadmap.");
       setState("error");
     }
-  }, [uid]);
+  }, [uid, onRoadmapLoaded]);
 
   useEffect(() => {
-    fetchRoadmap();
+    fetchRoadmap({ silent: !!cachedRoadmap?.roadmap });
+    // Only re-run when the signed-in user changes — fetchRoadmap's own
+    // identity already covers that (see its deps above).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fetchRoadmap]);
 
   // Topic-level compressed syllabus for RoadmapDisplay's expand affordance.
@@ -70,9 +88,11 @@ export default function RoadmapScreen({ uid, onNavigate, onSelectTopic, onStartJ
   // as before, just without the expand affordance on each entry.
   useEffect(() => {
     if (state !== "ready" || !uid) return;
+    if (compressedSyllabus) return; // already have it (fresh fetch or cache) — skip re-fetching
 
     if (roadmap?.compressedSyllabus) {
       setCompressedSyllabus(roadmap.compressedSyllabus);
+      onRoadmapLoaded?.({ compressedSyllabus: roadmap.compressedSyllabus });
       return;
     }
 
@@ -90,7 +110,10 @@ export default function RoadmapScreen({ uid, onNavigate, onSelectTopic, onStartJ
         if (!roleEntry) return; // role not resolvable, skip silently
 
         const syllabus = await getCompressedRoleSyllabus(roleEntry.id, savedAssessment.evaluation);
-        if (!cancelled) setCompressedSyllabus(syllabus);
+        if (!cancelled) {
+          setCompressedSyllabus(syllabus);
+          onRoadmapLoaded?.({ compressedSyllabus: syllabus });
+        }
       } catch {
         // Silent — this role/skill set may not be seeded yet
         // (data/skill_syllabus_seed.py only covers "frontend" so far).
@@ -100,7 +123,7 @@ export default function RoadmapScreen({ uid, onNavigate, onSelectTopic, onStartJ
     return () => {
       cancelled = true;
     };
-  }, [state, uid, roadmap]);
+  }, [state, uid, roadmap, compressedSyllabus, onRoadmapLoaded]);
 
   const handleQuitRole = async () => {
     // Wipes the saved assessment + roadmap (backend) and resets
@@ -108,6 +131,10 @@ export default function RoadmapScreen({ uid, onNavigate, onSelectTopic, onStartJ
     // Role Selection — the ONLY path there once a role is chosen.
     await quitRole(uid);
     setShowQuitModal(false);
+    // Clear the lifted cache too — otherwise the NEXT role's fresh
+    // RoadmapScreen mount would see a stale cachedRoadmap from the role
+    // just quit and skip straight to "ready" with the wrong data.
+    onRoadmapLoaded?.({ roadmap: undefined, compressedSyllabus: undefined, reset: true });
     if (onRoleQuit) onRoleQuit();
   };
 
@@ -142,7 +169,7 @@ export default function RoadmapScreen({ uid, onNavigate, onSelectTopic, onStartJ
           </h3>
           <p className="text-sm" style={{ color: COLORS.textMid }}>{errorMessage}</p>
           <motion.button
-            onClick={fetchRoadmap}
+            onClick={() => fetchRoadmap()}
             whileHover={{ y: -2 }}
             whileTap={{ scale: 0.97 }}
             className="mt-2 font-semibold"

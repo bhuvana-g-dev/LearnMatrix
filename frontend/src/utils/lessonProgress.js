@@ -72,6 +72,9 @@ export function markLessonComplete(uid, skill, topic, lessonOrder, scorePercent)
   if (!entry.completed.includes(lessonOrder)) entry.completed.push(lessonOrder);
   if (!entry.scores) entry.scores = {};
   if (typeof scorePercent === "number") entry.scores[lessonOrder] = scorePercent;
+  // Clear any earlier failed-attempt score now that this lesson is passed —
+  // see getFailedLessonAttempts()/recordFailedLessonAttempt() above.
+  if (entry.lastAttempt) delete entry.lastAttempt[lessonOrder];
   all[k] = entry;
   writeAll(all);
 }
@@ -88,6 +91,33 @@ export function getCompletedLessons(uid, skill, topic) {
 export function getLessonScores(uid, skill, topic) {
   const all = readAll();
   return (all[key(uid, skill, topic)] || {}).scores || {};
+}
+
+/** Record the score of a lesson quiz attempt that did NOT clear
+ * LESSON_PASS_THRESHOLD (a passing attempt goes through
+ * markLessonComplete instead, and clears this same slot — see below).
+ * Only the most recent failed attempt is kept per lesson; used to show
+ * "You scored X% last time" on the quiz card so a learner who already
+ * tried and fell short sees that instead of the generic first-attempt
+ * prompt. */
+export function recordFailedLessonAttempt(uid, skill, topic, lessonOrder, scorePercent) {
+  if (typeof scorePercent !== "number") return;
+  const all = readAll();
+  const k = key(uid, skill, topic);
+  const entry = all[k] || { completed: [], total: 0, scores: {}, lastAttempt: {} };
+  if (!entry.lastAttempt) entry.lastAttempt = {};
+  entry.lastAttempt[lessonOrder] = scorePercent;
+  all[k] = entry;
+  writeAll(all);
+}
+
+/** { [lessonOrder]: scorePercent } — the most recent FAILED attempt per
+ * lesson in this topic (cleared once that lesson is passed). Pairs with
+ * getLessonScores(): a lesson appears in at most one of the two maps at
+ * a time. */
+export function getFailedLessonAttempts(uid, skill, topic) {
+  const all = readAll();
+  return (all[key(uid, skill, topic)] || {}).lastAttempt || {};
 }
 
 /** Index (0-based) of the first not-yet-completed lesson, given the

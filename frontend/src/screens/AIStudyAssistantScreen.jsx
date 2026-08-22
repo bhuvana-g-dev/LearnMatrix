@@ -70,7 +70,7 @@ import { generateMindMap } from "../services/mindmapService";
 import { generateSlideDeckPreview, downloadDeckContentPptx, downloadDeckContentPdf } from "../services/slideDeckService";
 import { listStudioArtifacts, getStudioArtifact, saveStudioArtifact } from "../services/studioService";
 import { getUserProfile } from "../services/profileService";
-import { COLORS, GRADIENTS, GLASS_CARD } from "../constants/theme";
+import { COLORS, GRADIENTS } from "../constants/theme";
 
 /**
  * AIStudyAssistantScreen — sidebar: "AI Study Assistant" (navigation.js
@@ -551,8 +551,8 @@ export default function AIStudyAssistantScreen({ uid }) {
   }
 
   return (
-    <div className="min-h-screen flex flex-col px-4 sm:px-6 py-4">
-      <div className="max-w-7xl mx-auto w-full flex flex-col">
+    <div className="h-screen flex flex-col overflow-hidden px-4 sm:px-6 py-4">
+      <div className="max-w-7xl mx-auto w-full flex flex-col flex-1 min-h-0">
         <div className="flex items-center gap-3 mb-4 shrink-0">
           <div className="flex items-center justify-center rounded-full" style={{ width: 40, height: 40, background: GRADIENTS.purpleSky }}>
             <Bot size={20} color={COLORS.white} />
@@ -568,8 +568,8 @@ export default function AIStudyAssistantScreen({ uid }) {
         </div>
 
         <div
-          className={`grid grid-cols-1 rounded-2xl overflow-hidden ${historyCollapsed ? "lg:grid-cols-[56px_220px_1fr_280px]" : "lg:grid-cols-[224px_220px_1fr_280px]"}`}
-          style={{ ...GLASS_CARD, height: "min(72vh, 680px)" }}
+          className={`grid grid-cols-1 rounded-2xl overflow-hidden flex-1 min-h-0 ${historyCollapsed ? "lg:grid-cols-[56px_220px_1fr_280px]" : "lg:grid-cols-[224px_220px_1fr_280px]"}`}
+          style={{ background: "rgba(255,255,255,0.4)" }}
         >
           {/* ---------------- HISTORY (permanent, collapsible sidebar) ---------------- */}
           <div

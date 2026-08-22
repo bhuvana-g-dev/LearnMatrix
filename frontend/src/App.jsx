@@ -91,6 +91,15 @@ export default function App() {
   // loading state in between.
   const [workspaceContext, setWorkspaceContext] = useState(null);
 
+  // Lifted cache for RoadmapScreen — { roadmap, compressedSyllabus } | null.
+  // RoadmapScreen unmounts every time the learner navigates to a different
+  // tab (Course Workspace, Learning Session, etc.), which used to mean it
+  // re-fetched and re-showed the full "Loading your roadmap…" spinner on
+  // every single return trip. Keeping the last-loaded copy up here, in a
+  // component that stays mounted for the whole session, lets RoadmapScreen
+  // paint instantly from cache and only refresh quietly in the background.
+  const [roadmapCache, setRoadmapCache] = useState(null);
+
   // "Skill Selection" (My Career Path submenu) means two different things
   // depending on whether a role is locked in: the initial "what do you
   // already know" picker (SkillSelectionScreen) before any roadmap
@@ -399,6 +408,14 @@ export default function App() {
       <RoadmapScreen
         uid={auth.user?.uid}
         onNavigate={setActiveKey}
+        cachedRoadmap={roadmapCache}
+        onRoadmapLoaded={(partial) => {
+          if (partial?.reset) {
+            setRoadmapCache(null);
+            return;
+          }
+          setRoadmapCache((prev) => ({ ...(prev || {}), ...partial }));
+        }}
         onSelectTopic={(entry) => {
           // Prefer the learner's actual CURRENT topic within this skill
           // (RoadmapDisplay.jsx's withCurrentTopic(), sourced from
@@ -483,6 +500,7 @@ setLearningSession({ skill: entry.skill, topic, focusBand: entry.focusBand || "a
     localStorage.removeItem("lm_activeKey");
     localStorage.removeItem("lm_learningSession");
     localStorage.removeItem("lm_workspacePointer");
+    setRoadmapCache(null); // don't leak this account's roadmap into the next login
     setActiveKey("home");
   };
 

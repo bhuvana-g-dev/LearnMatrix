@@ -1,7 +1,8 @@
 import { useState, useMemo, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  ChevronDown, CheckCircle2, PlayCircle, ArrowLeft, Circle, BookOpen,
+  ChevronDown, ChevronRight, CheckCircle2, ArrowLeft, Circle,
+  Check, Code2, Monitor, Server, Database as DatabaseIcon, Wrench, Layers, Sparkles,
 } from "lucide-react";
 import BackButton from "../components/common/BackButton";
 import TopicContentPane from "../components/learning/TopicContentPane";
@@ -15,6 +16,75 @@ import { getTopicProgress } from "../services/topicQuizService";
 import {
   setLessonTotal, markLessonComplete, getCompletedLessons, getLessonScores, firstIncompleteIndex, LESSON_PASS_THRESHOLD,
 } from "../utils/lessonProgress";
+
+// Known skill sections get a purpose-picked icon, accent color, and one-line
+// subtitle (mirrors the "Frontend / Backend / Database / Tools" set every
+// generated roadmap tends to converge on). Anything else falls back to a
+// generic icon + a color pulled from a fixed rotation so it still reads as
+// "designed" rather than default-gray, and a generic subtitle.
+const SKILL_META = {
+  frontend: { icon: Monitor, color: "#7C6FE0", subtitle: "Learn the building blocks of the web" },
+  backend: { icon: Server, color: "#22C55E", subtitle: "Develop the logic behind the scenes" },
+  database: { icon: DatabaseIcon, color: "#3B82F6", subtitle: "Store and manage your data" },
+  tools: { icon: Wrench, color: "#F97316", subtitle: "Boost your productivity" },
+};
+const SKILL_ACCENT_ROTATION = ["#7C6FE0", "#22C55E", "#3B82F6", "#F97316", "#EC4899", "#14B8A6"];
+function getSkillMeta(name, index) {
+  const known = SKILL_META[(name || "").trim().toLowerCase()];
+  if (known) return known;
+  return {
+    icon: Layers,
+    color: SKILL_ACCENT_ROTATION[index % SKILL_ACCENT_ROTATION.length],
+    subtitle: "Explore the topics in this skill",
+  };
+}
+
+// Per-technology badge (short abbreviation + brand-ish color pair) shown next
+// to each topic row. Covers the technologies that show up across generated
+// roadmaps most often; anything unrecognized still gets a legible badge via
+// a deterministic color/abbreviation derived from its own name, so the list
+// never falls back to a bare gray dot.
+const TECH_BADGES = {
+  html5: { abbr: "5", bg: "#FEE2D5", color: "#E44D26" },
+  html: { abbr: "5", bg: "#FEE2D5", color: "#E44D26" },
+  css3: { abbr: "3", bg: "#D6E9FB", color: "#264DE4" },
+  css: { abbr: "3", bg: "#D6E9FB", color: "#264DE4" },
+  javascript: { abbr: "JS", bg: "#FEF3C7", color: "#CA8A04" },
+  typescript: { abbr: "TS", bg: "#DBEAFE", color: "#2563EB" },
+  bootstrap: { abbr: "B", bg: "#EDE4FB", color: "#7C3AED" },
+  "tailwind css": { abbr: "~", bg: "#CFFAFE", color: "#0891B2" },
+  tailwind: { abbr: "~", bg: "#CFFAFE", color: "#0891B2" },
+  "react.js": { abbr: "R", bg: "#DFF5FD", color: "#0EA5E9" },
+  react: { abbr: "R", bg: "#DFF5FD", color: "#0EA5E9" },
+  "node.js": { abbr: "N", bg: "#DCFCE7", color: "#22C55E" },
+  node: { abbr: "N", bg: "#DCFCE7", color: "#22C55E" },
+  "express.js": { abbr: "Ex", bg: "#E5E7EB", color: "#374151" },
+  express: { abbr: "Ex", bg: "#E5E7EB", color: "#374151" },
+  mongodb: { abbr: "M", bg: "#D8F5E3", color: "#10B981" },
+  mysql: { abbr: "Y", bg: "#DCEEFB", color: "#1D63A8" },
+  postgresql: { abbr: "P", bg: "#DCEAFB", color: "#336699" },
+  postgres: { abbr: "P", bg: "#DCEAFB", color: "#336699" },
+  git: { abbr: "Git", bg: "#FEE2D5", color: "#F05033" },
+  github: { abbr: "Hub", bg: "#E5E7EB", color: "#111827" },
+  docker: { abbr: "D", bg: "#DBEAFE", color: "#2496ED" },
+  redis: { abbr: "R", bg: "#FEE2E2", color: "#DC2626" },
+  graphql: { abbr: "GQL", bg: "#F5D9F8", color: "#E10098" },
+  "next.js": { abbr: "N", bg: "#E5E7EB", color: "#111827" },
+  "vue.js": { abbr: "V", bg: "#DCFCE7", color: "#42B883" },
+  vue: { abbr: "V", bg: "#DCFCE7", color: "#42B883" },
+  angular: { abbr: "A", bg: "#FEE2E2", color: "#DD0031" },
+};
+const BADGE_BG_ROTATION = ["#EDE4FB", "#D6E9FB", "#DCFCE7", "#FEF3C7", "#FEE2E2", "#CFFAFE"];
+const BADGE_COLOR_ROTATION = ["#7C3AED", "#264DE4", "#22C55E", "#CA8A04", "#DC2626", "#0891B2"];
+function getTopicBadge(name) {
+  const key = (name || "").trim().toLowerCase();
+  if (TECH_BADGES[key]) return TECH_BADGES[key];
+  let hash = 0;
+  for (let i = 0; i < key.length; i++) hash = (hash * 31 + key.charCodeAt(i)) >>> 0;
+  const idx = hash % BADGE_BG_ROTATION.length;
+  const abbr = (name || "?").trim().slice(0, 2).toUpperCase() || "?";
+  return { abbr, bg: BADGE_BG_ROTATION[idx], color: BADGE_COLOR_ROTATION[idx] };
+}
 
 /**
  * CourseWorkspaceScreen — Coursera-style layout, THREE-level main pane:
@@ -427,104 +497,166 @@ export default function CourseWorkspaceScreen({ roadmap, compressedSyllabus, ini
             </div>
           ) : (
             activeModule && (
-              <div style={{ ...GLASS_CARD, borderRadius: 20, overflow: "hidden" }}>
-                <div className="p-5" style={{ borderBottom: `1px solid ${COLORS.border}` }}>
-                  <h2 className="text-lg font-extrabold" style={{ color: COLORS.textDark }}>
-                    {activeModule.name || "Your Skills"}
-                  </h2>
-                  <p className="text-xs mt-1" style={{ color: COLORS.textMid }}>
-                    {activeModule.skills.length} skill{activeModule.skills.length === 1 ? "" : "s"} ·{" "}
-                    {activeModule.skills.reduce((n, s) => n + s.topics.length, 0)} topics
-                  </p>
+              <div>
+                {/* Course header banner — role + a short, generated tagline.
+                    Purely decorative framing for the skill list below it. */}
+                <div
+                  className="flex items-center gap-4 p-5 mb-5"
+                  style={{ ...GLASS_CARD, borderRadius: 22 }}
+                >
+                  <div
+                    className="flex items-center justify-center flex-shrink-0"
+                    style={{ width: 56, height: 56, borderRadius: 18, background: GRADIENTS.purpleSky }}
+                  >
+                    <Code2 size={26} color="#fff" />
+                  </div>
+                  <div className="min-w-0">
+                    <span
+                      className="inline-block text-[10px] font-bold uppercase tracking-wide px-2.5 py-1 rounded-full mb-1.5"
+                      style={{ background: "rgba(124,111,224,0.14)", color: "#7C6FE0" }}
+                    >
+                      Course Material
+                    </span>
+                    <h2 className="text-xl font-extrabold truncate" style={{ color: COLORS.textDark }}>
+                      {roadmap.role || activeModule.name || "Your Skills"}
+                    </h2>
+                    <p className="text-xs mt-0.5" style={{ color: COLORS.textMid }}>
+                      {activeModule.skills.length} skill{activeModule.skills.length === 1 ? "" : "s"} ·{" "}
+                      {activeModule.skills.reduce((n, s) => n + s.topics.length, 0)} topics on your path
+                    </p>
+                  </div>
                 </div>
 
-                {activeModule.skills.map((sk) => {
-                  const isOpen = expandedSkills.has(sk.name);
-                  return (
-                    <div key={sk.name} style={{ borderBottom: `1px solid ${COLORS.border}` }}>
-                      <button
-                        onClick={() => toggleSkill(sk.name)}
-                        className="w-full flex items-center justify-between px-5 py-3.5"
-                        style={{ background: "none", border: "none", cursor: "pointer" }}
+                <div className="flex flex-col gap-4">
+                  {activeModule.skills.map((sk, skIndex) => {
+                    const isOpen = expandedSkills.has(sk.name);
+                    const meta = getSkillMeta(sk.name, skIndex);
+                    const SkillIcon = meta.icon;
+                    return (
+                      <div
+                        key={sk.name}
+                        style={{
+                          borderRadius: 20,
+                          overflow: "hidden",
+                          background: isOpen ? `${meta.color}14` : COLORS.white,
+                          border: `1px solid ${isOpen ? `${meta.color}33` : COLORS.border}`,
+                        }}
                       >
-                        <span className="text-sm font-bold" style={{ color: COLORS.textDark }}>{sk.name}</span>
-                        <motion.span animate={{ rotate: isOpen ? 180 : 0 }} style={{ display: "flex" }}>
-                          <ChevronDown size={16} style={{ color: COLORS.textLight }} />
-                        </motion.span>
-                      </button>
-                      <AnimatePresence initial={false}>
-                        {isOpen && (
-                          <motion.div
-                            initial={{ height: 0, opacity: 0 }}
-                            animate={{ height: "auto", opacity: 1 }}
-                            exit={{ height: 0, opacity: 0 }}
-                            style={{ overflow: "hidden" }}
+                        <button
+                          onClick={() => toggleSkill(sk.name)}
+                          className="w-full flex items-center gap-3 px-4 py-3.5 text-left"
+                          style={{ background: "none", border: "none", cursor: "pointer" }}
+                        >
+                          <div
+                            className="flex items-center justify-center flex-shrink-0"
+                            style={{ width: 42, height: 42, borderRadius: 14, background: meta.color }}
                           >
-                            {sk.topics.map((t) => {
-                              const flatIdx = flatTopics.indexOf(t);
-                              const isCurrent = flatIdx === activeIndex && (viewMode === "lessons" || viewMode === "content");
-                              return (
-                                <div key={t.topic} style={{ background: isCurrent ? "rgba(124,111,224,0.08)" : "transparent" }}>
-                                  {/* Topic header — label only, not itself clickable; the two
-                                      items below it (Learning Resources / Test) are the actual
-                                      navigation targets, matching Coursera's per-item list. */}
-                                  <div className="flex items-center gap-3 px-5 pt-3 pb-1">
-                                    {t.topicStatus === "Verified" ? (
-                                      <CheckCircle2 size={18} style={{ color: "#22C55E", flexShrink: 0 }} />
-                                    ) : (
-                                      <PlayCircle size={18} style={{ color: COLORS.textLight, flexShrink: 0 }} />
-                                    )}
-                                    <div className="flex-1 min-w-0">
-                                      <p
-                                        className="text-sm truncate"
-                                        style={{ color: isCurrent ? COLORS.purple : COLORS.textDark, fontWeight: isCurrent ? 700 : 600 }}
+                            <SkillIcon size={20} color="#fff" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-extrabold truncate" style={{ color: COLORS.textDark }}>{sk.name}</p>
+                            <p className="text-[11px] truncate" style={{ color: COLORS.textLight }}>{meta.subtitle}</p>
+                          </div>
+                          <span
+                            className="text-[11px] font-bold px-2.5 py-1 rounded-full flex-shrink-0"
+                            style={{ background: `${meta.color}1F`, color: meta.color }}
+                          >
+                            {sk.topics.length} topic{sk.topics.length === 1 ? "" : "s"}
+                          </span>
+                          <motion.span animate={{ rotate: isOpen ? 180 : 0 }} style={{ display: "flex", flexShrink: 0 }}>
+                            <ChevronDown size={16} style={{ color: COLORS.textLight }} />
+                          </motion.span>
+                        </button>
+                        <AnimatePresence initial={false}>
+                          {isOpen && (
+                            <motion.div
+                              initial={{ height: 0, opacity: 0 }}
+                              animate={{ height: "auto", opacity: 1 }}
+                              exit={{ height: 0, opacity: 0 }}
+                              style={{ overflow: "hidden", background: COLORS.white }}
+                            >
+                              <div className="px-2.5 pb-2.5 flex flex-col gap-0.5">
+                                {sk.topics.map((t) => {
+                                  const flatIdx = flatTopics.indexOf(t);
+                                  const isCurrent = flatIdx === activeIndex && (viewMode === "lessons" || viewMode === "content");
+                                  const badge = getTopicBadge(t.topic);
+                                  const isVerified = t.topicStatus === "Verified";
+                                  return (
+                                    // Single clickable row — the topic itself IS the "learning
+                                    // resources" entry point now (the old separate quiz sub-row
+                                    // was removed: each lesson has its own pass/fail test).
+                                    <div
+                                      key={t.topic}
+                                      onClick={() => openTopic(flatIdx)}
+                                      className="flex items-center gap-3 px-2.5 py-2.5 cursor-pointer"
+                                      style={{
+                                        borderRadius: 14,
+                                        background: isCurrent ? `${meta.color}14` : "transparent",
+                                      }}
+                                    >
+                                      <div
+                                        className="flex items-center justify-center flex-shrink-0"
+                                        style={{
+                                          width: 20,
+                                          height: 20,
+                                          borderRadius: "50%",
+                                          border: `2px solid ${isVerified ? "#22C55E" : isCurrent ? meta.color : COLORS.border}`,
+                                          background: isVerified ? "#22C55E" : isCurrent ? meta.color : "transparent",
+                                        }}
                                       >
-                                        {t.topic}
-                                      </p>
-                                      <p className="text-[11px]" style={{ color: COLORS.textLight }}>
-                                        {STATUS_SUBTITLE[t.topicStatus] || "Topic"}
-                                      </p>
+                                        {isVerified && <Check size={11} color="#fff" strokeWidth={3} />}
+                                        {!isVerified && isCurrent && (
+                                          <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#fff" }} />
+                                        )}
+                                      </div>
+                                      <div
+                                        className="flex items-center justify-center flex-shrink-0"
+                                        style={{ width: 34, height: 34, borderRadius: 10, background: badge.bg }}
+                                      >
+                                        <span className="text-[11px] font-extrabold" style={{ color: badge.color }}>
+                                          {badge.abbr}
+                                        </span>
+                                      </div>
+                                      <div className="flex-1 min-w-0">
+                                        <p
+                                          className="text-sm truncate"
+                                          style={{ color: isCurrent ? meta.color : COLORS.textDark, fontWeight: isCurrent ? 700 : 600 }}
+                                        >
+                                          {t.topic}
+                                        </p>
+                                        <p className="text-[11px] truncate" style={{ color: COLORS.textLight }}>
+                                          {STATUS_SUBTITLE[t.topicStatus] || "Topic"}
+                                        </p>
+                                      </div>
+                                      {isCurrent ? (
+                                        <span
+                                          className="text-[11px] font-bold px-3 py-1.5 rounded-full flex-shrink-0"
+                                          style={{ background: GRADIENTS.purplePink, color: "#fff" }}
+                                        >
+                                          Resume
+                                        </span>
+                                      ) : (
+                                        <ChevronRight size={16} style={{ color: COLORS.textLight, flexShrink: 0 }} />
+                                      )}
                                     </div>
-                                    {isCurrent && (
-                                      <span
-                                        className="text-xs font-bold px-3.5 py-1.5 rounded-full flex-shrink-0"
-                                        style={{ background: GRADIENTS.purplePink, color: "#fff" }}
-                                      >
-                                        Resume
-                                      </span>
-                                    )}
-                                  </div>
+                                  );
+                                })}
+                              </div>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+                      </div>
+                    );
+                  })}
+                </div>
 
-                                  {/* Item 1 — Learning Resources. The old "Item 2 — Test" (whole-topic
-                                      quiz, 10 questions across all lessons) was removed here — each
-                                      lesson now has its own pass/fail test inside its content view
-                                      (TopicContentPane's "Ready to test yourself?" CTA), which is what
-                                      actually marks that lesson complete. Keeping both was a duplicate:
-                                      two different tests for the same topic, only one of which lesson
-                                      completion depends on. */}
-                                  <div
-                                    onClick={() => openTopic(flatIdx)}
-                                    className="flex items-center gap-3 pl-11 pr-5 py-2.5 pb-3.5 cursor-pointer"
-                                  >
-                                    <BookOpen size={15} style={{ color: COLORS.purple, flexShrink: 0 }} />
-                                    <div className="flex-1 min-w-0">
-                                      <p className="text-sm font-semibold" style={{ color: COLORS.textDark }}>
-                                        Learning Resources
-                                      </p>
-                                      <p className="text-[11px]" style={{ color: COLORS.textLight }}>
-                                        Notes, videos &amp; articles for this topic
-                                      </p>
-                                    </div>
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
-                    </div>
-                  );
-                })}
+                {/* Footer flourish — small motivational sign-off under the list. */}
+                <div className="flex items-center gap-2 justify-center mt-6 mb-2">
+                  <Sparkles size={14} style={{ color: "#7C6FE0" }} />
+                  <p className="text-xs font-semibold italic" style={{ color: COLORS.textLight }}>
+                    Small steps to big dreams
+                  </p>
+                </div>
               </div>
             )
           )}

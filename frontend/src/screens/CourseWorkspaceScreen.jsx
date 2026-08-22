@@ -291,9 +291,23 @@ export default function CourseWorkspaceScreen({ roadmap, compressedSyllabus, ini
   };
 
   const jumpToSkillFromSidebar = (moduleName, skillName) => {
+    // Direct access: a skill clicked in the sidebar tree used to only set
+    // viewMode to "list" (the expandable skill-card view), which then
+    // needed a further click on its topic row to actually open lessons —
+    // two clicks to get anywhere. Now it jumps straight into that skill's
+    // lessons, same as clicking a topic row directly. Prefer the topic
+    // still "Current" (recommended next) over just the first one, so a
+    // skill you've partly studied resumes where you left off rather than
+    // always restarting at topic #1.
     setActiveModuleName(moduleName);
-    setViewMode("list");
     setExpandedSkills(new Set([skillName]));
+    const topicsForSkill = flatTopics.filter((t) => t.skill === skillName);
+    const preferred = topicsForSkill.find((t) => t.topicStatus === "Current") || topicsForSkill[0];
+    if (preferred) {
+      openTopic(flatTopics.indexOf(preferred));
+    } else {
+      setViewMode("list");
+    }
   };
 
   const openTopic = (flatIdx) => {
@@ -340,9 +354,12 @@ export default function CourseWorkspaceScreen({ roadmap, compressedSyllabus, ini
     <div className="px-4 sm:px-8 pt-10 pb-20">
       <BackButton onClick={onBack} label="Back to Roadmap" />
 
-      <div className="flex gap-6 items-start">
-        {/* Sidebar — flat module list, Coursera-style */}
-        <div className="hidden sm:block p-4 flex-shrink-0" style={{ ...GLASS_CARD, borderRadius: 20, width: 240 }}>
+      <div className="flex flex-col sm:flex-row gap-6 items-start">
+        {/* Sidebar — flat module list, Coursera-style. Full width on
+            narrow screens (was completely hidden below the sm breakpoint
+            before, leaving no navigation at all on mobile); a fixed
+            240px rail once there's room to sit beside the content pane. */}
+        <div className="w-full sm:w-[240px] p-4 flex-shrink-0" style={{ ...GLASS_CARD, borderRadius: 20 }}>
           <p className="text-xs font-bold uppercase tracking-wide px-1 mb-1" style={{ color: COLORS.textLight }}>
             {roadmap.role || "Your Course"}
           </p>

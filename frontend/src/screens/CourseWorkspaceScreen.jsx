@@ -14,7 +14,8 @@ import { buildFlatTopicList, findStartingIndex, topicProgressKey } from "../util
 import { getLessons, compositeTopicKey } from "../services/lessonService";
 import { getTopicProgress } from "../services/topicQuizService";
 import {
-  setLessonTotal, markLessonComplete, getCompletedLessons, getLessonScores, firstIncompleteIndex, LESSON_PASS_THRESHOLD,
+  setLessonTotal, markLessonComplete, getCompletedLessons, getLessonScores,
+  recordFailedLessonAttempt, getFailedLessonAttempts, firstIncompleteIndex, LESSON_PASS_THRESHOLD,
 } from "../utils/lessonProgress";
 
 // Known skill sections get a purpose-picked icon, accent color, and one-line
@@ -198,6 +199,7 @@ export default function CourseWorkspaceScreen({ roadmap, compressedSyllabus, ini
   // lessons — drives the "Scored X%" mark shown on the quiz card once
   // lessonQuizDone is true (TopicContentPane).
   const [lessonScores, setLessonScores] = useState({});
+  const [failedAttempts, setFailedAttempts] = useState({});
 
   const fetchLessonsForActiveTopic = useCallback(async () => {
     if (!active) return;
@@ -212,6 +214,7 @@ export default function CourseWorkspaceScreen({ roadmap, compressedSyllabus, ini
       setLessonTotal(uid, active.skill, active.topic, result.length);
       setCompletedLessons(getCompletedLessons(uid, active.skill, active.topic));
       setLessonScores(getLessonScores(uid, active.skill, active.topic));
+      setFailedAttempts(getFailedLessonAttempts(uid, active.skill, active.topic));
       // Resume where the learner left off in THIS topic, instead of
       // always restarting at lesson 1.
       setActiveLessonIndex(firstIncompleteIndex(uid, active.skill, active.topic, result));
@@ -232,6 +235,7 @@ export default function CourseWorkspaceScreen({ roadmap, compressedSyllabus, ini
     markLessonComplete(uid, active.skill, active.topic, lessonOrder, scorePercent);
     setCompletedLessons(getCompletedLessons(uid, active.skill, active.topic));
     setLessonScores(getLessonScores(uid, active.skill, active.topic));
+    setFailedAttempts(getFailedLessonAttempts(uid, active.skill, active.topic));
     setLessonProgressVersion((v) => v + 1);
   }, [active, uid]);
 
@@ -473,6 +477,7 @@ export default function CourseWorkspaceScreen({ roadmap, compressedSyllabus, ini
                 topicStatus={active.topicStatus}
                 lessonQuizDone={completedLessons.has(lessons[activeLessonIndex].Order)}
                 lessonQuizScore={lessonScores[lessons[activeLessonIndex].Order]}
+                lessonQuizFailedScore={failedAttempts[lessons[activeLessonIndex].Order]}
                 onTakeLessonQuiz={() =>
                   setLessonQuizTarget({
                     skill: active.skill,
@@ -679,6 +684,12 @@ export default function CourseWorkspaceScreen({ roadmap, compressedSyllabus, ini
           onComplete={(result) => {
             if (result?.scorePercent >= LESSON_PASS_THRESHOLD) {
               passLesson(lessonQuizTarget.lessonOrder, result.scorePercent);
+            } else if (active && typeof result?.scorePercent === "number") {
+              // Fell short of the pass mark — remember the score so the
+              // quiz card can greet a retake with "You scored X% last
+              // time" instead of the generic first-attempt prompt.
+              recordFailedLessonAttempt(uid, active.skill, active.topic, lessonQuizTarget.lessonOrder, result.scorePercent);
+              setFailedAttempts(getFailedLessonAttempts(uid, active.skill, active.topic));
             }
             setLessonQuizTarget(null);
             // Perfect score (10/10) only — auto-advance to the next

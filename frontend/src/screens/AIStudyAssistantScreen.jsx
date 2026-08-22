@@ -43,6 +43,7 @@ import {
   RotateCcw,
   RotateCw,
   History,
+  Search,
 } from "lucide-react";
 import {
   sendChatMessage,
@@ -68,6 +69,7 @@ import {
 import { generateMindMap } from "../services/mindmapService";
 import { generateSlideDeckPreview, downloadDeckContentPptx, downloadDeckContentPdf } from "../services/slideDeckService";
 import { listStudioArtifacts, getStudioArtifact, saveStudioArtifact } from "../services/studioService";
+import { getUserProfile } from "../services/profileService";
 import { COLORS, GRADIENTS, GLASS_CARD } from "../constants/theme";
 
 /**
@@ -83,9 +85,25 @@ import { COLORS, GRADIENTS, GLASS_CARD } from "../constants/theme";
  *   - Mind Map / Audio Overview: Sources / Chat / Type-your-own modes
  *     (the "Type" mode opens a small text box — see CustomInputBody)
  */
+// Deterministic accent color per chat session (from its id), just so the
+// Recent Chats list isn't a monotone stack of identical gray icons.
+const SESSION_COLORS = ["#D4A017", "#E4568A", "#0EA5E9", "#22C08E", "#8B5CF6", "#F0AB5C"];
+function sessionColor(id) {
+  let hash = 0;
+  for (let i = 0; i < id.length; i++) hash = (hash * 31 + id.charCodeAt(i)) | 0;
+  return SESSION_COLORS[Math.abs(hash) % SESSION_COLORS.length];
+}
+
 export default function AIStudyAssistantScreen({ uid }) {
   // --- history sidebar ---
   const [historyCollapsed, setHistoryCollapsed] = useState(false);
+  const [historySearch, setHistorySearch] = useState("");
+
+  // --- greeting header: first name + avatar come from the same
+  // Firebase-Auth-backed profile Profile screen uses (profileService.js),
+  // just the two fields this screen needs rather than the full bundle.
+  const [studentName, setStudentName] = useState("");
+  const [avatarUrl, setAvatarUrl] = useState("");
 
   // --- sources ---
   const [sources, setSources] = useState([]);
@@ -149,6 +167,12 @@ export default function AIStudyAssistantScreen({ uid }) {
       }
     })();
     refreshSessions();
+    getUserProfile()
+      .then((p) => {
+        setStudentName((p?.fullName || "").split(" ")[0] || "");
+        setAvatarUrl(p?.avatarUrl || "");
+      })
+      .catch(() => {});
 
     return () => window.speechSynthesis?.cancel();
   }, [uid]);
@@ -188,6 +212,20 @@ export default function AIStudyAssistantScreen({ uid }) {
     setSuggestions([]);
     setChatError("");
   }
+
+  // Regenerate — re-sends the last user turn as a fresh message (there's
+  // no backend "regenerate this reply" endpoint, so this is the closest
+  // real equivalent rather than a decorative dead button).
+  function handleRegenerate() {
+    const lastUser = [...messages].reverse().find((m) => m.role === "user");
+    if (lastUser) handleSend(lastUser.content);
+  }
+
+  const filteredSessions = useMemo(() => {
+    const q = historySearch.trim().toLowerCase();
+    if (!q) return sessions;
+    return sessions.filter((s) => (s.title || "").toLowerCase().includes(q));
+  }, [sessions, historySearch]);
 
   async function handleOpenSession(sessionId) {
     if (sessionId === activeSessionId) return;
@@ -530,20 +568,20 @@ export default function AIStudyAssistantScreen({ uid }) {
         </div>
 
         <div
-          className={`grid grid-cols-1 rounded-2xl overflow-hidden flex-1 min-h-0 ${historyCollapsed ? "lg:grid-cols-[56px_220px_1fr_280px]" : "lg:grid-cols-[190px_220px_1fr_280px]"}`}
+          className={`grid grid-cols-1 rounded-2xl overflow-hidden flex-1 min-h-0 ${historyCollapsed ? "lg:grid-cols-[56px_220px_1fr_280px]" : "lg:grid-cols-[224px_220px_1fr_280px]"}`}
           style={{ ...GLASS_CARD }}
         >
           {/* ---------------- HISTORY (permanent, collapsible sidebar) ---------------- */}
           <div
             className="p-3 flex flex-col border-b lg:border-b-0 lg:border-r overflow-hidden"
-            style={{ height: "100%", borderColor: COLORS.border }}
+            style={{ height: "100%", borderColor: COLORS.border, background: "rgba(255,255,255,0.35)" }}
           >
-            <div className={`flex items-center gap-1.5 mb-3 ${historyCollapsed ? "flex-col" : ""}`}>
+            <div className={`flex items-center gap-1.5 mb-2.5 ${historyCollapsed ? "flex-col" : ""}`}>
               <button
                 type="button"
                 onClick={handleNewChat}
                 className="flex items-center justify-center gap-1.5 text-xs font-semibold flex-1"
-                style={{ padding: "9px", borderRadius: 12, color: COLORS.white, background: GRADIENTS.purplePink, cursor: "pointer" }}
+                style={{ padding: "10px", borderRadius: 12, color: COLORS.white, background: GRADIENTS.purplePink, cursor: "pointer" }}
               >
                 <Plus size={13} />
                 {!historyCollapsed && "New Chat"}
@@ -558,6 +596,26 @@ export default function AIStudyAssistantScreen({ uid }) {
                 {historyCollapsed ? <ChevronsRight size={13} /> : <ChevronsLeft size={13} />}
               </button>
             </div>
+
+            {!historyCollapsed && (
+              <div className="relative mb-3">
+                <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: COLORS.textLight }} />
+                <input
+                  type="text"
+                  value={historySearch}
+                  onChange={(e) => setHistorySearch(e.target.value)}
+                  placeholder="Search chats"
+                  className="w-full text-[11px] pl-7 pr-2 py-2 rounded-lg outline-none"
+                  style={{ border: `1px solid ${COLORS.border}`, background: COLORS.white, color: COLORS.textDark }}
+                />
+              </div>
+            )}
+
+            {!historyCollapsed && (
+              <p className="text-[10px] font-bold uppercase tracking-wide mb-2 px-0.5" style={{ color: COLORS.textLight }}>
+                Recent Chats
+              </p>
+            )}
 
             {!historyCollapsed && sessionsError && (
               <p className="text-[10px] mb-2" style={{ color: "#DC2626" }}>
@@ -579,31 +637,41 @@ export default function AIStudyAssistantScreen({ uid }) {
                     <MessageSquare size={13} />
                   </button>
                 ))
-              ) : sessions.length === 0 ? (
+              ) : filteredSessions.length === 0 ? (
                 <p className="text-[10px] px-1" style={{ color: COLORS.textLight }}>
-                  Your past chats will appear here.
+                  {sessions.length === 0 ? "Your past chats will appear here." : "No chats match your search."}
                 </p>
               ) : (
-                sessions.map((s) => (
+                filteredSessions.map((s) => (
                   <button
                     key={s.id}
                     type="button"
                     onClick={() => handleOpenSession(s.id)}
-                    className="flex items-center justify-between text-left text-[11px] px-2 py-2 rounded-lg group transition-colors hover:bg-black/5"
+                    className="flex items-center gap-2 text-left px-2 py-2 rounded-lg group transition-colors hover:bg-black/5"
                     style={{
                       background: s.id === activeSessionId ? COLORS.lavender : "transparent",
                       color: COLORS.textDark,
                       cursor: "pointer",
                     }}
                   >
-                    <span className="truncate flex-1 flex items-center gap-1.5">
-                      <MessageSquare size={11} className="shrink-0" />
-                      {s.title}
+                    <span
+                      className="flex items-center justify-center rounded-full shrink-0"
+                      style={{ width: 24, height: 24, background: sessionColor(s.id) }}
+                    >
+                      <MessageSquare size={11} color="#fff" />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-[11px] font-medium">{s.title}</span>
+                      {typeof s.messageCount === "number" && (
+                        <span className="block truncate text-[10px]" style={{ color: COLORS.textLight }}>
+                          {s.messageCount} message{s.messageCount === 1 ? "" : "s"}
+                        </span>
+                      )}
                     </span>
                     <span
                       onClick={(e) => handleDeleteSession(s.id, e)}
                       style={{ color: COLORS.textLight }}
-                      className="opacity-0 group-hover:opacity-100 shrink-0 ml-1"
+                      className="opacity-0 group-hover:opacity-100 shrink-0"
                     >
                       <Trash2 size={11} />
                     </span>
@@ -611,6 +679,30 @@ export default function AIStudyAssistantScreen({ uid }) {
                 ))
               )}
             </div>
+
+            {/* Static promo — not wired to a real plan/billing flow yet;
+             * purely a visual placeholder until Studio has a paid tier. */}
+            {!historyCollapsed && (
+              <div
+                className="mt-3 p-3 rounded-2xl text-center shrink-0"
+                style={{ background: "linear-gradient(135deg, rgba(212,160,23,0.16), rgba(232,185,61,0.28))", border: `1px solid rgba(212,160,23,0.3)` }}
+              >
+                <Star size={16} color={COLORS.purple} className="mx-auto mb-1" />
+                <p className="text-[11px] font-bold" style={{ color: COLORS.textDark }}>
+                  Upgrade to Pro
+                </p>
+                <p className="text-[10px] mt-0.5 mb-2" style={{ color: COLORS.textMid }}>
+                  Unlock unlimited AI chats and advanced study tools.
+                </p>
+                <button
+                  type="button"
+                  className="text-[10px] font-bold px-3 py-1.5 rounded-full w-full"
+                  style={{ background: GRADIENTS.purplePink, color: "#fff", border: "none", cursor: "pointer" }}
+                >
+                  Upgrade Now
+                </button>
+              </div>
+            )}
           </div>
 
           {/* ---------------- SOURCES ---------------- */}
@@ -677,9 +769,26 @@ export default function AIStudyAssistantScreen({ uid }) {
             className="p-4 flex flex-col border-b lg:border-b-0 lg:border-r overflow-hidden"
             style={{ height: "100%", borderColor: COLORS.border }}
           >
-            <p className="text-xs font-semibold mb-3" style={{ color: COLORS.textDark }}>
-              {activeSessionId ? sessions.find((s) => s.id === activeSessionId)?.title || "Chat" : "New Chat"}
-            </p>
+            {messages.length === 0 && !loadingChat ? (
+              <div className="flex items-start justify-between gap-3 mb-3 shrink-0">
+                <div>
+                  <p className="text-base font-bold" style={{ color: COLORS.textDark }}>
+                    Hi{studentName ? ` ${studentName}` : ""}! 👋
+                  </p>
+                  <p className="text-sm font-semibold mt-0.5" style={{ color: COLORS.textDark }}>
+                    How can I help with your studies today?
+                  </p>
+                  <p className="text-xs mt-1" style={{ color: COLORS.textLight }}>
+                    I can explain concepts, solve problems, generate notes and more.
+                  </p>
+                </div>
+                <ChatMascot />
+              </div>
+            ) : (
+              <p className="text-xs font-semibold mb-3 shrink-0" style={{ color: COLORS.textDark }}>
+                {activeSessionId ? sessions.find((s) => s.id === activeSessionId)?.title || "Chat" : "New Chat"}
+              </p>
+            )}
 
             <div ref={scrollRef} className="flex-1 overflow-y-auto no-scrollbar flex flex-col gap-3 px-1">
               {loadingChat ? (
@@ -725,8 +834,28 @@ export default function AIStudyAssistantScreen({ uid }) {
               </p>
             )}
 
-            {suggestions.length > 0 && !sending && (
-              <div className="flex flex-wrap gap-1.5 mt-2">
+            {!sending && messages.length > 0 && (
+              <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                {activeSessionId && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => handleMindMapAction("chat")}
+                      className="flex items-center gap-1 text-[11px] font-medium px-2.5 py-1 rounded-full"
+                      style={{ color: COLORS.sky, background: COLORS.white, border: `1px solid ${COLORS.border}`, cursor: "pointer" }}
+                    >
+                      <GitBranch size={11} /> Create a mind map
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleGenerateFlashcards("chat")}
+                      className="flex items-center gap-1 text-[11px] font-medium px-2.5 py-1 rounded-full"
+                      style={{ color: COLORS.sky, background: COLORS.white, border: `1px solid ${COLORS.border}`, cursor: "pointer" }}
+                    >
+                      <Layers size={11} /> Flashcards
+                    </button>
+                  </>
+                )}
                 {suggestions.map((s, i) => (
                   <button
                     key={i}
@@ -738,6 +867,16 @@ export default function AIStudyAssistantScreen({ uid }) {
                     {s}
                   </button>
                 ))}
+                <button
+                  type="button"
+                  onClick={handleRegenerate}
+                  title="Regenerate"
+                  aria-label="Regenerate"
+                  className="flex items-center justify-center rounded-full shrink-0 ml-auto"
+                  style={{ width: 24, height: 24, color: COLORS.textLight, background: COLORS.white, border: `1px solid ${COLORS.border}`, cursor: "pointer" }}
+                >
+                  <RotateCcw size={11} />
+                </button>
               </div>
             )}
 
@@ -746,25 +885,44 @@ export default function AIStudyAssistantScreen({ uid }) {
                 e.preventDefault();
                 handleSend();
               }}
-              className="flex items-center gap-2 mt-3"
+              className="mt-3 shrink-0"
             >
-              <input
-                type="text"
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                placeholder="Ask a question..."
-                disabled={sending || loadingChat}
-                className="flex-1 text-sm px-3.5 py-2.5 rounded-full outline-none"
-                style={{ border: `1px solid ${COLORS.border}`, color: COLORS.textDark, background: COLORS.white }}
-              />
-              <button
-                type="submit"
-                disabled={sending || loadingChat || !input.trim()}
-                className="flex items-center justify-center rounded-full disabled:opacity-40 shrink-0"
-                style={{ width: 38, height: 38, background: GRADIENTS.purplePink, cursor: "pointer" }}
+              <div
+                className="flex items-center gap-1.5 px-2 py-1.5 rounded-full"
+                style={{ border: `1px solid ${COLORS.border}`, background: COLORS.white }}
               >
-                <Send size={15} color={COLORS.white} />
-              </button>
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={uploading}
+                  title="Attach a source"
+                  aria-label="Attach a source"
+                  className="flex items-center justify-center rounded-full shrink-0"
+                  style={{ width: 32, height: 32, color: COLORS.textLight, cursor: uploading ? "default" : "pointer" }}
+                >
+                  <Upload size={15} />
+                </button>
+                <input
+                  type="text"
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  placeholder="Ask me anything..."
+                  disabled={sending || loadingChat}
+                  className="flex-1 text-sm px-1 py-1.5 outline-none bg-transparent"
+                  style={{ color: COLORS.textDark }}
+                />
+                <button
+                  type="submit"
+                  disabled={sending || loadingChat || !input.trim()}
+                  className="flex items-center justify-center rounded-full disabled:opacity-40 shrink-0"
+                  style={{ width: 34, height: 34, background: GRADIENTS.purplePink, cursor: "pointer" }}
+                >
+                  <Send size={14} color={COLORS.white} />
+                </button>
+              </div>
+              <p className="text-[10px] text-center mt-1.5" style={{ color: COLORS.textLight }}>
+                LearnMatrix AI can make mistakes. Please verify important information.
+              </p>
             </form>
           </div>
 
@@ -1203,6 +1361,127 @@ function CustomInputBody({ target, text, onChange, onGenerate, error, loading, p
   );
 }
 
+// Small hand-built waving robot for the chat greeting header — built from
+// plain SVG shapes (no external image asset), same approach as
+// RevisionMascot in components/profile/RevisionScheduleSection.jsx.
+function ChatMascot() {
+  return (
+    <svg width="72" height="80" viewBox="0 0 72 80" className="shrink-0">
+      <circle cx="36" cy="14" r="4" fill={COLORS.purple} />
+      <line x1="36" y1="10" x2="36" y2="18" stroke={COLORS.purple} strokeWidth="2.5" strokeLinecap="round" />
+      <rect x="14" y="18" width="44" height="34" rx="14" fill={COLORS.sky} />
+      <circle cx="27" cy="35" r="4" fill="#fff" />
+      <circle cx="45" cy="35" r="4" fill={COLORS.purple} />
+      <path d="M26 44 Q36 50 46 44" stroke="rgba(255,255,255,0.5)" strokeWidth="2.5" fill="none" strokeLinecap="round" />
+      <rect x="8" y="52" width="56" height="26" rx="13" fill={COLORS.purple} />
+      <rect x="24" y="59" width="24" height="12" rx="5" fill="rgba(255,255,255,0.2)" />
+      {/* waving arm */}
+      <circle cx="66" cy="46" r="6" fill={COLORS.sky} />
+      <line x1="62" y1="52" x2="66" y2="46" stroke={COLORS.sky} strokeWidth="4" strokeLinecap="round" />
+      {/* still arm */}
+      <circle cx="6" cy="64" r="6" fill={COLORS.sky} />
+    </svg>
+  );
+}
+
+// Very small, dependency-free markdown for assistant replies: turns
+// **bold**, "- " bullet lines, and pipe-delimited tables (a header row +
+// a |---|---| separator, the shape the Chat Agent's backend prompt asks
+// for) into real elements instead of dumping literal "**"/"|" characters
+// — everything else stays as plain text.
+function renderAssistantContent(content) {
+  const lines = content.split("\n");
+  const blocks = [];
+  let i = 0;
+
+  function renderInline(text, key) {
+    const parts = text.split(/(\*\*[^*]+\*\*)/g).filter(Boolean);
+    return (
+      <span key={key}>
+        {parts.map((part, idx) =>
+          part.startsWith("**") && part.endsWith("**") ? (
+            <strong key={idx}>{part.slice(2, -2)}</strong>
+          ) : (
+            <span key={idx}>{part}</span>
+          )
+        )}
+      </span>
+    );
+  }
+
+  while (i < lines.length) {
+    const line = lines[i];
+    const isTableRow = /^\s*\|.*\|\s*$/.test(line);
+    const nextIsSeparator = i + 1 < lines.length && /^\s*\|?[\s:|-]+\|[\s:|-]*\|?\s*$/.test(lines[i + 1] || "");
+
+    if (isTableRow && nextIsSeparator) {
+      const header = line.split("|").map((c) => c.trim()).filter((c, idx, arr) => !(idx === 0 && c === "") && !(idx === arr.length - 1 && c === ""));
+      const rows = [];
+      let j = i + 2;
+      while (j < lines.length && /^\s*\|.*\|\s*$/.test(lines[j])) {
+        rows.push(lines[j].split("|").map((c) => c.trim()).filter((c, idx, arr) => !(idx === 0 && c === "") && !(idx === arr.length - 1 && c === "")));
+        j++;
+      }
+      blocks.push(
+        <div key={i} className="overflow-x-auto my-1.5 rounded-lg" style={{ border: `1px solid ${COLORS.border}` }}>
+          <table className="text-xs w-full" style={{ borderCollapse: "collapse" }}>
+            <thead>
+              <tr style={{ background: COLORS.lavender }}>
+                {header.map((h, ci) => (
+                  <th key={ci} className="text-left px-2 py-1.5 font-semibold" style={{ color: COLORS.textDark, borderBottom: `1px solid ${COLORS.border}` }}>
+                    {h}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r, ri) => (
+                <tr key={ri}>
+                  {r.map((c, ci) => (
+                    <td key={ci} className="px-2 py-1.5" style={{ color: COLORS.textMid, borderTop: `1px solid ${COLORS.border}` }}>
+                      {c}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      );
+      i = j;
+      continue;
+    }
+
+    if (/^\s*[-*]\s+/.test(line)) {
+      const bulletLines = [];
+      let j = i;
+      while (j < lines.length && /^\s*[-*]\s+/.test(lines[j])) {
+        bulletLines.push(lines[j].replace(/^\s*[-*]\s+/, ""));
+        j++;
+      }
+      blocks.push(
+        <ul key={i} className="list-disc pl-4 my-1 space-y-0.5">
+          {bulletLines.map((b, bi) => (
+            <li key={bi}>{renderInline(b, bi)}</li>
+          ))}
+        </ul>
+      );
+      i = j;
+      continue;
+    }
+
+    if (line.trim() === "") {
+      i++;
+      continue;
+    }
+
+    blocks.push(<p key={i} className="whitespace-pre-wrap">{renderInline(line, i)}</p>);
+    i++;
+  }
+
+  return blocks;
+}
+
 function ChatBubble({ role, content, citedSources }) {
   const isUser = role === "user";
   return (
@@ -1214,16 +1493,22 @@ function ChatBubble({ role, content, citedSources }) {
     >
       <div
         className="flex items-center justify-center rounded-full shrink-0"
-        style={{ width: 24, height: 24, background: isUser ? COLORS.lavender : GRADIENTS.purpleSky, border: isUser ? `1px solid ${COLORS.border}` : "none" }}
+        style={{ width: 24, height: 24, background: isUser ? COLORS.lavender : COLORS.sky, border: isUser ? `1px solid ${COLORS.border}` : "none" }}
       >
         {isUser ? <UserIcon size={12} color={COLORS.sky} /> : <Bot size={12} color={COLORS.white} />}
       </div>
       <div style={{ maxWidth: "82%" }}>
         <div
-          className="text-sm px-3.5 py-2.5 rounded-2xl whitespace-pre-wrap"
-          style={{ color: isUser ? COLORS.white : COLORS.textDark, background: isUser ? GRADIENTS.purpleSky : COLORS.white }}
+          className="text-sm px-3.5 py-2.5"
+          style={{
+            color: isUser ? COLORS.white : COLORS.textDark,
+            background: isUser ? COLORS.purple : COLORS.white,
+            borderRadius: 18,
+            borderBottomRightRadius: isUser ? 4 : 18,
+            borderBottomLeftRadius: isUser ? 18 : 4,
+          }}
         >
-          {content}
+          {isUser ? <span className="whitespace-pre-wrap">{content}</span> : renderAssistantContent(content)}
         </div>
         {!isUser && citedSources?.length > 0 && (
           <div className="flex flex-wrap gap-1 mt-1 px-1">

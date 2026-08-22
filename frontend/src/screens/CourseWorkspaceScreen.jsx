@@ -276,6 +276,14 @@ export default function CourseWorkspaceScreen({ roadmap, compressedSyllabus, ini
     });
 
   const openModule = (moduleName) => {
+    // Only jump to the module's first skill when actually switching INTO
+    // a different module — re-clicking the already-active module's label
+    // (e.g. just to glance at it, or as a mis-click while it's already
+    // open) must NOT yank the content pane back to skill #1 (HTML5) if
+    // the learner has since navigated to a different skill within it.
+    // This was the bug: clicking "Frontend" always forced HTML5 back
+    // onto the right pane, even while viewing React.js/TypeScript/etc.
+    if (moduleName === activeModuleName) return;
     setActiveModuleName(moduleName);
     setViewMode("list");
     const firstSkillInModule = modules.find((m) => m.name === moduleName)?.skills[0]?.name;

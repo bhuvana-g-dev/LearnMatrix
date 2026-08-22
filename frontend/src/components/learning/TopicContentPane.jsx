@@ -86,7 +86,7 @@ function formatPublishedDate(iso) {
 export default function TopicContentPane({
   skill, topic, focusBand, topicStatus,
   onNext, onPrevious, hasNext = false, hasPrevious = false, onTakeTest,
-  onTakeLessonQuiz, lessonQuizDone, lessonQuizScore, // optional — lesson-scoped quiz CTA, only passed from the Lessons flow (CourseWorkspaceScreen)
+  onTakeLessonQuiz, lessonQuizDone, lessonQuizScore, lessonQuizFailedScore, // optional — lesson-scoped quiz CTA, only passed from the Lessons flow (CourseWorkspaceScreen)
 }) {
   const [state, setState] = useState("loading"); // loading | error | ready
   const [errorMessage, setErrorMessage] = useState("");
@@ -400,7 +400,13 @@ export default function TopicContentPane({
         )}
       </div>
 
-      {onTakeLessonQuiz && (
+      {onTakeLessonQuiz && (() => {
+        // Already attempted this lesson's quiz but didn't clear the pass
+        // mark yet — show that in red instead of the generic first-attempt
+        // prompt, so a returning learner immediately sees why they're back
+        // here instead of re-reading the same "Ready to test yourself?" copy.
+        const hasFailedAttempt = !lessonQuizDone && typeof lessonQuizFailedScore === "number";
+        return (
         <motion.button
           onClick={onTakeLessonQuiz}
           whileHover={{ y: -2 }}
@@ -408,26 +414,28 @@ export default function TopicContentPane({
           className="w-full flex items-center justify-between gap-3 p-5 mb-6 text-left"
           style={{
             ...GLASS_CARD, borderRadius: 20, cursor: "pointer",
-            border: `1px solid ${lessonQuizDone ? "#22C55E" : COLORS.border}`,
+            border: `1px solid ${lessonQuizDone ? "#22C55E" : hasFailedAttempt ? "#DC2626" : COLORS.border}`,
           }}
         >
           <div className="flex items-center gap-3">
             <div
               className="flex items-center justify-center flex-shrink-0"
-              style={{ width: 40, height: 40, borderRadius: 12, background: lessonQuizDone ? "#22C55E" : GRADIENTS.purplePink }}
+              style={{ width: 40, height: 40, borderRadius: 12, background: lessonQuizDone ? "#22C55E" : hasFailedAttempt ? "#DC2626" : GRADIENTS.purplePink }}
             >
               {lessonQuizDone ? <CheckCircle2 size={20} style={{ color: "#fff" }} /> : <ClipboardCheck size={20} style={{ color: "#fff" }} />}
             </div>
             <div>
-              <p className="text-sm font-bold" style={{ color: COLORS.textDark }}>
-                {lessonQuizDone ? "Lesson completed" : "Ready to test yourself?"}
+              <p className="text-sm font-bold" style={{ color: hasFailedAttempt ? "#DC2626" : COLORS.textDark }}>
+                {lessonQuizDone ? "Lesson completed" : hasFailedAttempt ? "Not passed yet" : "Ready to test yourself?"}
               </p>
-              <p className="text-[11px]" style={{ color: COLORS.textLight }}>
+              <p className="text-[11px]" style={{ color: hasFailedAttempt ? "#DC2626" : COLORS.textLight }}>
                 {lessonQuizDone
                   ? (typeof lessonQuizScore === "number"
                       ? `You scored ${lessonQuizScore}% · high enough to mark this lesson done`
                       : "You scored high enough to mark this lesson done")
-                  : "Quick quiz on this lesson · pass it to mark this lesson done"}
+                  : hasFailedAttempt
+                    ? `You scored ${lessonQuizFailedScore}% last time · retake to pass this lesson`
+                    : "Quick quiz on this lesson · pass it to mark this lesson done"}
               </p>
             </div>
           </div>
@@ -440,15 +448,24 @@ export default function TopicContentPane({
                 {lessonQuizScore}%
               </span>
             )}
+            {hasFailedAttempt && (
+              <span
+                className="text-xs font-bold px-3 py-2 rounded-full"
+                style={{ background: "rgba(220,38,38,0.12)", color: "#DC2626" }}
+              >
+                {lessonQuizFailedScore}%
+              </span>
+            )}
             <span
               className="text-xs font-bold px-4 py-2 rounded-full"
-              style={{ background: lessonQuizDone ? "#22C55E" : GRADIENTS.purplePink, color: "#fff" }}
+              style={{ background: lessonQuizDone ? "#22C55E" : hasFailedAttempt ? "#DC2626" : GRADIENTS.purplePink, color: "#fff" }}
             >
-              {lessonQuizDone ? "Retake" : "Take Test"}
+              {lessonQuizDone ? "Retake" : hasFailedAttempt ? "Retake Test" : "Take Test"}
             </span>
           </div>
         </motion.button>
-      )}
+        );
+      })()}
 
       {onTakeTest && (
         <motion.button

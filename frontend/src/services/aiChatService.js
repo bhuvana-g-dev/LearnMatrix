@@ -88,6 +88,20 @@ export async function addNotesAsSource(uid, { skill, topic, focusBand }) {
 }
 
 /**
+ * addYoutubeSource — sends a YouTube video URL to be transcribed,
+ * chunked, and embedded as a new grounded-chat source (NotebookLM-
+ * style "add a link" alongside file upload).
+ * @returns {Promise<{sourceId: string, title: string, chunkCount: number}>}
+ */
+export async function addYoutubeSource(uid, url) {
+  const { data } = await apiClient.post(ENDPOINTS.AI_CHAT.SOURCE_FROM_YOUTUBE(uid), { url }, {
+    timeout: 60000, // transcript fetch + embedding can take a bit
+  });
+  if (!data.success) throw new Error(data.error || data.message || "Couldn't add that video.");
+  return data.data;
+}
+
+/**
  * listChatSources — this user's saved sources (metadata only).
  * @returns {Promise<object[]>}
  */

@@ -44,6 +44,7 @@ export const ENDPOINTS = {
     SOURCES: (uid) => `/ai/chat/${uid}/sources`, // GET (list) / POST (upload, multipart)
     SOURCES_CONTENT: (uid) => `/ai/chat/${uid}/sources/content`, // GET — full text per source, for Mind Map / Audio Overview / PPT / Flashcards
     SOURCE_FROM_NOTES: (uid) => `/ai/chat/${uid}/sources/from-notes`, // POST {skill, topic, focusBand}
+    SOURCE_FROM_YOUTUBE: (uid) => `/ai/chat/${uid}/sources/from-youtube`, // POST {url}
     DELETE_SOURCE: (uid, sourceId) => `/ai/chat/${uid}/sources/${sourceId}`, // DELETE
   },
   LESSONS: {

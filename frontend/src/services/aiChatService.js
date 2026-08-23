@@ -102,6 +102,17 @@ export async function addYoutubeSource(uid, url) {
 }
 
 /**
+ * addTextSource — sends raw pasted text to be chunked and embedded as
+ * a new grounded-chat source (NotebookLM's "Copied text" option).
+ * @returns {Promise<{sourceId: string, title: string, chunkCount: number}>}
+ */
+export async function addTextSource(uid, text, title) {
+  const { data } = await apiClient.post(ENDPOINTS.AI_CHAT.SOURCE_FROM_TEXT(uid), { text, title });
+  if (!data.success) throw new Error(data.error || data.message || "Couldn't add that text.");
+  return data.data;
+}
+
+/**
  * listChatSources — this user's saved sources (metadata only).
  * @returns {Promise<object[]>}
  */

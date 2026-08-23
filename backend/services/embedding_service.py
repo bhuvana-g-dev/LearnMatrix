@@ -21,6 +21,7 @@ from services import chat_source_repository
 from services import notes_repository
 from utils.gemini_client import generate_embedding, GeminiClientError
 from utils.text_chunker import chunk_text
+from utils.youtube_source_extractor import fetch_youtube_source, YoutubeExtractionError
 
 
 class EmbeddingServiceError(Exception):
@@ -56,6 +57,18 @@ def index_learning_notes(db, uid: str, skill: str, topic: str, focus_band: str) 
 
     title = f"{skill} / {topic} notes ({focus_band})"
     return _index_text(db, uid, title, text, source_type="notes")
+
+
+def index_youtube_source(db, uid: str, url: str) -> dict:
+    """Pulls a YouTube video's transcript (utils/youtube_source_extractor.py
+    — auto-generated captions work fine) and adds it as a chat source,
+    NotebookLM-style, so the student can chat/Mind Map/Audio
+    Overview/Slide Deck/Flashcards off a lecture video the same way
+    they can off an uploaded PDF. Raises YoutubeExtractionError (via
+    SourceError in ai_chat_service.py) if the link is invalid or the
+    video has no transcript available."""
+    video = fetch_youtube_source(url)
+    return _index_text(db, uid, video["title"], video["text"], source_type="youtube")
 
 
 def _index_text(db, uid: str, title: str, raw_text: str, source_type: str) -> dict:

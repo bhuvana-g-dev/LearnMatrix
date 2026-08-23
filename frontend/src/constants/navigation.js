@@ -28,13 +28,15 @@ export const NAV_SECTIONS = [
     selfNavigable: true,
   },
   {
-    key: "career",
+    // Key stays "role" (not "career") on purpose — App.jsx already
+    // routes activeKey === "role" straight to CareerStatusScreen, which
+    // internally decides Role Selection vs the committed status
+    // dashboard. No children/dropdown anymore — single link, same as
+    // Home/Learning Hub, per the redesigned "My Career Path" page.
+    key: "role",
     title: "My Career Path",
     icon: Target,
-    children: [
-      { key: "role", label: "Role Selection" },
-      { key: "skills", label: "Skill Selection" },
-    ],
+    selfNavigable: true,
   },
   {
     key: "assessment",

@@ -6,7 +6,7 @@ dependency-injection pattern as every other *_repository.py in this
 folder (db passed in, never fetched here).
 
     chat_sources/{uid}/sources/{sourceId}
-        title, type ("upload"|"notes"|"youtube"), createdAt
+        title, type ("upload"|"notes"|"youtube"|"text"), createdAt
     chat_sources/{uid}/sources/{sourceId}/chunks/{chunkId}
         text, embedding (list[float]), chunkIndex
 

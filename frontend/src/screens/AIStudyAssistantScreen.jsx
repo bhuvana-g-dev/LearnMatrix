@@ -45,6 +45,8 @@ import {
   History,
   Search,
   Mic,
+  Youtube,
+  Link2,
 } from "lucide-react";
 import {
   sendChatMessage,
@@ -55,6 +57,7 @@ import {
   listChatSources,
   getSourcesContent,
   deleteChatSource,
+  addYoutubeSource,
 } from "../services/aiChatService";
 import {
   generateFlashcardsFromChat,
@@ -111,6 +114,9 @@ export default function AIStudyAssistantScreen({ uid }) {
   const [uploading, setUploading] = useState(false);
   const [sourceError, setSourceError] = useState("");
   const fileInputRef = useRef(null);
+  const [showYoutubeInput, setShowYoutubeInput] = useState(false);
+  const [youtubeUrl, setYoutubeUrl] = useState("");
+  const [addingYoutube, setAddingYoutube] = useState(false);
 
   // --- chat (session-based) ---
   const [sessions, setSessions] = useState([]);
@@ -311,6 +317,23 @@ export default function AIStudyAssistantScreen({ uid }) {
       setSourceError(err.message || "Couldn't add that source.");
     } finally {
       setUploading(false);
+    }
+  }
+
+  async function handleAddYoutubeSource() {
+    const url = youtubeUrl.trim();
+    if (!url || !uid) return;
+    setSourceError("");
+    setAddingYoutube(true);
+    try {
+      await addYoutubeSource(uid, url);
+      setSources(await listChatSources(uid));
+      setYoutubeUrl("");
+      setShowYoutubeInput(false);
+    } catch (err) {
+      setSourceError(err.message || "Couldn't add that video.");
+    } finally {
+      setAddingYoutube(false);
     }
   }
 
@@ -733,26 +756,81 @@ export default function AIStudyAssistantScreen({ uid }) {
             className="p-4 flex flex-col border-b lg:border-b-0 lg:border-r overflow-hidden"
             style={{ height: "100%", borderColor: COLORS.border }}
           >
-            <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center justify-between mb-3 gap-1.5">
               <p className="text-xs font-semibold" style={{ color: COLORS.textDark }}>
                 Sources
               </p>
-              <label
-                className="flex items-center gap-1 text-[11px] font-semibold shrink-0"
-                style={{
-                  padding: "5px 10px",
-                  borderRadius: 9999,
-                  color: COLORS.white,
-                  background: GRADIENTS.purplePink,
-                  cursor: uploading ? "default" : "pointer",
-                  opacity: uploading ? 0.6 : 1,
-                }}
-              >
-                <Upload size={11} />
-                {uploading ? "..." : "Add"}
-                <input ref={fileInputRef} type="file" accept=".pdf,.txt,.md" onChange={handleFileChosen} disabled={uploading} hidden />
-              </label>
+              <div className="flex items-center gap-1.5 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setShowYoutubeInput((v) => !v)}
+                  className="flex items-center gap-1 text-[11px] font-semibold shrink-0"
+                  style={{
+                    padding: "5px 10px",
+                    borderRadius: 9999,
+                    color: COLORS.white,
+                    background: "#FF0000",
+                    cursor: "pointer",
+                    opacity: showYoutubeInput ? 0.85 : 1,
+                  }}
+                >
+                  <Youtube size={11} />
+                  YouTube
+                </button>
+                <label
+                  className="flex items-center gap-1 text-[11px] font-semibold shrink-0"
+                  style={{
+                    padding: "5px 10px",
+                    borderRadius: 9999,
+                    color: COLORS.white,
+                    background: GRADIENTS.purplePink,
+                    cursor: uploading ? "default" : "pointer",
+                    opacity: uploading ? 0.6 : 1,
+                  }}
+                >
+                  <Upload size={11} />
+                  {uploading ? "..." : "Add"}
+                  <input ref={fileInputRef} type="file" accept=".pdf,.txt,.md" onChange={handleFileChosen} disabled={uploading} hidden />
+                </label>
+              </div>
             </div>
+
+            {showYoutubeInput && (
+              <div className="flex items-center gap-1.5 mb-2">
+                <div
+                  className="flex items-center gap-1.5 flex-1 min-w-0 px-2"
+                  style={{ borderRadius: 8, border: `1px solid ${COLORS.border}`, background: COLORS.white }}
+                >
+                  <Link2 size={11} color={COLORS.textLight} className="shrink-0" />
+                  <input
+                    type="text"
+                    value={youtubeUrl}
+                    onChange={(e) => setYoutubeUrl(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && handleAddYoutubeSource()}
+                    placeholder="Paste a YouTube video link"
+                    disabled={addingYoutube}
+                    className="flex-1 min-w-0 text-[11px] py-2 outline-none bg-transparent"
+                    style={{ color: COLORS.textDark }}
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={handleAddYoutubeSource}
+                  disabled={addingYoutube || !youtubeUrl.trim()}
+                  className="text-[11px] font-semibold shrink-0"
+                  style={{
+                    padding: "8px 12px",
+                    borderRadius: 8,
+                    color: COLORS.white,
+                    background: "#FF0000",
+                    cursor: addingYoutube || !youtubeUrl.trim() ? "default" : "pointer",
+                    opacity: addingYoutube || !youtubeUrl.trim() ? 0.6 : 1,
+                  }}
+                >
+                  {addingYoutube ? "Adding..." : "Add"}
+                </button>
+              </div>
+            )}
 
             {sourceError && (
               <p className="text-[11px] mb-2" style={{ color: "#DC2626" }}>
@@ -763,7 +841,7 @@ export default function AIStudyAssistantScreen({ uid }) {
             <div className="flex-1 overflow-y-auto no-scrollbar flex flex-col gap-2">
               {sources.length === 0 ? (
                 <p className="text-[11px]" style={{ color: COLORS.textLight }}>
-                  No sources yet. Upload a PDF or notes file to power chat, Mind Map, Audio Overview, Slide Deck, and Flashcards.
+                  Upload a PDF/notes file or paste a YouTube link to power chat, Mind Map, Audio Overview, Slide Deck, and Flashcards.
                 </p>
               ) : (
                 sources.map((s) => (
@@ -773,7 +851,11 @@ export default function AIStudyAssistantScreen({ uid }) {
                     style={{ background: COLORS.white, border: `1px solid ${COLORS.border}` }}
                   >
                     <div className="flex items-center gap-1.5 min-w-0">
-                      <FileText size={11} color={COLORS.purple} className="shrink-0" />
+                      {s.type === "youtube" ? (
+                        <Youtube size={11} color="#FF0000" className="shrink-0" />
+                      ) : (
+                        <FileText size={11} color={COLORS.purple} className="shrink-0" />
+                      )}
                       <span className="truncate" style={{ color: COLORS.textDark }}>
                         {s.title}
                       </span>

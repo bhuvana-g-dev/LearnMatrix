@@ -59,6 +59,15 @@ def index_learning_notes(db, uid: str, skill: str, topic: str, focus_band: str) 
     return _index_text(db, uid, title, text, source_type="notes")
 
 
+def index_pasted_text(db, uid: str, raw_text: str, title: str | None = None) -> dict:
+    """Adds raw pasted text (copy-pasted notes, an article body, etc.)
+    directly as a chat source — no file upload or URL involved, same
+    idea as NotebookLM's "Copied text" source option. Title defaults to
+    a short preview of the text itself when not given."""
+    title = (title or "").strip() or (raw_text.strip()[:60] or "Pasted text")
+    return _index_text(db, uid, title, raw_text, source_type="text")
+
+
 def index_youtube_source(db, uid: str, url: str) -> dict:
     """Pulls a YouTube video's transcript (utils/youtube_source_extractor.py
     — auto-generated captions work fine) and adds it as a chat source,

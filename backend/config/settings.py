@@ -265,6 +265,13 @@ class Settings:
     # simultaneous Gemini requests at once — that would trade "server
     # timeout" for "rate-limited into the ground", which isn't a win.
     AI_ASSESSMENT_MAX_PARALLEL_SKILLS: int = int(os.getenv("AI_ASSESSMENT_MAX_PARALLEL_SKILLS", 3))
+    # How many still-unresolved FillBlank/CodeCompletion answers get
+    # graded CONCURRENTLY via Gemini in
+    # services/answer_equivalence_service.resolve_batch(). Same capping
+    # rationale as AI_ASSESSMENT_MAX_PARALLEL_SKILLS above — bounded so a
+    # result with many open-ended misses doesn't fire an unbounded burst
+    # of simultaneous Gemini requests.
+    AI_GRADING_MAX_PARALLEL: int = int(os.getenv("AI_GRADING_MAX_PARALLEL", 3))
     VALID_DIFFICULTIES: list[str] = ["Easy", "Medium", "Hard"]
     # "FillBlank": plain typed-answer question, works for any skill.
     # "CodeCompletion": a code snippet with a blank to complete — only

@@ -11,6 +11,13 @@ import {
   suggestResourcesViaAI, suggestResourcesViaYouTube, bulkGenerateAndVerify,
   fetchPendingResources, verifyResource, unverifyResource, rejectResource,
 } from "../../services/adminResourceService";
+import { getRoleSyllabus } from "../../services/syllabusService";
+
+// Only "frontend" is seeded in data/skill_syllabus_seed.py right now
+// (see that file's module docstring) — this is the one role whose
+// skill/topic tree actually exists in Firestore to populate the
+// dropdowns below from. Add a role picker here once more roles are seeded.
+const SYLLABUS_ROLE_ID = "frontend";
 
 const RESOURCE_TYPES = ["video", "documentation", "article", "pdf", "cheatsheet", "practice", "github"];
 const DIFFICULTIES = ["Beginner", "Intermediate", "Advanced"];
@@ -57,6 +64,40 @@ export default function ResourceBankScreen({ admin }) {
   const [suggesting, setSuggesting] = useState(""); // "ai" | "youtube" | ""
   const [suggestError, setSuggestError] = useState("");
   const [suggestMessage, setSuggestMessage] = useState("");
+
+  // Skill -> Topic dropdown data for the Generate Suggestions panel —
+  // pulled from the real syllabus tree (skill_topic_routes.py) so an
+  // admin can only pick a skill/topic that actually exists, instead of
+  // free-typing something that doesn't exactly match what students see
+  // (see learning_content_service.py — resources are looked up by exact
+  // skill+topic string match).
+  const [syllabus, setSyllabus] = useState([]); // [{ skill, topics: [{Title, Order, ...}] }]
+  const [syllabusLoading, setSyllabusLoading] = useState(true);
+  const [syllabusError, setSyllabusError] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setSyllabusLoading(true);
+      setSyllabusError("");
+      try {
+        const data = await getRoleSyllabus(SYLLABUS_ROLE_ID);
+        if (!cancelled) setSyllabus(data?.skills || []);
+      } catch (err) {
+        if (!cancelled) setSyllabusError(err.message || "Couldn't load skill/topic list.");
+      } finally {
+        if (!cancelled) setSyllabusLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  const topicsForSelectedSkill = syllabus.find((s) => s.skill === suggestSkill)?.topics || [];
+
+  const handleSuggestSkillChange = (skill) => {
+    setSuggestSkill(skill);
+    setSuggestTopic(""); // reset topic — previous skill's topic won't be valid for a new skill
+  };
 
   const loadResources = useCallback(async () => {
     setLoading(true);
@@ -285,21 +326,34 @@ export default function ResourceBankScreen({ admin }) {
       {/* Generate suggestions: real YouTube search + AI-suggested docs/articles/github/etc */}
       <div className="p-5 mb-6" style={{ ...GLASS_CARD, borderRadius: 20 }}>
         <p className="text-sm font-bold mb-3" style={{ color: COLORS.textDark }}>Generate Suggestions</p>
+        {syllabusError && (
+          <p className="text-xs font-semibold mb-2" style={{ color: "#DC2626" }}>{syllabusError}</p>
+        )}
         <div className="flex flex-wrap items-center gap-2.5">
-          <input
+          <select
             value={suggestSkill}
-            onChange={(e) => setSuggestSkill(e.target.value)}
-            placeholder="Skill (e.g. React.js)"
+            onChange={(e) => handleSuggestSkillChange(e.target.value)}
+            disabled={syllabusLoading}
             className="text-sm px-3 py-2 rounded-lg outline-none"
-            style={{ border: `1px solid ${COLORS.border}`, background: "#fff", minWidth: 160 }}
-          />
-          <input
+            style={{ border: `1px solid ${COLORS.border}`, background: "#fff", minWidth: 180, color: suggestSkill ? COLORS.textDark : COLORS.textLight }}
+          >
+            <option value="">{syllabusLoading ? "Loading skills…" : "Select skill"}</option>
+            {syllabus.map((s) => (
+              <option key={s.skill} value={s.skill}>{s.skill}</option>
+            ))}
+          </select>
+          <select
             value={suggestTopic}
             onChange={(e) => setSuggestTopic(e.target.value)}
-            placeholder="Topic (e.g. React Hooks)"
+            disabled={!suggestSkill}
             className="text-sm px-3 py-2 rounded-lg outline-none"
-            style={{ border: `1px solid ${COLORS.border}`, background: "#fff", minWidth: 180 }}
-          />
+            style={{ border: `1px solid ${COLORS.border}`, background: "#fff", minWidth: 220, color: suggestTopic ? COLORS.textDark : COLORS.textLight, opacity: suggestSkill ? 1 : 0.6 }}
+          >
+            <option value="">{suggestSkill ? "Select topic" : "Select a skill first"}</option>
+            {topicsForSelectedSkill.map((t) => (
+              <option key={t.TopicID || t.Title} value={t.Title}>{t.Title}</option>
+            ))}
+          </select>
           <motion.button
             onClick={() => handleSuggest("youtube")}
             disabled={!!suggesting}

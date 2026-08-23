@@ -11,14 +11,17 @@ import {
   suggestResourcesViaAI, suggestResourcesViaYouTube, bulkGenerateAndVerify,
   fetchPendingResources, verifyResource, unverifyResource, rejectResource,
 } from "../../services/adminResourceService";
-import { getRoleSyllabus } from "../../services/syllabusService";
+import { getRoles } from "../../services/roleService";
+import { getSkillsByRole } from "../../services/skillService";
 import { getLessons, compositeTopicKey } from "../../services/lessonService";
 
-// Only "frontend" is seeded in data/skill_syllabus_seed.py right now
-// (see that file's module docstring) — this is the one role whose
-// skill/topic tree actually exists in Firestore to populate the
-// dropdowns below from. Add a role picker here once more roles are seeded.
-const SYLLABUS_ROLE_ID = "frontend";
+// Role -> Skill picker below uses the static role/skill catalog every
+// other screen in this app already uses (constants/roles.js,
+// constants/skills.js) — covers all 8 roles regardless of whether that
+// role's TOPIC tree has been seeded into Firestore yet
+// (data/skill_syllabus_seed.py currently only has "frontend"). Topic
+// stays a manual text field on purpose (see form below) since most
+// roles have no topic list to pick from yet.
 
 const RESOURCE_TYPES = ["video", "documentation", "article", "pdf", "cheatsheet", "practice", "github"];
 const DIFFICULTIES = ["Beginner", "Intermediate", "Advanced"];
@@ -60,22 +63,25 @@ export default function ResourceBankScreen({ admin }) {
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState("");
 
+  const [suggestRole, setSuggestRole] = useState("");
   const [suggestSkill, setSuggestSkill] = useState("");
-  const [suggestTopic, setSuggestTopic] = useState(""); // seed Topic (e.g. "Variables")
+  const [suggestTopic, setSuggestTopic] = useState(""); // manual text — e.g. "Variables"
   const [suggestLesson, setSuggestLesson] = useState(""); // AI-generated Lesson title, or "" = whole-topic (no lesson)
   const [suggesting, setSuggesting] = useState(""); // "ai" | "youtube" | ""
   const [suggestError, setSuggestError] = useState("");
   const [suggestMessage, setSuggestMessage] = useState("");
 
-  // Skill -> Topic dropdown data for the Generate Suggestions panel —
-  // pulled from the real syllabus tree (skill_topic_routes.py) so an
-  // admin can only pick a skill/topic that actually exists, instead of
-  // free-typing something that doesn't exactly match what students see
-  // (see learning_content_service.py — resources are looked up by exact
-  // skill+topic string match).
-  const [syllabus, setSyllabus] = useState([]); // [{ skill, topics: [{Title, Order, ...}] }]
-  const [syllabusLoading, setSyllabusLoading] = useState(true);
-  const [syllabusError, setSyllabusError] = useState("");
+  // Role -> Skill dropdown data for the Generate Suggestions panel —
+  // from the same static catalog SkillSelectionScreen uses (all 8
+  // roles), so an admin can only pick a skill that actually exists for
+  // that role instead of free-typing something misspelled. Topic stays
+  // manual text (see form below) — most roles don't have a seeded topic
+  // tree to pick from yet.
+  const [roles, setRoles] = useState([]); // [{id, title, ...}]
+  const [rolesLoading, setRolesLoading] = useState(true);
+  const [skillsForRole, setSkillsForRole] = useState([]); // flat skill-name list for the chosen role
+  const [skillsLoading, setSkillsLoading] = useState(false);
+  const [suggestError2, setSuggestError2] = useState(""); // role/skill load error, kept separate from the generate-call error below
 
   // Topic -> Lesson dropdown data. Lessons are AI-generated per (skill,
   // topic) by agents/lesson_planner_agent.py and cached in
@@ -93,19 +99,46 @@ export default function ResourceBankScreen({ admin }) {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      setSyllabusLoading(true);
-      setSyllabusError("");
+      setRolesLoading(true);
       try {
-        const data = await getRoleSyllabus(SYLLABUS_ROLE_ID);
-        if (!cancelled) setSyllabus(data?.skills || []);
-      } catch (err) {
-        if (!cancelled) setSyllabusError(err.message || "Couldn't load skill/topic list.");
+        const data = await getRoles();
+        if (!cancelled) setRoles(data || []);
+      } catch {
+        // Non-fatal — role dropdown just stays empty; admin can still
+        // fall back to typing a skill isn't possible here, so surface it.
+        if (!cancelled) setSuggestError2("Couldn't load the role list.");
       } finally {
-        if (!cancelled) setSyllabusLoading(false);
+        if (!cancelled) setRolesLoading(false);
       }
     })();
     return () => { cancelled = true; };
   }, []);
+
+  const handleSuggestRoleChange = async (roleId) => {
+    setSuggestRole(roleId);
+    setSuggestSkill("");
+    setSuggestTopic("");
+    setSuggestLesson("");
+    setSkillsForRole([]);
+    if (!roleId) return;
+    setSkillsLoading(true);
+    setSuggestError2("");
+    try {
+      const categories = await getSkillsByRole(roleId); // { CategoryName: [skill, skill, ...], ... }
+      const flat = Object.values(categories || {}).flat();
+      setSkillsForRole(flat);
+    } catch {
+      setSuggestError2("Couldn't load skills for that role.");
+    } finally {
+      setSkillsLoading(false);
+    }
+  };
+
+  const handleSuggestSkillChange = (skill) => {
+    setSuggestSkill(skill);
+    setSuggestTopic(""); // reset topic — previous skill's topic won't be valid for a new skill
+    setSuggestLesson("");
+  };
 
   useEffect(() => {
     if (!suggestSkill || !suggestTopic) {
@@ -138,14 +171,6 @@ export default function ResourceBankScreen({ admin }) {
   // Topic when "Whole topic" is selected (no lessons for this course /
   // resource meant for the topic level generally).
   const effectiveTopic = suggestLesson ? compositeTopicKey(suggestTopic, suggestLesson) : suggestTopic;
-
-  const topicsForSelectedSkill = syllabus.find((s) => s.skill === suggestSkill)?.topics || [];
-
-  const handleSuggestSkillChange = (skill) => {
-    setSuggestSkill(skill);
-    setSuggestTopic(""); // reset topic — previous skill's topic won't be valid for a new skill
-    setSuggestLesson("");
-  };
 
   const handleSuggestTopicChange = (topic) => {
     setSuggestTopic(topic);
@@ -269,8 +294,8 @@ export default function ResourceBankScreen({ admin }) {
   const handleSuggest = async (via) => {
     setSuggestError("");
     setSuggestMessage("");
-    if (!suggestSkill || !suggestTopic) {
-      setSuggestError("Select a skill and a topic first.");
+    if (!suggestSkill || !suggestTopic.trim()) {
+      setSuggestError("Select a skill and enter a topic first.");
       return;
     }
     setSuggesting(via);
@@ -295,8 +320,8 @@ export default function ResourceBankScreen({ admin }) {
   const handleBulkGenerate = async () => {
     setSuggestError("");
     setSuggestMessage("");
-    if (!suggestSkill || !suggestTopic) {
-      setSuggestError("Select a skill and a topic first.");
+    if (!suggestSkill || !suggestTopic.trim()) {
+      setSuggestError("Select a skill and enter a topic first.");
       return;
     }
     if (!admin?.email) {
@@ -379,34 +404,42 @@ export default function ResourceBankScreen({ admin }) {
       {/* Generate suggestions: real YouTube search + AI-suggested docs/articles/github/etc */}
       <div className="p-5 mb-6" style={{ ...GLASS_CARD, borderRadius: 20 }}>
         <p className="text-sm font-bold mb-3" style={{ color: COLORS.textDark }}>Generate Suggestions</p>
-        {syllabusError && (
-          <p className="text-xs font-semibold mb-2" style={{ color: "#DC2626" }}>{syllabusError}</p>
+        {suggestError2 && (
+          <p className="text-xs font-semibold mb-2" style={{ color: "#DC2626" }}>{suggestError2}</p>
         )}
         <div className="flex flex-wrap items-center gap-2.5">
           <select
-            value={suggestSkill}
-            onChange={(e) => handleSuggestSkillChange(e.target.value)}
-            disabled={syllabusLoading}
+            value={suggestRole}
+            onChange={(e) => handleSuggestRoleChange(e.target.value)}
+            disabled={rolesLoading}
             className="text-sm px-3 py-2 rounded-lg outline-none"
-            style={{ border: `1px solid ${COLORS.border}`, background: "#fff", minWidth: 180, color: suggestSkill ? COLORS.textDark : COLORS.textLight }}
+            style={{ border: `1px solid ${COLORS.border}`, background: "#fff", minWidth: 180, color: suggestRole ? COLORS.textDark : COLORS.textLight }}
           >
-            <option value="">{syllabusLoading ? "Loading skills…" : "Select skill"}</option>
-            {syllabus.map((s) => (
-              <option key={s.skill} value={s.skill}>{s.skill}</option>
+            <option value="">{rolesLoading ? "Loading roles…" : "Select role"}</option>
+            {roles.map((r) => (
+              <option key={r.id} value={r.id}>{r.title || r.id}</option>
             ))}
           </select>
           <select
+            value={suggestSkill}
+            onChange={(e) => handleSuggestSkillChange(e.target.value)}
+            disabled={!suggestRole || skillsLoading}
+            className="text-sm px-3 py-2 rounded-lg outline-none"
+            style={{ border: `1px solid ${COLORS.border}`, background: "#fff", minWidth: 180, color: suggestSkill ? COLORS.textDark : COLORS.textLight, opacity: suggestRole ? 1 : 0.6 }}
+          >
+            <option value="">{!suggestRole ? "Select a role first" : skillsLoading ? "Loading skills…" : "Select skill"}</option>
+            {skillsForRole.map((skill) => (
+              <option key={skill} value={skill}>{skill}</option>
+            ))}
+          </select>
+          <input
             value={suggestTopic}
             onChange={(e) => handleSuggestTopicChange(e.target.value)}
             disabled={!suggestSkill}
+            placeholder="Topic (e.g. Variables)"
             className="text-sm px-3 py-2 rounded-lg outline-none"
-            style={{ border: `1px solid ${COLORS.border}`, background: "#fff", minWidth: 220, color: suggestTopic ? COLORS.textDark : COLORS.textLight, opacity: suggestSkill ? 1 : 0.6 }}
-          >
-            <option value="">{suggestSkill ? "Select topic" : "Select a skill first"}</option>
-            {topicsForSelectedSkill.map((t) => (
-              <option key={t.TopicID || t.Title} value={t.Title}>{t.Title}</option>
-            ))}
-          </select>
+            style={{ border: `1px solid ${COLORS.border}`, background: "#fff", minWidth: 180, opacity: suggestSkill ? 1 : 0.6 }}
+          />
           <select
             value={suggestLesson}
             onChange={(e) => setSuggestLesson(e.target.value)}
@@ -415,7 +448,7 @@ export default function ResourceBankScreen({ admin }) {
             style={{ border: `1px solid ${COLORS.border}`, background: "#fff", minWidth: 240, color: suggestLesson ? COLORS.textDark : COLORS.textLight, opacity: suggestTopic ? 1 : 0.6 }}
           >
             <option value="">
-              {!suggestTopic ? "Select a topic first" : lessonsLoading ? "Loading lessons…" : "Whole topic (no lesson)"}
+              {!suggestTopic ? "Enter a topic first" : lessonsLoading ? "Loading lessons…" : "Whole topic (no lesson)"}
             </option>
             {lessons.map((l) => (
               <option key={l.Order} value={l.Title}>{l.Title}</option>

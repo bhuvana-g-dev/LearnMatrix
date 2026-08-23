@@ -12,6 +12,7 @@ import {
   fetchPendingResources, verifyResource, unverifyResource, rejectResource,
 } from "../../services/adminResourceService";
 import { getRoleSyllabus } from "../../services/syllabusService";
+import { getLessons, compositeTopicKey } from "../../services/lessonService";
 
 // Only "frontend" is seeded in data/skill_syllabus_seed.py right now
 // (see that file's module docstring) — this is the one role whose
@@ -60,7 +61,8 @@ export default function ResourceBankScreen({ admin }) {
   const [formError, setFormError] = useState("");
 
   const [suggestSkill, setSuggestSkill] = useState("");
-  const [suggestTopic, setSuggestTopic] = useState("");
+  const [suggestTopic, setSuggestTopic] = useState(""); // seed Topic (e.g. "Variables")
+  const [suggestLesson, setSuggestLesson] = useState(""); // AI-generated Lesson title, or "" = whole-topic (no lesson)
   const [suggesting, setSuggesting] = useState(""); // "ai" | "youtube" | ""
   const [suggestError, setSuggestError] = useState("");
   const [suggestMessage, setSuggestMessage] = useState("");
@@ -74,6 +76,19 @@ export default function ResourceBankScreen({ admin }) {
   const [syllabus, setSyllabus] = useState([]); // [{ skill, topics: [{Title, Order, ...}] }]
   const [syllabusLoading, setSyllabusLoading] = useState(true);
   const [syllabusError, setSyllabusError] = useState("");
+
+  // Topic -> Lesson dropdown data. Lessons are AI-generated per (skill,
+  // topic) by agents/lesson_planner_agent.py and cached in
+  // lesson_plans/{skill}__{topic} — see models/lesson_model.py's
+  // composite_topic_key(). What a student actually sees & the resources
+  // attach to is scoped to "{Topic} — {Lesson Title}", NOT the bare
+  // Topic, whenever the course has been broken into lessons. Loading
+  // this list also means the FIRST time it's fetched for a never-before
+  // -opened topic, it triggers the one-time Gemini lesson-planning call
+  // (same cache-then-generate pattern as everything else here).
+  const [lessons, setLessons] = useState([]); // [{ Order, Title, Summary }]
+  const [lessonsLoading, setLessonsLoading] = useState(false);
+  const [lessonsError, setLessonsError] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -92,11 +107,49 @@ export default function ResourceBankScreen({ admin }) {
     return () => { cancelled = true; };
   }, []);
 
+  useEffect(() => {
+    if (!suggestSkill || !suggestTopic) {
+      setLessons([]);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      setLessonsLoading(true);
+      setLessonsError("");
+      try {
+        const data = await getLessons(suggestSkill, suggestTopic);
+        if (!cancelled) setLessons(data || []);
+      } catch (err) {
+        if (!cancelled) {
+          setLessons([]);
+          setLessonsError(err.message || "Couldn't load lessons for this topic.");
+        }
+      } finally {
+        if (!cancelled) setLessonsLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [suggestSkill, suggestTopic]);
+
+  // The actual (skill, topic) pair to send to every generate/suggest
+  // call below — composite "{Topic} — {Lesson Title}" when a lesson is
+  // picked (matches exactly what get_lesson_content()/getTopicPackage()
+  // use, so generated resources are found by the student page), plain
+  // Topic when "Whole topic" is selected (no lessons for this course /
+  // resource meant for the topic level generally).
+  const effectiveTopic = suggestLesson ? compositeTopicKey(suggestTopic, suggestLesson) : suggestTopic;
+
   const topicsForSelectedSkill = syllabus.find((s) => s.skill === suggestSkill)?.topics || [];
 
   const handleSuggestSkillChange = (skill) => {
     setSuggestSkill(skill);
     setSuggestTopic(""); // reset topic — previous skill's topic won't be valid for a new skill
+    setSuggestLesson("");
+  };
+
+  const handleSuggestTopicChange = (topic) => {
+    setSuggestTopic(topic);
+    setSuggestLesson(""); // reset lesson — previous topic's lesson list doesn't apply here
   };
 
   const loadResources = useCallback(async () => {
@@ -216,16 +269,16 @@ export default function ResourceBankScreen({ admin }) {
   const handleSuggest = async (via) => {
     setSuggestError("");
     setSuggestMessage("");
-    if (!suggestSkill.trim() || !suggestTopic.trim()) {
-      setSuggestError("Enter both a skill and a topic first.");
+    if (!suggestSkill || !suggestTopic) {
+      setSuggestError("Select a skill and a topic first.");
       return;
     }
     setSuggesting(via);
     try {
       const results =
         via === "youtube"
-          ? await suggestResourcesViaYouTube(suggestSkill.trim(), suggestTopic.trim())
-          : await suggestResourcesViaAI(suggestSkill.trim(), suggestTopic.trim());
+          ? await suggestResourcesViaYouTube(suggestSkill, effectiveTopic)
+          : await suggestResourcesViaAI(suggestSkill, effectiveTopic);
       setSuggestMessage(
         results.length > 0
           ? `Found ${results.length} suggestion(s) — review them below before they go live.`
@@ -242,8 +295,8 @@ export default function ResourceBankScreen({ admin }) {
   const handleBulkGenerate = async () => {
     setSuggestError("");
     setSuggestMessage("");
-    if (!suggestSkill.trim() || !suggestTopic.trim()) {
-      setSuggestError("Enter both a skill and a topic first.");
+    if (!suggestSkill || !suggestTopic) {
+      setSuggestError("Select a skill and a topic first.");
       return;
     }
     if (!admin?.email) {
@@ -252,7 +305,7 @@ export default function ResourceBankScreen({ admin }) {
     }
     setSuggesting("bulk");
     try {
-      const result = await bulkGenerateAndVerify(suggestSkill.trim(), suggestTopic.trim(), admin.email);
+      const result = await bulkGenerateAndVerify(suggestSkill, effectiveTopic, admin.email);
       const total = result.articles.length + result.videos.length;
       setSuggestMessage(
         total > 0
@@ -344,7 +397,7 @@ export default function ResourceBankScreen({ admin }) {
           </select>
           <select
             value={suggestTopic}
-            onChange={(e) => setSuggestTopic(e.target.value)}
+            onChange={(e) => handleSuggestTopicChange(e.target.value)}
             disabled={!suggestSkill}
             className="text-sm px-3 py-2 rounded-lg outline-none"
             style={{ border: `1px solid ${COLORS.border}`, background: "#fff", minWidth: 220, color: suggestTopic ? COLORS.textDark : COLORS.textLight, opacity: suggestSkill ? 1 : 0.6 }}
@@ -352,6 +405,20 @@ export default function ResourceBankScreen({ admin }) {
             <option value="">{suggestSkill ? "Select topic" : "Select a skill first"}</option>
             {topicsForSelectedSkill.map((t) => (
               <option key={t.TopicID || t.Title} value={t.Title}>{t.Title}</option>
+            ))}
+          </select>
+          <select
+            value={suggestLesson}
+            onChange={(e) => setSuggestLesson(e.target.value)}
+            disabled={!suggestTopic || lessonsLoading}
+            className="text-sm px-3 py-2 rounded-lg outline-none"
+            style={{ border: `1px solid ${COLORS.border}`, background: "#fff", minWidth: 240, color: suggestLesson ? COLORS.textDark : COLORS.textLight, opacity: suggestTopic ? 1 : 0.6 }}
+          >
+            <option value="">
+              {!suggestTopic ? "Select a topic first" : lessonsLoading ? "Loading lessons…" : "Whole topic (no lesson)"}
+            </option>
+            {lessons.map((l) => (
+              <option key={l.Order} value={l.Title}>{l.Title}</option>
             ))}
           </select>
           <motion.button
@@ -395,6 +462,13 @@ export default function ResourceBankScreen({ admin }) {
             Generate &amp; Publish Now
           </motion.button>
         </div>
+        {suggestSkill && suggestTopic && (
+          <p className="text-[11px] mt-2.5" style={{ color: COLORS.textLight }}>
+            Will generate for: <strong>{suggestSkill}</strong> / <strong>{effectiveTopic}</strong>
+            {!suggestLesson && lessons.length > 0 && " — this topic has lessons; pick one above if the resource is for a specific lesson page, not the topic overview."}
+          </p>
+        )}
+        {lessonsError && <p className="text-xs mt-2 font-medium" style={{ color: "#DC2626" }}>{lessonsError}</p>}
         {suggestError && <p className="text-xs mt-2.5 font-medium" style={{ color: "#DC2626" }}>{suggestError}</p>}
         {suggestMessage && <p className="text-xs mt-2.5 font-medium" style={{ color: COLORS.textMid }}>{suggestMessage}</p>}
       </div>

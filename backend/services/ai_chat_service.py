@@ -1,138 +1,166 @@
 """
-services/ai_chat_service.py
+routes/ai_chat_routes.py
 
-Orchestration layer for the AI Study Assistant chat screen. Routes call
-these functions; nothing here touches Flask, and nothing in
-agents/chat_agent.py or services/chat_repository.py knows about the
-other — this module is what wires them together, same separation as
-services/learning_content_service.py does for notes generation + the
-resource repository.
+AI Study Assistant chat routes. Registered in app.py the same way every
+other blueprint is (url_prefix="/api"), so the full paths are:
+
+    POST   /api/ai/chat                          -> send a message, get a grounded reply
+                                                     (body: {uid, message, sessionId?, context?})
+    GET    /api/ai/chat/<uid>/sessions           -> list this user's past conversations
+    GET    /api/ai/chat/<uid>/sessions/<id>      -> load one conversation's full messages
+    DELETE /api/ai/chat/<uid>/sessions/<id>      -> delete a conversation
+    GET    /api/ai/chat/<uid>/sources            -> list this user's chat sources
+    GET    /api/ai/chat/<uid>/sources/content    -> full text per source (Mind Map/Audio/PPT/Flashcards)
+    POST   /api/ai/chat/<uid>/sources            -> upload a file (PDF/txt/md) as a source
+    POST   /api/ai/chat/<uid>/sources/from-notes -> add existing Learning Hub notes as a source
+    POST   /api/ai/chat/<uid>/sources/from-youtube -> add a YouTube video's transcript as a source
+    DELETE /api/ai/chat/<uid>/sources/<id>       -> remove a source
+
+Delegates everything to services/ai_chat_service.py — this file only
+parses the request and shapes the response, same as every other route
+module in this folder.
 """
 
-from agents.chat_agent import ChatAgent, ChatAgentError
-from config.settings import settings
-from firebase.firebase_config import get_firestore_client
-from services import chat_repository
-from services import chat_source_repository
-from services import embedding_service
-from services.embedding_service import EmbeddingServiceError
-from utils.source_text_extractor import extract_text, SourceExtractionError
+from flask import Blueprint, request
 
-AIChatError = ChatAgentError  # re-exported so routes only import from here
-# Routes catch this tuple for anything source-upload/indexing related —
-# kept separate from AIChatError since a bad PDF or an empty upload is a
-# different failure class than the Chat Agent itself failing.
-SourceError = (EmbeddingServiceError, SourceExtractionError)
+from services.ai_chat_service import (
+    send_message,
+    list_chat_sessions,
+    load_chat_session,
+    delete_chat_session,
+    add_upload_source,
+    add_notes_source,
+    add_youtube_source,
+    list_sources,
+    get_sources_content,
+    delete_source,
+    AIChatError,
+    SourceError,
+)
+from utils.response_helper import success_response, error_response
 
-
-def send_message(uid: str, message: str, session_id: str | None = None, context: dict | None = None) -> dict:
-    """
-    Loads this session's recent history (creating a new session on the
-    FIRST message if session_id wasn't passed — see chat_repository's
-    create_session), retrieves relevant chunks from the user's
-    uploaded/linked sources (if any), asks the Chat Agent for a
-    grounded reply, then persists both sides of the exchange.
-
-    Returns: {"sessionId": str, "reply": str, "suggestions": list[str],
-    "citedSources": list[str], "history": list[dict]}
-    "sessionId" is always present — the frontend adopts it after the
-    first message of a new conversation. "history" is the FULL updated
-    transcript (including this new turn), so the frontend can just
-    replace its message list with the response.
-    """
-    db = get_firestore_client()
-
-    if not session_id:
-        # Title is a simple truncation of the first message — no LLM
-        # call needed just to name a conversation.
-        title = message.strip()[:50] or "New chat"
-        session_id = chat_repository.create_session(db, uid, title)
-
-    history = chat_repository.get_session_messages(db, uid, session_id, settings.AI_CHAT_MAX_HISTORY_MESSAGES)
-
-    # Retrieval failing (no sources yet, or the embedding call itself
-    # failing) just means an ungrounded, plain-chat turn — never a hard
-    # error, since the chat is fully usable without any sources at all.
-    relevant_chunks = embedding_service.retrieve_relevant_chunks(db, uid, message)
-
-    agent = ChatAgent()
-    result = agent.run(message=message, history=history, context=context, sources=relevant_chunks)
-
-    now = firestore_timestamp()
-    user_turn = {"role": "user", "content": message, "ts": now}
-    assistant_turn = {"role": "assistant", "content": result["reply"], "ts": now}
-    chat_repository.append_turn(db, uid, session_id, user_turn, assistant_turn)
-
-    return {
-        "sessionId": session_id,
-        "reply": result["reply"],
-        "suggestions": result.get("suggestions", []),
-        "citedSources": result.get("citedSources", []),
-        "history": history + [user_turn, assistant_turn],
-    }
+ai_chat_bp = Blueprint("ai_chat", __name__)
 
 
-def list_chat_sessions(uid: str) -> list[dict]:
-    """Sidebar list — title + message count per session, most recently
-    active first. Used when the AI Study Assistant page mounts."""
-    db = get_firestore_client()
-    return chat_repository.list_sessions(db, uid)
+@ai_chat_bp.route("/ai/chat", methods=["POST"])
+def send_chat_message_route():
+    payload = request.get_json(silent=True)
+    if not payload:
+        return error_response("Request body must be JSON.", status_code=400)
+
+    uid = payload.get("uid")
+    message = payload.get("message")
+    session_id = payload.get("sessionId")  # omit/None -> a new conversation is created
+    context = payload.get("context")  # optional {skill, topic}
+
+    if not uid or not message:
+        return error_response(
+            "Request body must include 'uid' and 'message'.", status_code=400
+        )
+
+    try:
+        result = send_message(uid=uid, message=message, session_id=session_id, context=context)
+        return success_response(data=result, message="Reply generated.")
+    except AIChatError as exc:
+        return error_response(str(exc), status_code=422)
 
 
-def load_chat_session(uid: str, session_id: str) -> list[dict]:
-    """Full message list for one session, oldest first — used when the
-    student clicks a past conversation in the sidebar."""
-    db = get_firestore_client()
-    return chat_repository.get_session_messages(db, uid, session_id, limit=0)
+@ai_chat_bp.route("/ai/chat/<uid>/sessions", methods=["GET"])
+def list_chat_sessions_route(uid):
+    sessions = list_chat_sessions(uid)
+    return success_response(data={"sessions": sessions}, message="Chat sessions loaded.")
 
 
-def delete_chat_session(uid: str, session_id: str) -> None:
-    db = get_firestore_client()
-    chat_repository.delete_session(db, uid, session_id)
+@ai_chat_bp.route("/ai/chat/<uid>/sessions/<session_id>", methods=["GET"])
+def get_chat_session_route(uid, session_id):
+    history = load_chat_session(uid, session_id)
+    return success_response(data={"history": history}, message="Conversation loaded.")
 
 
-def add_upload_source(uid: str, filename: str, file_stream) -> dict:
-    """Extracts text from an uploaded file, chunks + embeds it, and
-    saves it as a new source. Returns {sourceId, title, chunkCount}.
-    Raises SourceError (EmbeddingServiceError/SourceExtractionError) —
-    routes catch this the same way AIChatError is caught elsewhere."""
-    db = get_firestore_client()
-    text = extract_text(file_stream, filename)
-    return embedding_service.index_uploaded_text(db, uid, title=filename, raw_text=text)
+@ai_chat_bp.route("/ai/chat/<uid>/sessions/<session_id>", methods=["DELETE"])
+def delete_chat_session_route(uid, session_id):
+    delete_chat_session(uid, session_id)
+    return success_response(data=None, message="Conversation deleted.")
 
 
-def add_notes_source(uid: str, skill: str, topic: str, focus_band: str) -> dict:
-    """Adds an already-generated Learning Hub notes entry as a chat
-    source. See embedding_service.index_learning_notes for the
-    "notes must already exist" precondition."""
-    db = get_firestore_client()
-    return embedding_service.index_learning_notes(db, uid, skill, topic, focus_band)
+@ai_chat_bp.route("/ai/chat/<uid>/sources", methods=["GET"])
+def list_chat_sources_route(uid):
+    sources = list_sources(uid)
+    return success_response(data={"sources": sources}, message="Sources loaded.")
 
 
-def list_sources(uid: str) -> list[dict]:
-    db = get_firestore_client()
-    return chat_source_repository.list_sources(db, uid)
+@ai_chat_bp.route("/ai/chat/<uid>/sources/content", methods=["GET"])
+def get_chat_sources_content_route(uid):
+    """Full text per source (not just titles) — used by Mind Map,
+    Audio Overview, PPT, and Flashcards' "From Sources" mode, instead
+    of the fixed roadmap-topic notes."""
+    content = get_sources_content(uid)
+    return success_response(data={"sources": content}, message="Source content loaded.")
 
 
-def get_sources_content(uid: str) -> list[dict]:
-    """[{sourceId, title, text}] for every source this user has — used by
-    Mind Map / Audio Overview when the student has uploaded sources,
-    instead of falling back to a fixed roadmap topic's notes."""
-    db = get_firestore_client()
-    return embedding_service.get_sources_with_text(db, uid)
+@ai_chat_bp.route("/ai/chat/<uid>/sources", methods=["POST"])
+def upload_chat_source_route(uid):
+    """multipart/form-data with a single 'file' field — a PDF, .txt, or
+    .md the student wants the assistant grounded on."""
+    if "file" not in request.files:
+        return error_response("Request must include a 'file' field.", status_code=400)
+
+    file = request.files["file"]
+    if not file.filename:
+        return error_response("No file selected.", status_code=400)
+
+    try:
+        result = add_upload_source(uid, file.filename, file.stream)
+        return success_response(data=result, message="Source added.")
+    except SourceError as exc:
+        return error_response(str(exc), status_code=422)
 
 
-def delete_source(uid: str, source_id: str) -> None:
-    db = get_firestore_client()
-    chat_source_repository.delete_source(db, uid, source_id)
+@ai_chat_bp.route("/ai/chat/<uid>/sources/from-notes", methods=["POST"])
+def add_notes_source_route(uid):
+    """Adds an already-generated Learning Hub notes entry (see
+    services/notes_repository.py) as a chat source — no file upload
+    involved, just references existing skill/topic/focusBand notes."""
+    payload = request.get_json(silent=True)
+    if not payload:
+        return error_response("Request body must be JSON.", status_code=400)
+
+    skill = payload.get("skill")
+    topic = payload.get("topic")
+    focus_band = payload.get("focusBand")
+    if not skill or not topic or not focus_band:
+        return error_response(
+            "Request body must include 'skill', 'topic', and 'focusBand'.",
+            status_code=400,
+        )
+
+    try:
+        result = add_notes_source(uid, skill, topic, focus_band)
+        return success_response(data=result, message="Source added.")
+    except SourceError as exc:
+        return error_response(str(exc), status_code=422)
 
 
-def firestore_timestamp() -> str:
-    """Client-visible ISO string, NOT firestore.SERVER_TIMESTAMP — that
-    sentinel can't live inside an ArrayUnion element (Firestore only
-    resolves it for top-level/map fields), so a plain timestamp computed
-    here is the correct choice for chat_repository's array-of-messages
-    shape, not an oversight."""
-    from datetime import datetime, timezone
+@ai_chat_bp.route("/ai/chat/<uid>/sources/from-youtube", methods=["POST"])
+def add_youtube_source_route(uid):
+    """Adds a YouTube video's transcript as a chat source — NotebookLM-
+    style "paste a link" alongside file upload and Learning Hub notes."""
+    payload = request.get_json(silent=True)
+    if not payload:
+        return error_response("Request body must be JSON.", status_code=400)
 
-    return datetime.now(timezone.utc).isoformat()
+    url = payload.get("url")
+    if not url:
+        return error_response("Request body must include 'url'.", status_code=400)
+
+    try:
+        result = add_youtube_source(uid, url)
+        return success_response(data=result, message="Source added.")
+    except SourceError as exc:
+        return error_response(str(exc), status_code=422)
+
+
+@ai_chat_bp.route("/ai/chat/<uid>/sources/<source_id>", methods=["DELETE"])
+def delete_chat_source_route(uid, source_id):
+    delete_source(uid, source_id)
+    return success_response(data=None, message="Source removed.")

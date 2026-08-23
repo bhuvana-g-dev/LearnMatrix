@@ -14,6 +14,7 @@ other blueprint is (url_prefix="/api"), so the full paths are:
     POST   /api/ai/chat/<uid>/sources            -> upload a file (PDF/txt/md) as a source
     POST   /api/ai/chat/<uid>/sources/from-notes -> add existing Learning Hub notes as a source
     POST   /api/ai/chat/<uid>/sources/from-youtube -> add a YouTube video's transcript as a source
+    POST   /api/ai/chat/<uid>/sources/from-text  -> add raw pasted text as a source
     DELETE /api/ai/chat/<uid>/sources/<id>       -> remove a source
 
 Delegates everything to services/ai_chat_service.py — this file only
@@ -31,6 +32,7 @@ from services.ai_chat_service import (
     add_upload_source,
     add_notes_source,
     add_youtube_source,
+    add_text_source,
     list_sources,
     get_sources_content,
     delete_source,
@@ -155,6 +157,27 @@ def add_youtube_source_route(uid):
 
     try:
         result = add_youtube_source(uid, url)
+        return success_response(data=result, message="Source added.")
+    except SourceError as exc:
+        return error_response(str(exc), status_code=422)
+
+
+@ai_chat_bp.route("/ai/chat/<uid>/sources/from-text", methods=["POST"])
+def add_text_source_route(uid):
+    """Adds raw pasted text as a chat source — NotebookLM's "Copied
+    text" option alongside file upload, YouTube, and Learning Hub
+    notes."""
+    payload = request.get_json(silent=True)
+    if not payload:
+        return error_response("Request body must be JSON.", status_code=400)
+
+    text = payload.get("text")
+    title = payload.get("title")
+    if not text or not text.strip():
+        return error_response("Request body must include 'text'.", status_code=400)
+
+    try:
+        result = add_text_source(uid, text, title)
         return success_response(data=result, message="Source added.")
     except SourceError as exc:
         return error_response(str(exc), status_code=422)

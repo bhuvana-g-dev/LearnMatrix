@@ -14,8 +14,8 @@ const PACE_STYLES = {
 
 /**
  * CareerStatusScreen — what "My Career Path" shows once a student has
- * completed a diagnostic assessment, instead of the generic role picker
- * every time.
+ * completed a diagnostic assessment AND has a generated roadmap, instead
+ * of the generic role picker every time.
  *
  * BUG FIX from the previous version: role name now comes from the
  * SAVED assessment (assessment.role, persisted in Firestore) instead of
@@ -25,13 +25,21 @@ const PACE_STYLES = {
  * "Developer" default. The saved assessment's `role` field is the
  * actual source of truth and survives a refresh.
  *
- * ONE-WAY DOOR, ON PURPOSE: once a student has a saved assessment for a
- * role, this screen only ever shows their status for THAT role — there's
- * no "explore other courses" escape hatch here. Switching courses is a
- * deliberate action gated behind "Quit Role" in the Learning Hub
- * (RoadmapScreen.jsx), which requires typing a confirmation phrase.
- * Role Selection (the `!hasAssessment` branch below) only opens back up
- * after that quit succeeds and wipes the saved assessment/roadmap.
+ * BUG FIX ("exit role"): a saved assessment with NO roadmap yet (student
+ * finished the diagnostic but never clicked "View Roadmap" on the
+ * results screen) used to still count as "committed" here and show this
+ * locked status card with a CTA into RoadmapScreen's "No roadmap yet"
+ * dead end. That's not a real commitment yet — the role picker should
+ * still be open at that point. Gated below on `hasAssessment && roadmap`.
+ *
+ * ONE-WAY DOOR, ON PURPOSE: once a student has a saved assessment AND a
+ * roadmap for a role, this screen only ever shows their status for THAT
+ * role — there's no "explore other courses" escape hatch here. Switching
+ * courses is a deliberate action gated behind "Quit Role" in the
+ * Learning Hub (RoadmapScreen.jsx), which requires typing a confirmation
+ * phrase. Role Selection (the `!committed` branch below) opens back up
+ * either after that quit succeeds, or any time a roadmap hasn't been
+ * generated yet.
  */
 export default function CareerStatusScreen({
   uid, displayName, roles, rolesLoading, selectedRole, onSelectRole, onContinue, onNavigate,
@@ -108,7 +116,13 @@ export default function CareerStatusScreen({
     );
   }
 
-  if (!hasAssessment) {
+  // "Committed" = both an assessment AND a generated roadmap exist.
+  // Assessment-without-roadmap is a half-finished state, not a real
+  // commitment — Role Selection should still be open then (see the
+  // "exit role" bug-fix note above).
+  const committed = hasAssessment && !!roadmap;
+
+  if (!committed) {
     return (
       <RoleSelectionScreen
         roles={roles}
@@ -199,18 +213,10 @@ export default function CareerStatusScreen({
 
           <div className="flex flex-col sm:flex-row gap-3 justify-center">
             {/*
-              BUG FIX ("exit role"): this used to always say "Continue to
-              My Roadmap" and route to RoadmapScreen the moment
-              hasAssessment was true — even when `roadmap` (fetched above,
-              line ~57) was still null because the student finished the
-              diagnostic but never generated/saved a roadmap (that's a
-              separate, manual "View Roadmap" step inside AssessmentScreen
-              — see handleViewRoadmap there). That sent students straight
-              into RoadmapScreen's "No roadmap yet" dead end. Now we route
-              to wherever the roadmap actually gets built — the
-              AssessmentScreen resumes straight into the saved results
-              view (loadSavedAssessmentResult) with its "View Roadmap"
-              button front and center, instead of regenerating anything.
+              `roadmap` is guaranteed truthy here now — this whole card
+              only renders once `committed` (hasAssessment && roadmap) is
+              true (see the gate above). Kept as a fallback rather than
+              hardcoding "roadmap" in case that gate ever loosens again.
             */}
             <motion.button
               onClick={() => onNavigate(roadmap ? "roadmap" : "initial-assessment")}

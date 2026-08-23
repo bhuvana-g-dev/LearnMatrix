@@ -47,6 +47,7 @@ import {
   Mic,
   Youtube,
   Link2,
+  ClipboardType,
 } from "lucide-react";
 import {
   sendChatMessage,
@@ -58,6 +59,7 @@ import {
   getSourcesContent,
   deleteChatSource,
   addYoutubeSource,
+  addTextSource,
 } from "../services/aiChatService";
 import {
   generateFlashcardsFromChat,
@@ -114,9 +116,14 @@ export default function AIStudyAssistantScreen({ uid }) {
   const [uploading, setUploading] = useState(false);
   const [sourceError, setSourceError] = useState("");
   const fileInputRef = useRef(null);
-  const [showYoutubeInput, setShowYoutubeInput] = useState(false);
+  // "add source" modal — null | "youtube" | "text" (which sub-form is open)
+  const [showAddSourceModal, setShowAddSourceModal] = useState(false);
+  const [addSourceStep, setAddSourceStep] = useState(null);
   const [youtubeUrl, setYoutubeUrl] = useState("");
   const [addingYoutube, setAddingYoutube] = useState(false);
+  const [pasteTitle, setPasteTitle] = useState("");
+  const [pasteText, setPasteText] = useState("");
+  const [addingText, setAddingText] = useState(false);
 
   // --- chat (session-based) ---
   const [sessions, setSessions] = useState([]);
@@ -304,6 +311,15 @@ export default function AIStudyAssistantScreen({ uid }) {
   }
 
   // ---------------- Source handlers ----------------
+  function closeAddSourceModal() {
+    setShowAddSourceModal(false);
+    setAddSourceStep(null);
+    setYoutubeUrl("");
+    setPasteTitle("");
+    setPasteText("");
+    setSourceError("");
+  }
+
   async function handleFileChosen(e) {
     const file = e.target.files?.[0];
     e.target.value = "";
@@ -313,6 +329,7 @@ export default function AIStudyAssistantScreen({ uid }) {
     try {
       await uploadChatSource(uid, file);
       setSources(await listChatSources(uid));
+      closeAddSourceModal();
     } catch (err) {
       setSourceError(err.message || "Couldn't add that source.");
     } finally {
@@ -328,12 +345,27 @@ export default function AIStudyAssistantScreen({ uid }) {
     try {
       await addYoutubeSource(uid, url);
       setSources(await listChatSources(uid));
-      setYoutubeUrl("");
-      setShowYoutubeInput(false);
+      closeAddSourceModal();
     } catch (err) {
       setSourceError(err.message || "Couldn't add that video.");
     } finally {
       setAddingYoutube(false);
+    }
+  }
+
+  async function handleAddTextSource() {
+    const text = pasteText.trim();
+    if (!text || !uid) return;
+    setSourceError("");
+    setAddingText(true);
+    try {
+      await addTextSource(uid, text, pasteTitle.trim());
+      setSources(await listChatSources(uid));
+      closeAddSourceModal();
+    } catch (err) {
+      setSourceError(err.message || "Couldn't add that text.");
+    } finally {
+      setAddingText(false);
     }
   }
 
@@ -760,88 +792,28 @@ export default function AIStudyAssistantScreen({ uid }) {
               <p className="text-xs font-semibold" style={{ color: COLORS.textDark }}>
                 Sources
               </p>
-              <div className="flex items-center gap-1.5 shrink-0">
-                <button
-                  type="button"
-                  onClick={() => setShowYoutubeInput((v) => !v)}
-                  className="flex items-center gap-1 text-[11px] font-semibold shrink-0"
-                  style={{
-                    padding: "5px 10px",
-                    borderRadius: 9999,
-                    color: COLORS.white,
-                    background: "#FF0000",
-                    cursor: "pointer",
-                    opacity: showYoutubeInput ? 0.85 : 1,
-                  }}
-                >
-                  <Youtube size={11} />
-                  YouTube
-                </button>
-                <label
-                  className="flex items-center gap-1 text-[11px] font-semibold shrink-0"
-                  style={{
-                    padding: "5px 10px",
-                    borderRadius: 9999,
-                    color: COLORS.white,
-                    background: GRADIENTS.purplePink,
-                    cursor: uploading ? "default" : "pointer",
-                    opacity: uploading ? 0.6 : 1,
-                  }}
-                >
-                  <Upload size={11} />
-                  {uploading ? "..." : "Add"}
-                  <input ref={fileInputRef} type="file" accept=".pdf,.txt,.md" onChange={handleFileChosen} disabled={uploading} hidden />
-                </label>
-              </div>
+              <button
+                type="button"
+                onClick={() => setShowAddSourceModal(true)}
+                className="flex items-center gap-1 text-[11px] font-semibold shrink-0"
+                style={{
+                  padding: "5px 10px",
+                  borderRadius: 9999,
+                  color: COLORS.white,
+                  background: GRADIENTS.purplePink,
+                  cursor: "pointer",
+                }}
+              >
+                <Plus size={11} />
+                Add
+              </button>
+              <input ref={fileInputRef} type="file" accept=".pdf,.txt,.md" onChange={handleFileChosen} disabled={uploading} hidden />
             </div>
-
-            {showYoutubeInput && (
-              <div className="flex items-center gap-1.5 mb-2">
-                <div
-                  className="flex items-center gap-1.5 flex-1 min-w-0 px-2"
-                  style={{ borderRadius: 8, border: `1px solid ${COLORS.border}`, background: COLORS.white }}
-                >
-                  <Link2 size={11} color={COLORS.textLight} className="shrink-0" />
-                  <input
-                    type="text"
-                    value={youtubeUrl}
-                    onChange={(e) => setYoutubeUrl(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && handleAddYoutubeSource()}
-                    placeholder="Paste a YouTube video link"
-                    disabled={addingYoutube}
-                    className="flex-1 min-w-0 text-[11px] py-2 outline-none bg-transparent"
-                    style={{ color: COLORS.textDark }}
-                  />
-                </div>
-                <button
-                  type="button"
-                  onClick={handleAddYoutubeSource}
-                  disabled={addingYoutube || !youtubeUrl.trim()}
-                  className="text-[11px] font-semibold shrink-0"
-                  style={{
-                    padding: "8px 12px",
-                    borderRadius: 8,
-                    color: COLORS.white,
-                    background: "#FF0000",
-                    cursor: addingYoutube || !youtubeUrl.trim() ? "default" : "pointer",
-                    opacity: addingYoutube || !youtubeUrl.trim() ? 0.6 : 1,
-                  }}
-                >
-                  {addingYoutube ? "Adding..." : "Add"}
-                </button>
-              </div>
-            )}
-
-            {sourceError && (
-              <p className="text-[11px] mb-2" style={{ color: "#DC2626" }}>
-                {sourceError}
-              </p>
-            )}
 
             <div className="flex-1 overflow-y-auto no-scrollbar flex flex-col gap-2">
               {sources.length === 0 ? (
                 <p className="text-[11px]" style={{ color: COLORS.textLight }}>
-                  Upload a PDF/notes file or paste a YouTube link to power chat, Mind Map, Audio Overview, Slide Deck, and Flashcards.
+                  Upload a file, paste a YouTube link, or paste text to power chat, Mind Map, Audio Overview, Slide Deck, and Flashcards.
                 </p>
               ) : (
                 sources.map((s) => (
@@ -853,6 +825,8 @@ export default function AIStudyAssistantScreen({ uid }) {
                     <div className="flex items-center gap-1.5 min-w-0">
                       {s.type === "youtube" ? (
                         <Youtube size={11} color="#FF0000" className="shrink-0" />
+                      ) : s.type === "text" ? (
+                        <ClipboardType size={11} color={COLORS.purple} className="shrink-0" />
                       ) : (
                         <FileText size={11} color={COLORS.purple} className="shrink-0" />
                       )}
@@ -1124,6 +1098,30 @@ export default function AIStudyAssistantScreen({ uid }) {
           </div>
         </div>
       </div>
+
+      <AnimatePresence>
+        {showAddSourceModal && (
+          <StudioModal onClose={closeAddSourceModal}>
+            <AddSourceModalBody
+              step={addSourceStep}
+              onStepChange={setAddSourceStep}
+              onUploadClick={() => fileInputRef.current?.click()}
+              uploading={uploading}
+              youtubeUrl={youtubeUrl}
+              onYoutubeUrlChange={setYoutubeUrl}
+              onAddYoutube={handleAddYoutubeSource}
+              addingYoutube={addingYoutube}
+              pasteTitle={pasteTitle}
+              onPasteTitleChange={setPasteTitle}
+              pasteText={pasteText}
+              onPasteTextChange={setPasteText}
+              onAddText={handleAddTextSource}
+              addingText={addingText}
+              error={sourceError}
+            />
+          </StudioModal>
+        )}
+      </AnimatePresence>
 
       <AnimatePresence>
         {studioModal && studioModal !== "audio" && (
@@ -1409,6 +1407,206 @@ function ModeChip({ label, onClick, disabled }) {
     >
       {label}
     </button>
+  );
+}
+
+function AddSourceModalBody({
+  step,
+  onStepChange,
+  onUploadClick,
+  uploading,
+  youtubeUrl,
+  onYoutubeUrlChange,
+  onAddYoutube,
+  addingYoutube,
+  pasteTitle,
+  onPasteTitleChange,
+  pasteText,
+  onPasteTextChange,
+  onAddText,
+  addingText,
+  error,
+}) {
+  return (
+    <div>
+      <p className="text-lg font-bold text-center mb-1 pr-6" style={{ color: COLORS.textDark }}>
+        Add a source
+      </p>
+      <p className="text-xs text-center mb-5" style={{ color: COLORS.textLight }}>
+        Upload files, paste a YouTube link, or paste text to ground chat, Mind Map, Audio Overview, Slide Deck, and Flashcards.
+      </p>
+
+      {step === "youtube" ? (
+        <div>
+          <button
+            type="button"
+            onClick={() => onStepChange(null)}
+            className="text-[11px] font-semibold mb-3"
+            style={{ color: COLORS.textLight, cursor: "pointer" }}
+          >
+            ← Back
+          </button>
+          <div
+            className="flex items-center gap-2 px-3 mb-3"
+            style={{ borderRadius: 10, border: `1px solid ${COLORS.border}`, background: COLORS.lavender }}
+          >
+            <Link2 size={13} color={COLORS.textLight} className="shrink-0" />
+            <input
+              type="text"
+              autoFocus
+              value={youtubeUrl}
+              onChange={(e) => onYoutubeUrlChange(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && onAddYoutube()}
+              placeholder="Paste a YouTube video link"
+              disabled={addingYoutube}
+              className="flex-1 min-w-0 text-sm py-2.5 outline-none bg-transparent"
+              style={{ color: COLORS.textDark }}
+            />
+          </div>
+          {error && (
+            <p className="text-xs mb-3" style={{ color: "#DC2626" }}>
+              {error}
+            </p>
+          )}
+          <button
+            type="button"
+            onClick={onAddYoutube}
+            disabled={addingYoutube || !youtubeUrl.trim()}
+            className="w-full text-sm font-semibold py-2.5"
+            style={{
+              borderRadius: 10,
+              color: COLORS.white,
+              background: "#FF0000",
+              cursor: addingYoutube || !youtubeUrl.trim() ? "default" : "pointer",
+              opacity: addingYoutube || !youtubeUrl.trim() ? 0.6 : 1,
+            }}
+          >
+            {addingYoutube ? "Adding..." : "Add video"}
+          </button>
+        </div>
+      ) : step === "text" ? (
+        <div>
+          <button
+            type="button"
+            onClick={() => onStepChange(null)}
+            className="text-[11px] font-semibold mb-3"
+            style={{ color: COLORS.textLight, cursor: "pointer" }}
+          >
+            ← Back
+          </button>
+          <input
+            type="text"
+            value={pasteTitle}
+            onChange={(e) => onPasteTitleChange(e.target.value)}
+            placeholder="Title (optional)"
+            disabled={addingText}
+            className="w-full text-sm px-3 py-2.5 mb-2 outline-none"
+            style={{ borderRadius: 10, border: `1px solid ${COLORS.border}`, color: COLORS.textDark, background: COLORS.lavender }}
+          />
+          <textarea
+            autoFocus
+            value={pasteText}
+            onChange={(e) => onPasteTextChange(e.target.value)}
+            rows={7}
+            placeholder="Paste your text here..."
+            disabled={addingText}
+            className="w-full text-sm p-3 mb-3 outline-none resize-none"
+            style={{ borderRadius: 10, border: `1px solid ${COLORS.border}`, color: COLORS.textDark, background: COLORS.lavender }}
+          />
+          {error && (
+            <p className="text-xs mb-3" style={{ color: "#DC2626" }}>
+              {error}
+            </p>
+          )}
+          <button
+            type="button"
+            onClick={onAddText}
+            disabled={addingText || !pasteText.trim()}
+            className="w-full text-sm font-semibold py-2.5"
+            style={{
+              borderRadius: 10,
+              color: COLORS.white,
+              background: GRADIENTS.purplePink,
+              cursor: addingText || !pasteText.trim() ? "default" : "pointer",
+              opacity: addingText || !pasteText.trim() ? 0.6 : 1,
+            }}
+          >
+            {addingText ? "Adding..." : "Add text"}
+          </button>
+        </div>
+      ) : (
+        <>
+          <div
+            className="flex flex-col items-center justify-center text-center py-8 px-4 mb-4"
+            style={{ borderRadius: 14, border: `1.5px dashed ${COLORS.border}`, background: COLORS.lavender }}
+          >
+            <Upload size={20} color={COLORS.textLight} className="mb-2" />
+            <p className="text-sm font-semibold" style={{ color: COLORS.textDark }}>
+              {uploading ? "Uploading..." : "Upload a file"}
+            </p>
+            <p className="text-[11px] mt-1" style={{ color: COLORS.textLight }}>
+              pdf, txt, md
+            </p>
+          </div>
+
+          {error && (
+            <p className="text-xs text-center mb-3" style={{ color: "#DC2626" }}>
+              {error}
+            </p>
+          )}
+
+          <div className="flex items-center justify-center gap-2 flex-wrap">
+            <button
+              type="button"
+              onClick={onUploadClick}
+              disabled={uploading}
+              className="flex items-center gap-1.5 text-[12px] font-semibold px-3.5 py-2"
+              style={{
+                borderRadius: 9999,
+                border: `1px solid ${COLORS.border}`,
+                color: COLORS.textDark,
+                background: COLORS.white,
+                cursor: uploading ? "default" : "pointer",
+                opacity: uploading ? 0.6 : 1,
+              }}
+            >
+              <Upload size={13} />
+              Upload files
+            </button>
+            <button
+              type="button"
+              onClick={() => onStepChange("youtube")}
+              className="flex items-center gap-1.5 text-[12px] font-semibold px-3.5 py-2"
+              style={{
+                borderRadius: 9999,
+                border: `1px solid ${COLORS.border}`,
+                color: COLORS.textDark,
+                background: COLORS.white,
+                cursor: "pointer",
+              }}
+            >
+              <Youtube size={13} color="#FF0000" />
+              Websites
+            </button>
+            <button
+              type="button"
+              onClick={() => onStepChange("text")}
+              className="flex items-center gap-1.5 text-[12px] font-semibold px-3.5 py-2"
+              style={{
+                borderRadius: 9999,
+                border: `1px solid ${COLORS.border}`,
+                color: COLORS.textDark,
+                background: COLORS.white,
+                cursor: "pointer",
+              }}
+            >
+              <ClipboardType size={13} />
+              Copied text
+            </button>
+          </div>
+        </>
+      )}
+    </div>
   );
 }
 

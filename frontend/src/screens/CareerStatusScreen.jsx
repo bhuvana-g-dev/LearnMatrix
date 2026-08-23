@@ -198,8 +198,22 @@ export default function CareerStatusScreen({
           </div>
 
           <div className="flex flex-col sm:flex-row gap-3 justify-center">
+            {/*
+              BUG FIX ("exit role"): this used to always say "Continue to
+              My Roadmap" and route to RoadmapScreen the moment
+              hasAssessment was true — even when `roadmap` (fetched above,
+              line ~57) was still null because the student finished the
+              diagnostic but never generated/saved a roadmap (that's a
+              separate, manual "View Roadmap" step inside AssessmentScreen
+              — see handleViewRoadmap there). That sent students straight
+              into RoadmapScreen's "No roadmap yet" dead end. Now we route
+              to wherever the roadmap actually gets built — the
+              AssessmentScreen resumes straight into the saved results
+              view (loadSavedAssessmentResult) with its "View Roadmap"
+              button front and center, instead of regenerating anything.
+            */}
             <motion.button
-              onClick={() => onNavigate("roadmap")}
+              onClick={() => onNavigate(roadmap ? "roadmap" : "initial-assessment")}
               whileHover={{ y: -2 }}
               whileTap={{ scale: 0.97 }}
               className="flex items-center justify-center gap-2 font-semibold"
@@ -209,7 +223,7 @@ export default function CareerStatusScreen({
                 boxShadow: "0 8px 20px rgba(212,160,23,0.35)",
               }}
             >
-              Continue to My Roadmap <ArrowRight size={16} />
+              {roadmap ? "Continue to My Roadmap" : "Continue to My Assessment"} <ArrowRight size={16} />
             </motion.button>
           </div>
         </motion.div>

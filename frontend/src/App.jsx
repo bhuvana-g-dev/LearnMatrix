@@ -43,7 +43,10 @@ import { COLORS } from "./constants/theme";
  */
 export default function App() {
   const auth = useAuth();
-  const careerPath = useCareerPath();
+  // uid passed through so useCareerPath can recover selectedRole from a
+  // saved assessment when it's null (refresh, or right after Quit Role) —
+  // see useCareerPath.js's skills-fetch effect for why.
+  const careerPath = useCareerPath(auth.user?.uid);
   const profileCompletion = useProfileCompletion(auth.user);
   // Remembers which page was open across a browser refresh, so refreshing
   // "Profile" (or any page) reloads that same page instead of bouncing

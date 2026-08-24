@@ -1,4 +1,4 @@
- import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Bot,
@@ -2349,36 +2349,73 @@ function MindMapView({ map }) {
 
 // Toolbar row sits on the (light) modal header, so controls need dark
 // icons/text rather than white-on-dark styling.
-// ---------------- Slide Deck: Gamma/NotebookLM-style in-app preview ----------------
-// Flattens the AI-generated {title, summary, sections, keyTakeaways} deck into the
-// same slide sequence services/ppt_service.py's build_deck_sections() produces on
-// the backend, so the numbered thumbnails/preview here match the downloaded file
-// slide-for-slide.
-const SD_ACCENT_CYCLE = [COLORS.purple, COLORS.sky, COLORS.pink];
+// ---------------- Presentation Studio: product-level live canvas ----------------
+const SD_ACCENT_CYCLE = [COLORS.purple, COLORS.sky, COLORS.pink, "#22C08E", "#F0AB5C"];
 
 function buildSlidesFromDeck(deck) {
-  const slides = [{ kind: "title", title: deck.title || "Study Summary", subtitle: "Study Summary" }];
-  if (deck.summary) slides.push({ kind: "text", heading: "Summary", body: deck.summary });
-  (deck.sections || []).forEach((s) => {
-    const heading = s.heading || "Section";
-    const layout = s.layout || "text";
-    if (layout === "list" && Array.isArray(s.items) && s.items.length) {
-      slides.push({ kind: "list", heading, items: s.items });
-    } else if (layout === "process" && Array.isArray(s.steps) && s.steps.length) {
-      slides.push({ kind: "process", heading, steps: s.steps });
-    } else if (layout === "comparison" && s.left && s.right) {
-      slides.push({ kind: "comparison", heading, left: s.left, right: s.right });
-    } else if (s.content) {
-      slides.push({ kind: "text", heading, body: s.content, image: s.image_url, subpoints: s.subpoints });
+  const slides = [
+    {
+      kind: "title",
+      title: deck?.title || "Study Summary",
+      subtitle: deck?.summary || "AI-generated presentation",
+    },
+  ];
+
+  (deck?.sections || []).forEach((section, index) => {
+    const heading = section?.heading || `Chapter ${index + 1}`;
+    const layout = section?.design_type || section?.layout || "editorial";
+
+    if (layout === "list" && Array.isArray(section?.items) && section.items.length) {
+      slides.push({
+        kind: "list",
+        heading,
+        items: section.items,
+        subpoints: section.subpoints,
+        image: section.image_url,
+      });
+    } else if ((layout === "process" || layout === "timeline" || layout === "cycle") && Array.isArray(section?.steps) && section.steps.length) {
+      slides.push({
+        kind: layout,
+        heading,
+        steps: section.steps,
+        body: section.content,
+      });
+    } else if (layout === "comparison" && section?.left && section?.right) {
+      slides.push({
+        kind: "comparison",
+        heading,
+        left: section.left,
+        right: section.right,
+      });
+    } else if (layout === "architecture" || layout === "application_map" || layout === "problem_solution") {
+      slides.push({
+        kind: "map",
+        heading,
+        body: section.content,
+        items: section.items || section.subpoints || [],
+      });
+    } else {
+      slides.push({
+        kind: "editorial",
+        heading,
+        body: section?.content || section?.summary || "",
+        subpoints: section?.subpoints || section?.items || [],
+        image: section?.image_url,
+      });
     }
   });
-  if (deck.keyTakeaways?.length) slides.push({ kind: "bullets", heading: "Key Takeaways", items: deck.keyTakeaways });
+
+  if (deck?.keyTakeaways?.length) {
+    slides.push({
+      kind: "takeaways",
+      heading: "What to remember",
+      items: deck.keyTakeaways,
+    });
+  }
+
   return slides;
 }
 
-// icon tag (see backend agents/slide_deck_agent.py's ICON_VOCAB) -> a real Lucide icon for
-// the in-app preview — richer than the pptx/pdf builders can safely do with shapes/glyphs,
-// since this only has to render in a browser, not survive round-tripping through PowerPoint.
 const SD_ICON_MAP = {
   check: Check,
   star: Star,
@@ -2398,103 +2435,442 @@ function SlideItemIcon({ icon, size = 13, color }) {
 }
 
 function SlideDeckPreview({ deck, format, onFormatChange, downloading, onDownload }) {
-  const slides = buildSlidesFromDeck(deck);
+  const slides = useMemo(() => buildSlidesFromDeck(deck), [deck]);
   const [active, setActive] = useState(0);
-  const current = slides[active];
+  const [showOutline, setShowOutline] = useState(false);
+  const [canvasMode, setCanvasMode] = useState("present");
+
+  const current = slides[active] || slides[0];
+  const accent = SD_ACCENT_CYCLE[active % SD_ACCENT_CYCLE.length];
+  const progress = slides.length ? Math.round(((active + 1) / slides.length) * 100) : 0;
+
+  function move(delta) {
+    setActive((value) => Math.max(0, Math.min(slides.length - 1, value + delta)));
+  }
 
   return (
-    <div className="flex flex-col" style={{ height: "100vh" }}>
-      <div className="flex items-start justify-between gap-4 px-6 pt-5 pb-3" style={{ borderBottom: `1px solid ${COLORS.border}` }}>
-        <div>
-          <p className="text-base font-semibold mb-1 pr-8" style={{ color: COLORS.textDark }}>
-            Slide Deck
-          </p>
-          <p className="text-xs" style={{ color: COLORS.textLight }}>
-            {deck.title} · {slides.length} slides
+    <div className="flex flex-col overflow-hidden" style={{ height: "100vh", background: "#F7F7F5" }}>
+      {/* Studio top bar */}
+      <div
+        className="flex items-center justify-between gap-4 px-5 py-3 shrink-0"
+        style={{ background: COLORS.white, borderBottom: `1px solid ${COLORS.border}` }}
+      >
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 mb-1">
+            <div className="flex items-center justify-center rounded-lg" style={{ width: 30, height: 30, background: GRADIENTS.purplePink }}>
+              <PresentationIcon size={15} color={COLORS.white} />
+            </div>
+            <p className="text-sm font-bold truncate" style={{ color: COLORS.textDark }}>
+              {deck?.title || "Untitled presentation"}
+            </p>
+          </div>
+          <p className="text-[11px]" style={{ color: COLORS.textLight }}>
+            LearnMatrix Presentation Studio · {slides.length} slides
           </p>
         </div>
 
-        <div className="flex items-center gap-2 mr-8">
+        <div className="flex items-center gap-2 mr-8 shrink-0">
+          <button
+            type="button"
+            onClick={() => setShowOutline((v) => !v)}
+            className="text-xs font-semibold rounded-lg px-3 py-2"
+            style={{ color: COLORS.textDark, background: showOutline ? COLORS.lavender : "#F7F7F5", border: `1px solid ${COLORS.border}` }}
+          >
+            Outline
+          </button>
           <FormatToggle value={format} onChange={onFormatChange} />
           <button
             type="button"
             onClick={onDownload}
             disabled={downloading}
-            className="flex items-center gap-1.5 text-xs font-semibold rounded-full disabled:opacity-60"
-            style={{ padding: "8px 16px", background: GRADIENTS.purplePink, color: COLORS.white, cursor: downloading ? "default" : "pointer" }}
+            className="flex items-center gap-1.5 text-xs font-semibold rounded-lg disabled:opacity-60"
+            style={{ padding: "9px 14px", background: COLORS.textDark, color: COLORS.white, cursor: downloading ? "default" : "pointer" }}
           >
-            {downloading ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
-            {downloading ? "Preparing..." : `Download ${format.toUpperCase()}`}
+            {downloading ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
+            {downloading ? "Preparing..." : `Export ${format.toUpperCase()}`}
           </button>
         </div>
       </div>
 
       <div className="flex flex-1 min-h-0">
-        {/* numbered thumbnail list */}
-        <div className="flex flex-col gap-2 p-3 overflow-y-auto" style={{ width: 190, borderRight: `1px solid ${COLORS.border}`, background: COLORS.lavender }}>
-          {slides.map((s, i) => {
-            const isTitle = s.kind === "title";
-            const accent = isTitle ? COLORS.sky : SD_ACCENT_CYCLE[(i - 1) % SD_ACCENT_CYCLE.length];
-            const isActive = i === active;
-            return (
-              <button
-                key={i}
-                type="button"
-                onClick={() => setActive(i)}
-                className="text-left rounded-lg overflow-hidden shrink-0"
-                style={{
-                  outline: isActive ? `2px solid ${COLORS.purple}` : `1px solid ${COLORS.border}`,
-                  outlineOffset: 1,
-                  cursor: "pointer",
-                }}
-              >
-                <div
-                  className="flex flex-col justify-center px-2.5"
-                  style={{ height: 68, background: isTitle ? COLORS.sky : COLORS.white }}
-                >
-                  <span className="text-[9px] font-bold mb-0.5" style={{ color: isTitle ? COLORS.pink : accent }}>
-                    {i === 0 ? "TITLE" : String(i).padStart(2, "0")}
-                  </span>
-                  <span
-                    className="text-[10px] font-semibold leading-tight line-clamp-2"
-                    style={{ color: isTitle ? COLORS.white : COLORS.textDark }}
-                  >
-                    {isTitle ? s.title : s.heading}
-                  </span>
-                </div>
-              </button>
-            );
-          })}
-        </div>
-
-        {/* main slide canvas */}
-        <div className="flex-1 flex flex-col items-center justify-center p-8" style={{ background: "#F4F5F8" }}>
-          <div className="w-full" style={{ maxWidth: 860, aspectRatio: "16 / 9" }}>
-            <SlideCanvas slide={current} index={active} />
+        {/* Slide navigator */}
+        <aside
+          className="flex flex-col shrink-0"
+          style={{ width: 218, background: COLORS.white, borderRight: `1px solid ${COLORS.border}` }}
+        >
+          <div className="flex items-center justify-between px-4 py-3" style={{ borderBottom: `1px solid ${COLORS.border}` }}>
+            <div>
+              <p className="text-[11px] font-bold uppercase tracking-wider" style={{ color: COLORS.textDark }}>Slides</p>
+              <p className="text-[10px]" style={{ color: COLORS.textLight }}>{progress}% complete</p>
+            </div>
+            <div className="text-[10px] font-bold rounded-full px-2 py-1" style={{ color: COLORS.purple, background: COLORS.lavender }}>
+              {slides.length}
+            </div>
           </div>
 
-          <div className="flex items-center gap-4 mt-4">
-            <button
-              type="button"
-              onClick={() => setActive((i) => Math.max(0, i - 1))}
-              disabled={active === 0}
-              className="flex items-center justify-center rounded-full disabled:opacity-30"
-              style={{ width: 32, height: 32, background: COLORS.white, border: `1px solid ${COLORS.border}`, cursor: active === 0 ? "default" : "pointer" }}
+          <div className="flex-1 overflow-y-auto px-3 py-3 space-y-3">
+            {slides.map((slide, index) => (
+              <button
+                key={`${slide.heading || slide.title}-${index}`}
+                type="button"
+                onClick={() => setActive(index)}
+                className="w-full text-left rounded-xl overflow-hidden transition-all"
+                style={{
+                  border: active === index ? `2px solid ${accent}` : `1px solid ${COLORS.border}`,
+                  background: COLORS.white,
+                  boxShadow: active === index ? "0 8px 20px rgba(32,24,72,0.10)" : "none",
+                  transform: active === index ? "translateY(-1px)" : "none",
+                }}
+              >
+                <SlideThumbnail slide={slide} index={index} active={active === index} />
+                <div className="px-2.5 py-2">
+                  <p className="text-[9px] font-bold uppercase tracking-wide mb-0.5" style={{ color: COLORS.textLight }}>
+                    {String(index + 1).padStart(2, "0")} · {slide.kind}
+                  </p>
+                  <p className="text-[10px] font-semibold leading-snug line-clamp-2" style={{ color: COLORS.textDark }}>
+                    {slide.title || slide.heading}
+                  </p>
+                </div>
+              </button>
+            ))}
+          </div>
+        </aside>
+
+        {/* Main canvas */}
+        <main className="flex-1 min-w-0 flex flex-col" style={{ background: "#F0F1F4" }}>
+          <div className="flex items-center justify-between px-5 py-3 shrink-0">
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setCanvasMode("present")}
+                className="text-[11px] font-semibold rounded-lg px-3 py-1.5"
+                style={{ background: canvasMode === "present" ? COLORS.white : "transparent", color: COLORS.textDark, boxShadow: canvasMode === "present" ? "0 2px 8px rgba(0,0,0,0.06)" : "none" }}
+              >
+                Canvas
+              </button>
+              <button
+                type="button"
+                onClick={() => setCanvasMode("focus")}
+                className="text-[11px] font-semibold rounded-lg px-3 py-1.5"
+                style={{ background: canvasMode === "focus" ? COLORS.white : "transparent", color: COLORS.textDark, boxShadow: canvasMode === "focus" ? "0 2px 8px rgba(0,0,0,0.06)" : "none" }}
+              >
+                Focus
+              </button>
+            </div>
+
+            <div className="flex items-center gap-2 text-[11px]" style={{ color: COLORS.textLight }}>
+              <span>{String(active + 1).padStart(2, "0")} / {String(slides.length).padStart(2, "0")}</span>
+              <button type="button" onClick={() => move(-1)} disabled={active === 0} className="p-1 disabled:opacity-30">
+                <ChevronLeft size={16} />
+              </button>
+              <button type="button" onClick={() => move(1)} disabled={active === slides.length - 1} className="p-1 disabled:opacity-30">
+                <ChevronRight size={16} />
+              </button>
+            </div>
+          </div>
+
+          <div className="flex-1 min-h-0 overflow-auto flex items-center justify-center px-5 pb-5">
+            <motion.div
+              key={active}
+              initial={{ opacity: 0, y: 12, scale: 0.985 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              transition={{ duration: 0.22 }}
+              className="w-full"
+              style={{ maxWidth: canvasMode === "focus" ? 1120 : 980, aspectRatio: "16 / 9" }}
             >
-              <ChevronLeft size={15} color={COLORS.textDark} />
-            </button>
-            <span className="text-xs font-semibold" style={{ color: COLORS.textMid }}>
-              {active + 1} / {slides.length}
-            </span>
-            <button
-              type="button"
-              onClick={() => setActive((i) => Math.min(slides.length - 1, i + 1))}
-              disabled={active === slides.length - 1}
-              className="flex items-center justify-center rounded-full disabled:opacity-30"
-              style={{ width: 32, height: 32, background: COLORS.white, border: `1px solid ${COLORS.border}`, cursor: active === slides.length - 1 ? "default" : "pointer" }}
-            >
-              <ChevronRight size={15} color={COLORS.textDark} />
-            </button>
+              <PresentationCanvas slide={current} index={active} accent={accent} />
+            </motion.div>
+          </div>
+
+          <div className="flex items-center justify-center gap-2 pb-4 shrink-0">
+            {slides.map((_, index) => (
+              <button
+                key={index}
+                type="button"
+                onClick={() => setActive(index)}
+                className="rounded-full"
+                style={{ width: active === index ? 20 : 6, height: 6, background: active === index ? accent : "#C9CBD2", transition: "all 180ms ease" }}
+              />
+            ))}
+          </div>
+        </main>
+
+        {/* AI design rail */}
+        <aside
+          className="shrink-0 overflow-y-auto"
+          style={{ width: 250, background: COLORS.white, borderLeft: `1px solid ${COLORS.border}` }}
+        >
+          <div className="p-4" style={{ borderBottom: `1px solid ${COLORS.border}` }}>
+            <div className="flex items-center gap-2 mb-1">
+              <Sparkles size={14} color={COLORS.purple} />
+              <p className="text-xs font-bold" style={{ color: COLORS.textDark }}>AI Design</p>
+            </div>
+            <p className="text-[10px] leading-relaxed" style={{ color: COLORS.textLight }}>
+              Layout guidance for the current slide.
+            </p>
+          </div>
+
+          <div className="p-4 space-y-4">
+            <DesignCard label="Slide style" value={current.kind.replace(/_/g, " ")} accent={accent} />
+            <DesignCard label="Visual hierarchy" value={current.kind === "title" ? "High impact" : "Balanced"} accent={COLORS.sky} />
+            <DesignCard label="Content density" value={getContentDensity(current)} accent={COLORS.pink} />
+
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-wider mb-2" style={{ color: COLORS.textLight }}>
+                AI suggestions
+              </p>
+              <div className="space-y-2">
+                {getSlideSuggestions(current).map((item, index) => (
+                  <div key={index} className="rounded-xl p-3" style={{ background: "#F7F7F5", border: `1px solid ${COLORS.border}` }}>
+                    <p className="text-[10px] font-semibold leading-relaxed" style={{ color: COLORS.textMid }}>
+                      {item}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {showOutline && (
+              <div className="rounded-xl p-3" style={{ background: COLORS.lavender, border: `1px solid ${COLORS.purple}22` }}>
+                <p className="text-[10px] font-bold mb-1.5" style={{ color: COLORS.purple }}>Presentation outline</p>
+                <p className="text-[10px] leading-relaxed" style={{ color: COLORS.textMid }}>
+                  {deck?.summary || "AI-generated study presentation with a structured learning flow."}
+                </p>
+              </div>
+            )}
+          </div>
+        </aside>
+      </div>
+    </div>
+  );
+}
+
+function DesignCard({ label, value, accent }) {
+  return (
+    <div className="rounded-xl p-3" style={{ border: `1px solid ${COLORS.border}` }}>
+      <div className="flex items-center gap-2">
+        <div className="rounded-full shrink-0" style={{ width: 8, height: 8, background: accent }} />
+        <div className="min-w-0">
+          <p className="text-[9px] uppercase tracking-wider" style={{ color: COLORS.textLight }}>{label}</p>
+          <p className="text-[11px] font-semibold capitalize truncate" style={{ color: COLORS.textDark }}>{value}</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function getContentDensity(slide) {
+  const count = (slide?.items?.length || 0) + (slide?.steps?.length || 0) + (slide?.subpoints?.length || 0);
+  if (count >= 6) return "High";
+  if (count >= 3) return "Medium";
+  return "Focused";
+}
+
+function getSlideSuggestions(slide) {
+  if (slide?.kind === "title") return ["Lead with a single strong message.", "Use this slide to establish the narrative tone."];
+  if (slide?.kind === "comparison") return ["Keep both sides visually balanced.", "Use short contrast points for faster scanning."];
+  if (slide?.kind === "process" || slide?.kind === "timeline" || slide?.kind === "cycle") return ["Show progression clearly.", "Keep each step concise and action-oriented."];
+  if (slide?.kind === "takeaways") return ["End with memorable conclusions.", "Prioritize only the highest-value learning points."];
+  return ["Use a clear headline-first hierarchy.", "Keep supporting points concise and scannable."];
+}
+
+function SlideThumbnail({ slide, index, active }) {
+  const accent = SD_ACCENT_CYCLE[index % SD_ACCENT_CYCLE.length];
+  const dark = slide.kind === "title";
+  return (
+    <div
+      className="relative overflow-hidden"
+      style={{ height: 92, background: dark ? COLORS.textDark : "#FAFAF8" }}
+    >
+      <div className="absolute top-0 left-0 right-0" style={{ height: 5, background: dark ? COLORS.pink : accent }} />
+      {slide.kind === "comparison" ? (
+        <div className="grid grid-cols-2 gap-2 p-3 pt-5 h-full">
+          <div className="rounded-md" style={{ background: `${accent}25` }} />
+          <div className="rounded-md" style={{ background: `${COLORS.sky}25` }} />
+        </div>
+      ) : slide.kind === "process" || slide.kind === "timeline" || slide.kind === "cycle" ? (
+        <div className="flex items-center gap-1 px-3 pt-8">
+          {[0, 1, 2, 3].map((n) => <div key={n} className="rounded-full flex-1" style={{ height: 18, background: n === 1 ? accent : `${accent}33` }} />)}
+        </div>
+      ) : (
+        <div className="p-3 pt-5">
+          <div className="h-2.5 rounded-full mb-2" style={{ width: "72%", background: dark ? COLORS.white : COLORS.textDark, opacity: dark ? 0.9 : 0.85 }} />
+          <div className="h-1.5 rounded-full mb-1.5" style={{ width: "92%", background: dark ? "#FFFFFF55" : "#B8BBC3" }} />
+          <div className="h-1.5 rounded-full mb-3" style={{ width: "64%", background: dark ? "#FFFFFF44" : "#D4D6DC" }} />
+          <div className="rounded-md" style={{ height: 22, width: "48%", background: `${accent}33` }} />
+        </div>
+      )}
+      {active && <div className="absolute inset-0" style={{ boxShadow: `inset 0 0 0 2px ${accent}` }} />}
+    </div>
+  );
+}
+
+function PresentationCanvas({ slide, index, accent }) {
+  return (
+    <div
+      className="relative w-full h-full overflow-hidden rounded-[22px]"
+      style={{
+        background: COLORS.white,
+        boxShadow: "0 22px 70px rgba(23, 25, 35, 0.16)",
+      }}
+    >
+      <div className="absolute top-0 left-0 right-0" style={{ height: 8, background: accent }} />
+      {slide.kind === "title" && <TitleSlide slide={slide} accent={accent} />}
+      {slide.kind === "list" && <ListSlide slide={slide} accent={accent} index={index} />}
+      {slide.kind === "editorial" && <EditorialSlide slide={slide} accent={accent} index={index} />}
+      {slide.kind === "process" && <ProcessSlide slide={slide} accent={accent} />}
+      {slide.kind === "timeline" && <TimelineSlide slide={slide} accent={accent} />}
+      {slide.kind === "cycle" && <CycleSlide slide={slide} accent={accent} />}
+      {slide.kind === "comparison" && <ComparisonSlide slide={slide} accent={accent} />}
+      {slide.kind === "map" && <MapSlide slide={slide} accent={accent} />}
+      {slide.kind === "takeaways" && <TakeawaySlide slide={slide} accent={accent} />}
+    </div>
+  );
+}
+
+function SlideMeta({ index, label, accent }) {
+  return (
+    <div className="flex items-center gap-2">
+      <div className="rounded-full" style={{ width: 9, height: 9, background: accent }} />
+      <span className="text-[10px] font-bold uppercase tracking-[0.18em]" style={{ color: COLORS.textLight }}>
+        {String(index + 1).padStart(2, "0")} · {label}
+      </span>
+    </div>
+  );
+}
+
+function TitleSlide({ slide, accent }) {
+  return (
+    <div className="relative h-full flex flex-col justify-between p-[8%]" style={{ background: `linear-gradient(135deg, ${COLORS.textDark} 0%, #2B2352 58%, ${accent} 180%)` }}>
+      <div className="flex items-center gap-2">
+        <Sparkles size={16} color={COLORS.pink} />
+        <span className="text-[11px] font-bold uppercase tracking-[0.22em]" style={{ color: "#FFFFFFA8" }}>LearnMatrix Studio</span>
+      </div>
+      <div style={{ maxWidth: "78%" }}>
+        <div className="mb-5" style={{ width: 70, height: 7, borderRadius: 999, background: COLORS.pink }} />
+        <h1 className="font-black tracking-tight leading-[0.98]" style={{ fontSize: "clamp(30px, 5vw, 72px)", color: COLORS.white }}>
+          {slide.title}
+        </h1>
+        <p className="mt-5 text-[clamp(13px,1.6vw,20px)] leading-relaxed" style={{ color: "#FFFFFFB8", maxWidth: "82%" }}>
+          {slide.subtitle}
+        </p>
+      </div>
+      <div className="flex items-center justify-between">
+        <span className="text-[10px] font-semibold uppercase tracking-widest" style={{ color: "#FFFFFF75" }}>AI-generated learning deck</span>
+        <div className="rounded-full flex items-center justify-center" style={{ width: 44, height: 44, background: "#FFFFFF18", border: "1px solid #FFFFFF28" }}>
+          <PresentationIcon size={18} color={COLORS.white} />
+        </div>
+      </div>
+      <div className="absolute right-[7%] bottom-[8%] rounded-full" style={{ width: "18%", aspectRatio: "1", background: `${COLORS.pink}22`, border: `1px solid ${COLORS.pink}55` }} />
+    </div>
+  );
+}
+
+function EditorialSlide({ slide, accent, index }) {
+  return (
+    <div className="h-full grid grid-cols-[1.15fr_0.85fr] gap-[5%] p-[7%]">
+      <div className="flex flex-col justify-between min-w-0">
+        <div>
+          <SlideMeta index={index} label="Core idea" accent={accent} />
+          <h2 className="mt-5 font-black tracking-tight leading-[1.02]" style={{ fontSize: "clamp(25px,3.6vw,52px)", color: COLORS.textDark }}>
+            {slide.heading}
+          </h2>
+          <p className="mt-5 text-[clamp(12px,1.4vw,18px)] leading-relaxed" style={{ color: COLORS.textMid }}>
+            {slide.body}
+          </p>
+        </div>
+        <SlideKeyPoints subpoints={slide.subpoints} accent={accent} />
+      </div>
+
+      <div className="relative rounded-[28px] overflow-hidden" style={{ background: `linear-gradient(145deg, ${accent}22, ${COLORS.lavender})`, border: `1px solid ${accent}33` }}>
+        {slide.image ? (
+          <img src={slide.image} alt="" className="w-full h-full object-cover" />
+        ) : (
+          <div className="absolute inset-0 flex items-center justify-center">
+            <div className="relative rounded-full flex items-center justify-center" style={{ width: "56%", aspectRatio: "1", background: `${accent}22`, border: `2px solid ${accent}` }}>
+              <Sparkles size={42} color={accent} />
+              <div className="absolute rounded-full" style={{ width: "130%", aspectRatio: "1", border: `1px dashed ${accent}55` }} />
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ListSlide({ slide, accent, index }) {
+  const items = (slide.items || []).slice(0, 6);
+  return (
+    <div className="h-full p-[7%]">
+      <SlideMeta index={index} label="Key concepts" accent={accent} />
+      <h2 className="mt-4 font-black tracking-tight" style={{ fontSize: "clamp(26px,3.8vw,54px)", color: COLORS.textDark }}>
+        {slide.heading}
+      </h2>
+      <div className="grid grid-cols-2 gap-4 mt-[5%]">
+        {items.map((item, i) => {
+          const title = typeof item === "object" && item !== null ? item.title || item.text || `Point ${i + 1}` : item;
+          const description = typeof item === "object" && item !== null ? item.description || item.detail || "" : "";
+          return (
+            <div key={i} className="rounded-2xl p-4" style={{ background: i === 0 ? `${accent}16` : "#F8F8F7", border: `1px solid ${i === 0 ? accent : COLORS.border}` }}>
+              <div className="flex items-start gap-3">
+                <div className="flex items-center justify-center rounded-xl shrink-0 text-xs font-black" style={{ width: 34, height: 34, background: accent, color: COLORS.white }}>
+                  {String(i + 1).padStart(2, "0")}
+                </div>
+                <div>
+                  <p className="text-sm font-bold leading-snug" style={{ color: COLORS.textDark }}>{title}</p>
+                  {description && <p className="text-[11px] mt-1.5 leading-relaxed" style={{ color: COLORS.textMid }}>{description}</p>}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function ProcessSlide({ slide, accent }) {
+  const steps = (slide.steps || []).slice(0, 5);
+  return (
+    <div className="h-full p-[7%] flex flex-col">
+      <SlideMeta index={0} label="Process" accent={accent} />
+      <h2 className="mt-4 font-black tracking-tight" style={{ fontSize: "clamp(26px,3.8vw,54px)", color: COLORS.textDark }}>{slide.heading}</h2>
+      <div className="flex-1 flex items-center">
+        <div className="grid grid-cols-5 gap-3 w-full">
+          {steps.map((step, i) => (
+            <div key={i} className="relative">
+              <div className="rounded-2xl p-4 min-h-[170px] flex flex-col justify-between" style={{ background: i % 2 === 0 ? "#F8F8F7" : `${accent}16`, border: `1px solid ${i % 2 === 0 ? COLORS.border : accent}` }}>
+                <div className="text-xs font-black" style={{ color: accent }}>{String(i + 1).padStart(2, "0")}</div>
+                <p className="text-sm font-bold leading-snug" style={{ color: COLORS.textDark }}>{typeof step === "object" ? step.title || step.text || step.name : step}</p>
+              </div>
+              {i < steps.length - 1 && <div className="absolute top-1/2 -right-2.5 z-10" style={{ width: 10, height: 2, background: accent }} />}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TimelineSlide({ slide, accent }) {
+  const steps = (slide.steps || []).slice(0, 6);
+  return (
+    <div className="h-full p-[7%] flex flex-col">
+      <SlideMeta index={0} label="Timeline" accent={accent} />
+      <h2 className="mt-4 font-black tracking-tight" style={{ fontSize: "clamp(26px,3.8vw,54px)", color: COLORS.textDark }}>{slide.heading}</h2>
+      <div className="flex-1 flex items-center">
+        <div className="relative w-full">
+          <div className="absolute left-0 right-0 top-1/2" style={{ height: 3, background: `${accent}55` }} />
+          <div className="grid gap-3 relative" style={{ gridTemplateColumns: `repeat(${Math.max(steps.length, 1)}, minmax(0, 1fr))` }}>
+            {steps.map((step, i) => (
+              <div key={i} className="flex flex-col items-center">
+                <div className="rounded-full mb-4 z-10" style={{ width: 24, height: 24, background: i === 0 ? accent : COLORS.white, border: `3px solid ${accent}` }} />
+                <div className="rounded-2xl p-3 w-full min-h-[105px]" style={{ background: i % 2 === 0 ? COLORS.white : "#F8F8F7", border: `1px solid ${COLORS.border}` }}>
+                  <p className="text-[9px] font-black mb-2" style={{ color: accent }}>STEP {i + 1}</p>
+                  <p className="text-xs font-bold leading-snug" style={{ color: COLORS.textDark }}>{typeof step === "object" ? step.title || step.text || step.name : step}</p>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       </div>
@@ -2502,157 +2878,130 @@ function SlideDeckPreview({ deck, format, onFormatChange, downloading, onDownloa
   );
 }
 
-/** SlideCanvas — renders one slide at full preview size, styled to match
- * the actual downloaded pptx/pdf design (see services/ppt_service.py /
- * services/pdf_service.py): navy title slide with decorative gold
- * circles, or a white content slide with a colored left accent bar,
- * numbered badge, heading rule, and body text or bullet markers. */
-function SlideCanvas({ slide, index }) {
-  if (slide.kind === "title") {
-    return (
-      <div className="relative w-full h-full rounded-xl overflow-hidden" style={{ background: COLORS.sky }}>
-        <div className="absolute rounded-full" style={{ width: "55%", aspectRatio: "1/1", right: "-15%", top: "-35%", background: COLORS.purple, opacity: 0.75 }} />
-        <div className="absolute rounded-full" style={{ width: "26%", aspectRatio: "1/1", right: "4%", bottom: "-12%", background: COLORS.pink, opacity: 0.5 }} />
-        <div className="relative h-full flex flex-col justify-center px-[6%]">
-          <div className="mb-3" style={{ width: 40, height: 3, background: COLORS.purple }} />
-          <p className="text-[11px] font-bold tracking-wide mb-2" style={{ color: COLORS.pink }}>LEARNMATRIX</p>
-          <p className="text-2xl font-bold leading-tight mb-3" style={{ color: COLORS.white, maxWidth: "70%" }}>{slide.title}</p>
-          <p className="text-sm" style={{ color: COLORS.lavender }}>{slide.subtitle}</p>
+function CycleSlide({ slide, accent }) {
+  const steps = (slide.steps || []).slice(0, 6);
+  return (
+    <div className="h-full p-[7%] grid grid-cols-[0.9fr_1.1fr] gap-8 items-center">
+      <div>
+        <SlideMeta index={0} label="Cycle" accent={accent} />
+        <h2 className="mt-4 font-black tracking-tight leading-[1.03]" style={{ fontSize: "clamp(26px,3.8vw,54px)", color: COLORS.textDark }}>{slide.heading}</h2>
+        {slide.body && <p className="mt-5 text-sm leading-relaxed" style={{ color: COLORS.textMid }}>{slide.body}</p>}
+      </div>
+      <div className="relative flex items-center justify-center">
+        <div className="rounded-full flex items-center justify-center" style={{ width: "52%", aspectRatio: "1", background: `${accent}18`, border: `2px solid ${accent}` }}>
+          <span className="text-xs font-black text-center px-4" style={{ color: COLORS.textDark }}>CONTINUOUS<br />LEARNING</span>
         </div>
+        {steps.map((step, i) => {
+          const angle = (Math.PI * 2 * i) / Math.max(steps.length, 1) - Math.PI / 2;
+          const radius = 42;
+          const x = 50 + Math.cos(angle) * radius;
+          const y = 50 + Math.sin(angle) * radius;
+          return (
+            <div
+              key={i}
+              className="absolute rounded-xl p-2 text-center"
+              style={{ left: `${x}%`, top: `${y}%`, transform: "translate(-50%, -50%)", width: 92, background: COLORS.white, border: `1px solid ${COLORS.border}`, boxShadow: "0 8px 20px rgba(0,0,0,0.07)" }}
+            >
+              <p className="text-[10px] font-bold leading-snug" style={{ color: COLORS.textDark }}>
+                {typeof step === "object" ? step.title || step.text || step.name : step}
+              </p>
+            </div>
+          );
+        })}
       </div>
-    );
-  }
-
-  const accent = SD_ACCENT_CYCLE[(index - 1) % SD_ACCENT_CYCLE.length];
-  const design = slide.design_type || "";
-  const itemText = (v) => (typeof v === "object" ? v?.text : v);
-  const labels = [...(slide.steps || []), ...(slide.items || []), ...(slide.subpoints || [])]
-    .map(itemText).filter(Boolean).slice(0, 6);
-
-  if (design === "hero") {
-    return <div className="relative w-full h-full rounded-xl overflow-hidden flex" style={{ background: COLORS.sky }}>
-      <div className="absolute rounded-full" style={{ width: "42%", aspectRatio: "1/1", right: "-8%", top: "-12%", background: accent, opacity: .28 }} />
-      <div className="relative w-[58%] flex flex-col justify-center px-[8%]">
-        <span className="text-[10px] font-bold tracking-[0.2em] mb-4" style={{ color: accent }}>{String(index).padStart(2,"0")}</span>
-        <h2 className="text-3xl font-bold leading-tight mb-5" style={{ color: COLORS.white }}>{slide.heading}</h2>
-        <p className="text-sm leading-relaxed" style={{ color: COLORS.lavender }}>{slide.body}</p>
-      </div>
-      <SlideVisual image={slide.image_url} accent={accent} />
-    </div>;
-  }
-
-  if (design === "big_statement" || design === "visual_metaphor") {
-    return <div className="relative w-full h-full rounded-xl overflow-hidden flex" style={{ background: COLORS.white, border: `1px solid ${COLORS.border}` }}>
-      <div style={{ width: 12, background: accent }} />
-      <div className="flex-1 flex flex-col justify-center px-[8%]">
-        <span className="text-[10px] font-bold tracking-widest mb-4" style={{ color: accent }}>{String(index).padStart(2,"0")}</span>
-        <h2 className="text-xl font-bold mb-5" style={{ color: COLORS.textDark }}>{slide.heading}</h2>
-        <p className="text-3xl font-bold leading-tight" style={{ color: COLORS.sky }}>{slide.body || slide.emphasis}</p>
-      </div>
-      <SlideVisual image={slide.image_url} accent={accent} />
-    </div>;
-  }
-
-  if (design === "timeline") {
-    return <div className="w-full h-full rounded-xl overflow-hidden p-[6%]" style={{ background: COLORS.white, border: `1px solid ${COLORS.border}` }}>
-      <SlideHeading index={index} heading={slide.heading} accent={accent} />
-      <div className="relative mt-[12%] mx-[4%]" style={{ height: "42%" }}>
-        <div className="absolute left-0 right-0 top-1/2" style={{ height: 4, background: COLORS.border }} />
-        <div className="relative flex justify-between h-full">{labels.map((label,i)=><div key={i} className="relative flex-1 flex flex-col items-center">
-          <div className="absolute top-1/2 -translate-y-1/2 rounded-full flex items-center justify-center text-[10px] font-bold" style={{ width: 30, height: 30, background: accent, color: COLORS.white }}>{i+1}</div>
-          <div className="absolute w-[110px] text-center text-[10px] font-semibold leading-snug" style={{ top: i%2===0 ? "0" : "62%", color: COLORS.textDark }}>{label}</div>
-        </div>)}</div>
-      </div>
-    </div>;
-  }
-
-  if (design === "cycle") {
-    return <div className="relative w-full h-full rounded-xl overflow-hidden p-[6%]" style={{ background: COLORS.white, border: `1px solid ${COLORS.border}` }}>
-      <SlideHeading index={index} heading={slide.heading} accent={accent} />
-      <div className="absolute left-1/2 top-[57%] -translate-x-1/2 -translate-y-1/2 rounded-full flex items-center justify-center text-center px-5" style={{ width: 150, height: 150, background: COLORS.sky, color: COLORS.white }}><span className="text-sm font-bold">{slide.emphasis || slide.heading}</span></div>
-      {labels.map((label,i)=>{ const pos=[["50%","22%"],["76%","38%"],["76%","70%"],["50%","83%"],["24%","70%"],["24%","38%"]][i]; return <div key={i} className="absolute rounded-xl px-3 py-2 text-center text-[10px] font-bold" style={{ left:pos[0], top:pos[1], transform:"translate(-50%,-50%)", width:120, background:i%2?COLORS.lavender:accent, color:i%2?COLORS.textDark:COLORS.white }}>{label}</div>})}
-    </div>;
-  }
-
-  if (design === "architecture" || design === "application_map") {
-    return <div className="relative w-full h-full rounded-xl overflow-hidden p-[6%]" style={{ background: COLORS.white, border: `1px solid ${COLORS.border}` }}>
-      <SlideHeading index={index} heading={slide.heading} accent={accent} />
-      <div className="absolute left-1/2 top-[58%] -translate-x-1/2 -translate-y-1/2 rounded-xl px-6 py-4 text-center" style={{ background: COLORS.sky, color: COLORS.white, width:210 }}><p className="text-sm font-bold">{slide.emphasis || slide.heading}</p></div>
-      {labels.map((label,i)=>{ const pos=[["18%","36%"],["50%","28%"],["82%","36%"],["18%","76%"],["50%","84%"],["82%","76%"]][i]; return <div key={i} className="absolute rounded-xl px-3 py-2 text-center text-[10px] font-semibold" style={{ left:pos[0], top:pos[1], transform:"translate(-50%,-50%)", width:135, background:COLORS.lavender, border:`1px solid ${accent}55`, color:COLORS.textDark }}>{label}</div>})}
-    </div>;
-  }
-
-  if (design === "problem_solution") {
-    const left=slide.left||{}, right=slide.right||{};
-    return <div className="w-full h-full rounded-xl overflow-hidden p-[6%]" style={{ background: COLORS.white, border: `1px solid ${COLORS.border}` }}>
-      <SlideHeading index={index} heading={slide.heading} accent={accent} />
-      <div className="grid grid-cols-2 gap-5 mt-8 h-[65%]">
-        <div className="rounded-2xl p-6" style={{ background: COLORS.sky, color: COLORS.white }}><p className="text-lg font-bold mb-5">{left.label || "Problem"}</p>{(left.items||[slide.body]).slice(0,4).map((x,i)=><p key={i} className="text-xs mb-3 leading-relaxed">• {x}</p>)}</div>
-        <div className="rounded-2xl p-6" style={{ background: accent, color: COLORS.textDark }}><p className="text-lg font-bold mb-5">{right.label || "Solution"}</p>{(right.items||[]).slice(0,4).map((x,i)=><p key={i} className="text-xs mb-3 leading-relaxed">✓ {x}</p>)}</div>
-      </div>
-    </div>;
-  }
-
-  if (design === "data_story") {
-    return <div className="w-full h-full rounded-xl overflow-hidden p-[6%]" style={{ background: COLORS.white, border: `1px solid ${COLORS.border}` }}>
-      <SlideHeading index={index} heading={slide.heading} accent={accent} />
-      <div className="mt-8 flex gap-8 items-center"><div className="flex-1 flex flex-col gap-4">{labels.map((x,i)=><div key={i}><p className="text-[10px] font-semibold mb-1" style={{color:COLORS.textDark}}>{x}</p><div className="rounded-full" style={{height:18,width:`${60+(i%3)*15}%`,background:i%2?COLORS.sky:accent}} /></div>)}</div><div className="w-[28%] rounded-2xl p-5 text-sm font-bold leading-relaxed" style={{background:COLORS.lavender,color:COLORS.textDark}}>{slide.body}</div></div>
-    </div>;
-  }
-
-  if (slide.kind === "comparison") {
-    const panels=[{data:slide.left,bg:COLORS.sky,text:COLORS.white},{data:slide.right,bg:COLORS.purple,text:COLORS.white}];
-    return <div className="relative w-full h-full rounded-xl overflow-hidden flex flex-col" style={{background:COLORS.white,border:`1px solid ${COLORS.border}`}}><div className="px-[6%] pt-[5%] pb-2"><SlideHeading index={index} heading={slide.heading} accent={accent}/></div><div className="flex-1 flex gap-3 px-[6%] pb-[5%] min-h-0">{panels.map((p,pi)=><div key={pi} className="flex-1 rounded-lg p-5 overflow-hidden" style={{background:p.bg}}><p className="text-sm font-bold text-center mb-4" style={{color:p.text}}>{p.data?.label}</p>{(p.data?.items||[]).map((item,i)=><p key={i} className="text-xs mb-3 leading-relaxed" style={{color:p.text}}>• {item}</p>)}</div>)}</div></div>;
-  }
-
-  return <div className="relative w-full h-full rounded-xl overflow-hidden flex" style={{ background: COLORS.white, border: `1px solid ${COLORS.border}` }}>
-    <div style={{ width: 10, background: accent }} />
-    <div className="flex-1 px-[6%] py-[5%] overflow-hidden"><SlideHeading index={index} heading={slide.heading} accent={accent}/><div style={{ marginLeft: 46 }}>
-      {slide.kind === "bullets" || slide.kind === "list" ? <div className={slide.kind === "list" ? "grid grid-cols-2 gap-2.5" : "flex flex-col gap-2.5"}>{(slide.items||[]).map((item,i)=>{const text=itemText(item); const icon=typeof item==="object"?item.icon:"check"; return <div key={i} className="flex items-center gap-2.5 rounded-lg px-3 py-2" style={{background:COLORS.lavender}}><div className="flex items-center justify-center rounded-full shrink-0" style={{width:20,height:20,background:accent,color:COLORS.white}}><SlideItemIcon icon={icon} size={11} color={COLORS.white}/></div><p className="text-sm font-semibold" style={{color:COLORS.textDark}}>{text}</p></div>})}</div>
-      : slide.kind === "process" ? <div className="flex items-center gap-2">{(slide.steps||[]).map((step,i)=><div key={i} className="flex-1 rounded-xl p-3 text-center" style={{background:accent,color:COLORS.white}}><p className="text-[10px] opacity-80 mb-1">STEP {i+1}</p><p className="text-xs font-bold">{itemText(step)}</p></div>)}</div>
-      : <><p className="text-base leading-relaxed mb-4" style={{color:COLORS.textMid}}>{slide.body}</p><SlideKeyPoints subpoints={slide.subpoints} accent={accent}/></>}
-    </div></div>
-  </div>;
+    </div>
+  );
 }
 
-function SlideHeading({ index, heading, accent }) {
-  return <div className="flex items-center gap-3 mb-2"><div className="flex items-center justify-center rounded-full shrink-0" style={{width:34,height:34,background:accent,color:COLORS.white}}><span className="text-sm font-bold">{index}</span></div><p className="text-lg font-bold" style={{color:COLORS.textDark}}>{heading}</p></div>;
+function ComparisonSlide({ slide, accent }) {
+  const left = slide.left || {};
+  const right = slide.right || {};
+  return (
+    <div className="h-full p-[7%]">
+      <SlideMeta index={0} label="Comparison" accent={accent} />
+      <h2 className="mt-4 font-black tracking-tight" style={{ fontSize: "clamp(26px,3.8vw,54px)", color: COLORS.textDark }}>{slide.heading}</h2>
+      <div className="grid grid-cols-[1fr_auto_1fr] gap-5 mt-[5%] items-stretch">
+        <ComparisonPanel side={left} accent={accent} label="A" />
+        <div className="flex items-center justify-center text-xs font-black" style={{ color: COLORS.textLight }}>VS</div>
+        <ComparisonPanel side={right} accent={COLORS.sky} label="B" />
+      </div>
+    </div>
+  );
 }
 
-function SlideVisual({ image, accent }) {
-  return <div className="relative flex-1 m-[6%] ml-0 rounded-2xl overflow-hidden flex items-center justify-center" style={{background:COLORS.lavender,border:`1px solid ${accent}55`}}>{image ? <img src={image} alt="Slide visual" className="w-full h-full object-cover" /> : <div className="rounded-full" style={{width:"45%",aspectRatio:"1",background:accent,opacity:.75}} />}</div>;
+function ComparisonPanel({ side, accent, label }) {
+  const title = typeof side === "object" ? side.title || side.heading || side.name || `Option ${label}` : side;
+  const content = typeof side === "object" ? side.content || side.description || side.text || "" : "";
+  const points = typeof side === "object" && Array.isArray(side.points) ? side.points : [];
+  return (
+    <div className="rounded-3xl p-6" style={{ background: `${accent}10`, border: `1px solid ${accent}55` }}>
+      <div className="flex items-center gap-2 mb-5">
+        <div className="rounded-full flex items-center justify-center text-[10px] font-black" style={{ width: 26, height: 26, background: accent, color: COLORS.white }}>{label}</div>
+        <p className="text-lg font-black" style={{ color: COLORS.textDark }}>{title}</p>
+      </div>
+      {content && <p className="text-sm leading-relaxed" style={{ color: COLORS.textMid }}>{content}</p>}
+      {points.length > 0 && <div className="mt-5 space-y-2">{points.slice(0, 5).map((point, i) => <div key={i} className="flex gap-2"><Check size={14} color={accent} /><p className="text-xs" style={{ color: COLORS.textMid }}>{typeof point === "object" ? point.text || point.title : point}</p></div>)}</div>}
+    </div>
+  );
+}
+
+function MapSlide({ slide, accent }) {
+  const items = (slide.items || []).slice(0, 5);
+  return (
+    <div className="h-full p-[7%]">
+      <SlideMeta index={0} label="System view" accent={accent} />
+      <h2 className="mt-4 font-black tracking-tight" style={{ fontSize: "clamp(26px,3.8vw,54px)", color: COLORS.textDark }}>{slide.heading}</h2>
+      {slide.body && <p className="mt-3 text-sm max-w-[70%]" style={{ color: COLORS.textMid }}>{slide.body}</p>}
+      <div className="grid grid-cols-5 gap-3 mt-[6%]">
+        {items.length ? items.map((item, i) => (
+          <div key={i} className="rounded-2xl p-4 min-h-[130px] flex flex-col justify-between" style={{ background: i === 2 ? `${accent}18` : "#F8F8F7", border: `1px solid ${i === 2 ? accent : COLORS.border}` }}>
+            <Network size={18} color={i === 2 ? accent : COLORS.textLight} />
+            <p className="text-xs font-bold leading-snug" style={{ color: COLORS.textDark }}>{typeof item === "object" ? item.text || item.title || item.name : item}</p>
+          </div>
+        )) : [0,1,2,3,4].map((n) => (
+          <div key={n} className="rounded-2xl p-4 min-h-[130px]" style={{ background: n === 2 ? `${accent}18` : "#F8F8F7", border: `1px solid ${n === 2 ? accent : COLORS.border}` }}>
+            <Network size={18} color={accent} />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function TakeawaySlide({ slide, accent }) {
+  const items = (slide.items || []).slice(0, 6);
+  return (
+    <div className="h-full p-[7%] flex flex-col">
+      <div className="flex items-center gap-2">
+        <Star size={16} color={COLORS.pink} fill={COLORS.pink} />
+        <span className="text-[10px] font-bold uppercase tracking-[0.18em]" style={{ color: COLORS.textLight }}>Final recap</span>
+      </div>
+      <h2 className="mt-4 font-black tracking-tight" style={{ fontSize: "clamp(30px,4.2vw,60px)", color: COLORS.textDark }}>{slide.heading}</h2>
+      <div className="grid grid-cols-3 gap-4 mt-[6%]">
+        {items.map((item, i) => (
+          <div key={i} className="rounded-2xl p-5" style={{ background: i === 0 ? COLORS.textDark : "#F8F8F7", color: i === 0 ? COLORS.white : COLORS.textDark, border: i === 0 ? "none" : `1px solid ${COLORS.border}` }}>
+            <p className="text-[10px] font-black mb-4" style={{ color: i === 0 ? COLORS.pink : accent }}>{String(i + 1).padStart(2, "0")}</p>
+            <p className="text-sm font-bold leading-relaxed">{typeof item === "object" ? item.text || item.title : item}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 function SlideKeyPoints({ subpoints, accent }) {
   const points = Array.isArray(subpoints) ? subpoints : [];
-
-  if (points.length === 0) {
-    return null;
-  }
+  if (!points.length) return null;
 
   return (
-    <div className="flex flex-col gap-1.5">
-      <p className="text-[9px] font-bold tracking-wide" style={{ color: accent }}>
-        KEY POINTS
-      </p>
-
-      {points.slice(0, 5).map((sp, i) => {
-        const text =
-          typeof sp === "object" && sp !== null
-            ? sp.text
-            : sp;
-
+    <div className="grid grid-cols-2 gap-2 mt-5">
+      {points.slice(0, 4).map((point, index) => {
+        const text = typeof point === "object" && point !== null ? point.text || point.title : point;
         if (!text) return null;
-
         return (
-          <div key={i} className="flex items-start gap-1.5">
-            <div
-              className="rounded-full shrink-0 mt-1"
-              style={{ width: 5, height: 5, background: accent }}
-            />
-            <p className="text-[10px] leading-snug" style={{ color: COLORS.textMid }}>
-              {text}
-            </p>
+          <div key={index} className="flex items-start gap-2 rounded-xl p-2.5" style={{ background: "#F8F8F7", border: `1px solid ${COLORS.border}` }}>
+            <div className="rounded-full mt-1 shrink-0" style={{ width: 6, height: 6, background: accent }} />
+            <p className="text-[10px] leading-relaxed" style={{ color: COLORS.textMid }}>{text}</p>
           </div>
         );
       })}

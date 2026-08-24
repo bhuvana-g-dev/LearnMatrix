@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+ import { useEffect, useMemo, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Bot,
@@ -2624,17 +2624,32 @@ function SlideVisual({ image, accent }) {
 }
 
 function SlideKeyPoints({ subpoints, accent }) {
+  const points = Array.isArray(subpoints) ? subpoints : [];
+
+  if (points.length === 0) {
+    return null;
+  }
+
   return (
     <div className="flex flex-col gap-1.5">
       <p className="text-[9px] font-bold tracking-wide" style={{ color: accent }}>
         KEY POINTS
       </p>
-      {subpoints.slice(0, 5).map((sp, i) => {
-        const text = typeof sp === "object" ? sp.text : sp;
+
+      {points.slice(0, 5).map((sp, i) => {
+        const text =
+          typeof sp === "object" && sp !== null
+            ? sp.text
+            : sp;
+
         if (!text) return null;
+
         return (
           <div key={i} className="flex items-start gap-1.5">
-            <div className="rounded-full shrink-0 mt-1" style={{ width: 5, height: 5, background: accent }} />
+            <div
+              className="rounded-full shrink-0 mt-1"
+              style={{ width: 5, height: 5, background: accent }}
+            />
             <p className="text-[10px] leading-snug" style={{ color: COLORS.textMid }}>
               {text}
             </p>

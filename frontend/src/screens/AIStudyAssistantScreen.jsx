@@ -2511,195 +2511,118 @@ function SlideCanvas({ slide, index }) {
   if (slide.kind === "title") {
     return (
       <div className="relative w-full h-full rounded-xl overflow-hidden" style={{ background: COLORS.sky }}>
-        <div
-          className="absolute rounded-full"
-          style={{ width: "55%", aspectRatio: "1/1", right: "-15%", top: "-35%", background: COLORS.purple, opacity: 0.75 }}
-        />
-        <div
-          className="absolute rounded-full"
-          style={{ width: "26%", aspectRatio: "1/1", right: "4%", bottom: "-12%", background: COLORS.pink, opacity: 0.5 }}
-        />
+        <div className="absolute rounded-full" style={{ width: "55%", aspectRatio: "1/1", right: "-15%", top: "-35%", background: COLORS.purple, opacity: 0.75 }} />
+        <div className="absolute rounded-full" style={{ width: "26%", aspectRatio: "1/1", right: "4%", bottom: "-12%", background: COLORS.pink, opacity: 0.5 }} />
         <div className="relative h-full flex flex-col justify-center px-[6%]">
           <div className="mb-3" style={{ width: 40, height: 3, background: COLORS.purple }} />
-          <p className="text-[11px] font-bold tracking-wide mb-2" style={{ color: COLORS.pink }}>
-            LEARNMATRIX
-          </p>
-          <p className="text-2xl font-bold leading-tight mb-3" style={{ color: COLORS.white, maxWidth: "70%" }}>
-            {slide.title}
-          </p>
-          <p className="text-sm" style={{ color: COLORS.lavender }}>
-            {slide.subtitle}
-          </p>
+          <p className="text-[11px] font-bold tracking-wide mb-2" style={{ color: COLORS.pink }}>LEARNMATRIX</p>
+          <p className="text-2xl font-bold leading-tight mb-3" style={{ color: COLORS.white, maxWidth: "70%" }}>{slide.title}</p>
+          <p className="text-sm" style={{ color: COLORS.lavender }}>{slide.subtitle}</p>
         </div>
       </div>
     );
   }
 
   const accent = SD_ACCENT_CYCLE[(index - 1) % SD_ACCENT_CYCLE.length];
-  const badgeText = accent === COLORS.pink ? COLORS.sky : COLORS.white;
+  const design = slide.design_type || "";
+  const itemText = (v) => (typeof v === "object" ? v?.text : v);
+  const labels = [...(slide.steps || []), ...(slide.items || []), ...(slide.subpoints || [])]
+    .map(itemText).filter(Boolean).slice(0, 6);
 
-  if (slide.kind === "comparison") {
-    const panels = [
-      { data: slide.left, bg: COLORS.sky, text: COLORS.white },
-      { data: slide.right, bg: COLORS.purple, text: COLORS.white },
-    ];
-    return (
-      <div className="relative w-full h-full rounded-xl overflow-hidden flex flex-col" style={{ background: COLORS.white, border: `1px solid ${COLORS.border}` }}>
-        <div className="px-[6%] pt-[5%] pb-2">
-          <div className="flex items-center gap-3 mb-2">
-            <div className="flex items-center justify-center rounded-full shrink-0" style={{ width: 34, height: 34, background: COLORS.purple, color: COLORS.white }}>
-              <span className="text-sm font-bold">{index}</span>
-            </div>
-            <p className="text-lg font-bold" style={{ color: COLORS.textDark }}>
-              {slide.heading}
-            </p>
-          </div>
-        </div>
-        <div className="flex-1 flex gap-3 px-[6%] pb-[5%] min-h-0">
-          {panels.map((p, pi) => (
-            <div key={pi} className="flex-1 rounded-lg p-3 overflow-hidden" style={{ background: p.bg }}>
-              <p className="text-xs font-bold text-center mb-2" style={{ color: p.text }}>
-                {p.data?.label}
-              </p>
-              <div className="flex flex-col gap-1.5">
-                {(p.data?.items || []).map((item, i) => (
-                  <div key={i} className="flex items-start gap-1.5">
-                    <div className="rounded-full shrink-0 mt-1" style={{ width: 5, height: 5, background: p.text }} />
-                    <p className="text-[11px] leading-snug" style={{ color: p.text }}>
-                      {item}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
+  if (design === "hero") {
+    return <div className="relative w-full h-full rounded-xl overflow-hidden flex" style={{ background: COLORS.sky }}>
+      <div className="absolute rounded-full" style={{ width: "42%", aspectRatio: "1/1", right: "-8%", top: "-12%", background: accent, opacity: .28 }} />
+      <div className="relative w-[58%] flex flex-col justify-center px-[8%]">
+        <span className="text-[10px] font-bold tracking-[0.2em] mb-4" style={{ color: accent }}>{String(index).padStart(2,"0")}</span>
+        <h2 className="text-3xl font-bold leading-tight mb-5" style={{ color: COLORS.white }}>{slide.heading}</h2>
+        <p className="text-sm leading-relaxed" style={{ color: COLORS.lavender }}>{slide.body}</p>
       </div>
-    );
+      <SlideVisual image={slide.image_url} accent={accent} />
+    </div>;
   }
 
-  return (
-    <div className="relative w-full h-full rounded-xl overflow-hidden flex" style={{ background: COLORS.white, border: `1px solid ${COLORS.border}` }}>
-      <div style={{ width: 10, background: accent }} />
-      <div className="flex-1 px-[6%] py-[5%] overflow-hidden">
-        <div className="flex items-center gap-3 mb-2">
-          <div
-            className="flex items-center justify-center rounded-full shrink-0"
-            style={{ width: 34, height: 34, background: accent, color: badgeText }}
-          >
-            <span className="text-sm font-bold">{index}</span>
-          </div>
-          <p className="text-lg font-bold" style={{ color: COLORS.textDark }}>
-            {slide.heading}
-          </p>
-        </div>
-        <div style={{ width: 44, height: 3, background: accent, marginLeft: 46, marginBottom: 16 }} />
-
-        <div style={{ marginLeft: 46 }}>
-          {slide.kind === "bullets" ? (
-            <div className="flex flex-col gap-2.5">
-              {slide.items.map((item, i) => {
-                const text = typeof item === "object" ? item.text : item;
-                const icon = typeof item === "object" ? item.icon : "check";
-                return (
-                  <div key={i} className="flex items-center gap-2.5 rounded-lg px-3 py-2" style={{ background: COLORS.lavender }}>
-                    <div
-                      className="flex items-center justify-center rounded-full shrink-0"
-                      style={{ width: 20, height: 20, background: accent, color: badgeText }}
-                    >
-                      <SlideItemIcon icon={icon} size={11} color={badgeText} />
-                    </div>
-                    <p className="text-sm font-semibold" style={{ color: COLORS.textDark }}>
-                      {text}
-                    </p>
-                  </div>
-                );
-              })}
-            </div>
-          ) : slide.kind === "list" ? (
-            <div className="grid grid-cols-2 gap-2.5">
-              {slide.items.map((item, i) => {
-                const text = typeof item === "object" ? item.text : item;
-                const icon = typeof item === "object" ? item.icon : "check";
-                return (
-                  <div key={i} className="rounded-lg px-3 py-2.5 flex items-start gap-2" style={{ background: COLORS.lavender, border: `1px solid ${accent}55` }}>
-                    <div
-                      className="flex items-center justify-center rounded-full shrink-0 mt-0.5"
-                      style={{ width: 18, height: 18, background: accent, color: badgeText }}
-                    >
-                      <SlideItemIcon icon={icon} size={10} color={badgeText} />
-                    </div>
-                    <p className="text-xs font-semibold leading-snug" style={{ color: COLORS.textDark }}>
-                      {text}
-                    </p>
-                  </div>
-                );
-              })}
-            </div>
-          ) : slide.kind === "process" ? (
-            <div className="flex items-stretch gap-1.5 overflow-x-auto pb-1">
-              {slide.steps.map((step, i) => {
-                const text = typeof step === "object" ? step.text : step;
-                return (
-                  <div key={i} className="flex items-center gap-1.5 shrink-0">
-                    <div
-                      className="rounded-lg px-3 py-3 flex flex-col items-center text-center gap-1.5"
-                      style={{ background: accent, width: 108 }}
-                    >
-                      <div
-                        className="flex items-center justify-center rounded-full shrink-0"
-                        style={{ width: 22, height: 22, background: COLORS.white, border: `1.5px solid ${COLORS.textDark}` }}
-                      >
-                        <span className="text-[11px] font-bold" style={{ color: COLORS.textDark }}>
-                          {i + 1}
-                        </span>
-                      </div>
-                      <p className="text-[11px] font-bold leading-tight" style={{ color: badgeText }}>
-                        {text}
-                      </p>
-                    </div>
-                    {i < slide.steps.length - 1 && <ChevronRight size={16} color={COLORS.textLight} className="shrink-0" />}
-                  </div>
-                );
-              })}
-            </div>
-          ) : slide.image ? (
-            <div className="flex gap-4">
-              <p className="text-sm leading-relaxed flex-1" style={{ color: COLORS.textMid }}>
-                {slide.body}
-              </p>
-              <div className="shrink-0 flex flex-col gap-2" style={{ width: 130 }}>
-                <div className="rounded-lg p-1" style={{ width: 130, height: 130, background: accent }}>
-                  <img src={slide.image} alt="" className="w-full h-full object-cover rounded-md" />
-                </div>
-                {slide.subpoints?.length ? <SlideKeyPoints subpoints={slide.subpoints} accent={accent} /> : null}
-              </div>
-            </div>
-          ) : slide.subpoints?.length ? (
-            <div className="flex gap-4">
-              <p className="text-sm leading-relaxed flex-1" style={{ color: COLORS.textMid }}>
-                {slide.body}
-              </p>
-              <div className="shrink-0" style={{ width: 130 }}>
-                <SlideKeyPoints subpoints={slide.subpoints} accent={accent} />
-              </div>
-            </div>
-          ) : (
-            <p className="text-sm leading-relaxed" style={{ color: COLORS.textMid }}>
-              {slide.body}
-            </p>
-          )}
-        </div>
+  if (design === "big_statement" || design === "visual_metaphor") {
+    return <div className="relative w-full h-full rounded-xl overflow-hidden flex" style={{ background: COLORS.white, border: `1px solid ${COLORS.border}` }}>
+      <div style={{ width: 12, background: accent }} />
+      <div className="flex-1 flex flex-col justify-center px-[8%]">
+        <span className="text-[10px] font-bold tracking-widest mb-4" style={{ color: accent }}>{String(index).padStart(2,"0")}</span>
+        <h2 className="text-xl font-bold mb-5" style={{ color: COLORS.textDark }}>{slide.heading}</h2>
+        <p className="text-3xl font-bold leading-tight" style={{ color: COLORS.sky }}>{slide.body || slide.emphasis}</p>
       </div>
-    </div>
-  );
+      <SlideVisual image={slide.image_url} accent={accent} />
+    </div>;
+  }
+
+  if (design === "timeline") {
+    return <div className="w-full h-full rounded-xl overflow-hidden p-[6%]" style={{ background: COLORS.white, border: `1px solid ${COLORS.border}` }}>
+      <SlideHeading index={index} heading={slide.heading} accent={accent} />
+      <div className="relative mt-[12%] mx-[4%]" style={{ height: "42%" }}>
+        <div className="absolute left-0 right-0 top-1/2" style={{ height: 4, background: COLORS.border }} />
+        <div className="relative flex justify-between h-full">{labels.map((label,i)=><div key={i} className="relative flex-1 flex flex-col items-center">
+          <div className="absolute top-1/2 -translate-y-1/2 rounded-full flex items-center justify-center text-[10px] font-bold" style={{ width: 30, height: 30, background: accent, color: COLORS.white }}>{i+1}</div>
+          <div className="absolute w-[110px] text-center text-[10px] font-semibold leading-snug" style={{ top: i%2===0 ? "0" : "62%", color: COLORS.textDark }}>{label}</div>
+        </div>)}</div>
+      </div>
+    </div>;
+  }
+
+  if (design === "cycle") {
+    return <div className="relative w-full h-full rounded-xl overflow-hidden p-[6%]" style={{ background: COLORS.white, border: `1px solid ${COLORS.border}` }}>
+      <SlideHeading index={index} heading={slide.heading} accent={accent} />
+      <div className="absolute left-1/2 top-[57%] -translate-x-1/2 -translate-y-1/2 rounded-full flex items-center justify-center text-center px-5" style={{ width: 150, height: 150, background: COLORS.sky, color: COLORS.white }}><span className="text-sm font-bold">{slide.emphasis || slide.heading}</span></div>
+      {labels.map((label,i)=>{ const pos=[["50%","22%"],["76%","38%"],["76%","70%"],["50%","83%"],["24%","70%"],["24%","38%"]][i]; return <div key={i} className="absolute rounded-xl px-3 py-2 text-center text-[10px] font-bold" style={{ left:pos[0], top:pos[1], transform:"translate(-50%,-50%)", width:120, background:i%2?COLORS.lavender:accent, color:i%2?COLORS.textDark:COLORS.white }}>{label}</div>})}
+    </div>;
+  }
+
+  if (design === "architecture" || design === "application_map") {
+    return <div className="relative w-full h-full rounded-xl overflow-hidden p-[6%]" style={{ background: COLORS.white, border: `1px solid ${COLORS.border}` }}>
+      <SlideHeading index={index} heading={slide.heading} accent={accent} />
+      <div className="absolute left-1/2 top-[58%] -translate-x-1/2 -translate-y-1/2 rounded-xl px-6 py-4 text-center" style={{ background: COLORS.sky, color: COLORS.white, width:210 }}><p className="text-sm font-bold">{slide.emphasis || slide.heading}</p></div>
+      {labels.map((label,i)=>{ const pos=[["18%","36%"],["50%","28%"],["82%","36%"],["18%","76%"],["50%","84%"],["82%","76%"]][i]; return <div key={i} className="absolute rounded-xl px-3 py-2 text-center text-[10px] font-semibold" style={{ left:pos[0], top:pos[1], transform:"translate(-50%,-50%)", width:135, background:COLORS.lavender, border:`1px solid ${accent}55`, color:COLORS.textDark }}>{label}</div>})}
+    </div>;
+  }
+
+  if (design === "problem_solution") {
+    const left=slide.left||{}, right=slide.right||{};
+    return <div className="w-full h-full rounded-xl overflow-hidden p-[6%]" style={{ background: COLORS.white, border: `1px solid ${COLORS.border}` }}>
+      <SlideHeading index={index} heading={slide.heading} accent={accent} />
+      <div className="grid grid-cols-2 gap-5 mt-8 h-[65%]">
+        <div className="rounded-2xl p-6" style={{ background: COLORS.sky, color: COLORS.white }}><p className="text-lg font-bold mb-5">{left.label || "Problem"}</p>{(left.items||[slide.body]).slice(0,4).map((x,i)=><p key={i} className="text-xs mb-3 leading-relaxed">• {x}</p>)}</div>
+        <div className="rounded-2xl p-6" style={{ background: accent, color: COLORS.textDark }}><p className="text-lg font-bold mb-5">{right.label || "Solution"}</p>{(right.items||[]).slice(0,4).map((x,i)=><p key={i} className="text-xs mb-3 leading-relaxed">✓ {x}</p>)}</div>
+      </div>
+    </div>;
+  }
+
+  if (design === "data_story") {
+    return <div className="w-full h-full rounded-xl overflow-hidden p-[6%]" style={{ background: COLORS.white, border: `1px solid ${COLORS.border}` }}>
+      <SlideHeading index={index} heading={slide.heading} accent={accent} />
+      <div className="mt-8 flex gap-8 items-center"><div className="flex-1 flex flex-col gap-4">{labels.map((x,i)=><div key={i}><p className="text-[10px] font-semibold mb-1" style={{color:COLORS.textDark}}>{x}</p><div className="rounded-full" style={{height:18,width:`${60+(i%3)*15}%`,background:i%2?COLORS.sky:accent}} /></div>)}</div><div className="w-[28%] rounded-2xl p-5 text-sm font-bold leading-relaxed" style={{background:COLORS.lavender,color:COLORS.textDark}}>{slide.body}</div></div>
+    </div>;
+  }
+
+  if (slide.kind === "comparison") {
+    const panels=[{data:slide.left,bg:COLORS.sky,text:COLORS.white},{data:slide.right,bg:COLORS.purple,text:COLORS.white}];
+    return <div className="relative w-full h-full rounded-xl overflow-hidden flex flex-col" style={{background:COLORS.white,border:`1px solid ${COLORS.border}`}}><div className="px-[6%] pt-[5%] pb-2"><SlideHeading index={index} heading={slide.heading} accent={accent}/></div><div className="flex-1 flex gap-3 px-[6%] pb-[5%] min-h-0">{panels.map((p,pi)=><div key={pi} className="flex-1 rounded-lg p-5 overflow-hidden" style={{background:p.bg}}><p className="text-sm font-bold text-center mb-4" style={{color:p.text}}>{p.data?.label}</p>{(p.data?.items||[]).map((item,i)=><p key={i} className="text-xs mb-3 leading-relaxed" style={{color:p.text}}>• {item}</p>)}</div>)}</div></div>;
+  }
+
+  return <div className="relative w-full h-full rounded-xl overflow-hidden flex" style={{ background: COLORS.white, border: `1px solid ${COLORS.border}` }}>
+    <div style={{ width: 10, background: accent }} />
+    <div className="flex-1 px-[6%] py-[5%] overflow-hidden"><SlideHeading index={index} heading={slide.heading} accent={accent}/><div style={{ marginLeft: 46 }}>
+      {slide.kind === "bullets" || slide.kind === "list" ? <div className={slide.kind === "list" ? "grid grid-cols-2 gap-2.5" : "flex flex-col gap-2.5"}>{(slide.items||[]).map((item,i)=>{const text=itemText(item); const icon=typeof item==="object"?item.icon:"check"; return <div key={i} className="flex items-center gap-2.5 rounded-lg px-3 py-2" style={{background:COLORS.lavender}}><div className="flex items-center justify-center rounded-full shrink-0" style={{width:20,height:20,background:accent,color:COLORS.white}}><SlideItemIcon icon={icon} size={11} color={COLORS.white}/></div><p className="text-sm font-semibold" style={{color:COLORS.textDark}}>{text}</p></div>})}</div>
+      : slide.kind === "process" ? <div className="flex items-center gap-2">{(slide.steps||[]).map((step,i)=><div key={i} className="flex-1 rounded-xl p-3 text-center" style={{background:accent,color:COLORS.white}}><p className="text-[10px] opacity-80 mb-1">STEP {i+1}</p><p className="text-xs font-bold">{itemText(step)}</p></div>)}</div>
+      : <><p className="text-base leading-relaxed mb-4" style={{color:COLORS.textMid}}>{slide.body}</p><SlideKeyPoints subpoints={slide.subpoints} accent={accent}/></>}
+    </div></div>
+  </div>;
 }
 
-/** SlideKeyPoints — the in-app preview's counterpart to
- * services/ppt_service.py's _add_key_points_panel / services/pdf_service.py's
- * _draw_key_points_panel: a compact "Key Points" list of short highlight
- * bullets (see backend agents/slide_deck_agent.py's "subpoints") stacked
- * in the text slide's sidebar, below the image when one is present. */
+function SlideHeading({ index, heading, accent }) {
+  return <div className="flex items-center gap-3 mb-2"><div className="flex items-center justify-center rounded-full shrink-0" style={{width:34,height:34,background:accent,color:COLORS.white}}><span className="text-sm font-bold">{index}</span></div><p className="text-lg font-bold" style={{color:COLORS.textDark}}>{heading}</p></div>;
+}
+
+function SlideVisual({ image, accent }) {
+  return <div className="relative flex-1 m-[6%] ml-0 rounded-2xl overflow-hidden flex items-center justify-center" style={{background:COLORS.lavender,border:`1px solid ${accent}55`}}>{image ? <img src={image} alt="Slide visual" className="w-full h-full object-cover" /> : <div className="rounded-full" style={{width:"45%",aspectRatio:"1",background:accent,opacity:.75}} />}</div>;
+}
+
 function SlideKeyPoints({ subpoints, accent }) {
   return (
     <div className="flex flex-col gap-1.5">

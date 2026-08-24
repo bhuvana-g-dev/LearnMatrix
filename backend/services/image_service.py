@@ -56,6 +56,48 @@ def generate_ai_image(query: str) -> bytes | None:
     return generate_image(prompt)
 
 
+DIAGRAM_ARCHETYPES = {
+    "process": "a circular flywheel diagram with curved arrows connecting stages in a loop, OR a left-to-right numbered step-flow with connecting arrows",
+    "comparison": "a symmetrical weighing-scale or split vertical-panel diagram contrasting two sides",
+    "list": "a grid or radial cluster of labelled icon modules connected to a central concept",
+    "text": "a conceptual explanatory diagram or chart (e.g. a rising trend line, layered pyramid, gauge/meter, or connected-node map) that visually represents the idea",
+}
+
+
+def generate_diagram_illustration(heading: str, description: str, layout: str) -> bytes | None:
+    """Generates ONE large, full-panel diagram-style illustration for a
+    slide, in the spirit of NotebookLM-style infographic decks (data
+    diagrams, flywheels, gauges, pillars) rather than a generic stock
+    photo or a small decorative graphic. Picks a diagram archetype from
+    DIAGRAM_ARCHETYPES based on the slide's layout so a "process"
+    section gets a flow/cycle diagram, a "comparison" section gets a
+    scale/split-panel diagram, etc.
+
+    Deliberately asks for NO text/lettering baked into the image — the
+    real heading and key points are drawn as actual PowerPoint text
+    elsewhere on the slide (editable, always spelled correctly), so the
+    image only needs to carry the visual/diagrammatic weight. Returns
+    None on any failure, same graceful-degradation contract as
+    generate_ai_image."""
+    if not heading or not heading.strip():
+        return None
+    from utils.gemini_client import generate_image
+
+    archetype = DIAGRAM_ARCHETYPES.get(layout, DIAGRAM_ARCHETYPES["text"])
+    brief = (description or "").strip()[:280]
+    prompt = (
+        f"A professional infographic-style diagram illustration for a presentation slide "
+        f"titled '{heading.strip()}'. Concept to illustrate: {brief or heading.strip()}. "
+        f"Render it as {archetype}. "
+        f"Style: modern flat vector infographic, clean geometric shapes, subtle gradients and "
+        f"soft shadows, navy blue and gold color palette, plenty of negative space, "
+        f"widescreen 16:9 composition, centered composition with balanced margins. "
+        f"Absolutely NO text, NO letters, NO numbers, NO labels, NO watermark, NO logos "
+        f"anywhere in the image — diagram shapes and arrows only."
+    )
+    return generate_image(prompt)
+
+
 def find_photo_url(query: str) -> str | None:
     """Returns a Pexels photo URL matching `query`, or None if
     unavailable. This is deliberately a URL, not the image bytes — the

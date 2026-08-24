@@ -319,15 +319,23 @@ def build_pptx_from_deck_content(notes: dict, subtitle: str) -> BytesIO:
         accent = ACCENT_CYCLE[i % len(ACCENT_CYCLE)]
         kind = slide_data["kind"]
         if kind == "bullets":
-            _add_bullet_slide(prs, blank_layout, slide_data["heading"], slide_data["items"], i + 1, accent)
+            slide = _add_bullet_slide(prs, blank_layout, slide_data["heading"], slide_data["items"], i + 1, accent)
         elif kind == "list":
-            _add_list_slide(prs, blank_layout, slide_data["heading"], slide_data["items"], i + 1, accent)
+            slide = _add_list_slide(prs, blank_layout, slide_data["heading"], slide_data["items"], i + 1, accent)
         elif kind == "process":
-            _add_process_slide(prs, blank_layout, slide_data["heading"], slide_data["steps"], i + 1, accent)
+            slide = _add_process_slide(prs, blank_layout, slide_data["heading"], slide_data["steps"], i + 1, accent)
         elif kind == "comparison":
-            _add_comparison_slide(prs, blank_layout, slide_data["heading"], slide_data["left"], slide_data["right"], i + 1)
+            slide = _add_comparison_slide(prs, blank_layout, slide_data["heading"], slide_data["left"], slide_data["right"], i + 1)
         else:
-            _add_text_slide(prs, blank_layout, slide_data["heading"], slide_data["body"], i + 1, accent, slide_data.get("image_url"), slide_data.get("subpoints"))
+            slide = _add_text_slide(prs, blank_layout, slide_data["heading"], slide_data["body"], i + 1, accent, slide_data.get("image_url"), slide_data.get("subpoints"))
+
+        # Give every content slide (not just "text") a shot at the large
+        # AI diagram panel — this is the main visual upgrade over the
+        # old "small corner photo on text slides only" behaviour.
+        # Comparison slides draw their own chrome in GOLD regardless of
+        # the accent cycle (see _add_comparison_slide), so match that.
+        diagram_accent = GOLD if kind == "comparison" else accent
+        _add_diagram_panel(slide, slide_data["heading"], _section_description(slide_data), kind, diagram_accent)
 
     buffer = BytesIO()
     prs.save(buffer)
@@ -438,6 +446,86 @@ def _add_title_slide(prs: Presentation, layout, title: str, subtitle: str) -> No
     sub_run.font.name = BODY_FONT
 
 
+# Shared right-hand panel reserved on every content slide for a large
+# AI-generated diagram illustration (see services/image_service.py's
+# generate_diagram_illustration) — this is what closes the "looks too
+# plain / just bullets" gap against NotebookLM-style decks: instead of
+# a small corner photo, every slide gets a full-height custom diagram,
+# and the text-bearing layout (paragraph / list cards / process chips /
+# comparison panels) narrows to make room for it on the left.
+DIAGRAM_X_IN = 8.55
+DIAGRAM_Y_IN = 1.85
+DIAGRAM_W_IN = 4.15
+DIAGRAM_H_IN = 5.05
+CONTENT_RIGHT_EDGE_IN = DIAGRAM_X_IN - 0.35  # left content area stops here to leave a gap
+
+
+DIAGRAM_LAYOUT_FALLBACK_ICON = {"process": "gear", "comparison": "star", "list": "network", "text": "book"}
+
+
+def _add_diagram_panel(slide, heading: str, description: str, layout: str, accent) -> bool:
+    """Fetches and places one AI diagram illustration in the shared
+    right-hand panel (see constants above). If AI generation is
+    unavailable or fails (missing GEMINI_API_KEY, safety block, network
+    hiccup — see generate_diagram_illustration), falls back to a soft
+    decorative panel with a large icon motif instead of leaving that
+    whole column blank white space, since the surrounding layouts have
+    already been narrowed to make room for this column either way.
+    Returns True only when the real AI picture was placed."""
+    from services.image_service import generate_diagram_illustration
+
+    try:
+        image_bytes = generate_diagram_illustration(heading, description, layout)
+    except Exception:
+        image_bytes = None
+
+    x, y = Inches(DIAGRAM_X_IN), Inches(DIAGRAM_Y_IN)
+    w, h = Inches(DIAGRAM_W_IN), Inches(DIAGRAM_H_IN)
+    frame = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, x - Inches(0.12), y - Inches(0.12), w + Inches(0.24), h + Inches(0.24))
+    frame.adjustments[0] = 0.04
+    _set_fill(frame, accent)
+    frame.shadow.inherit = False
+
+    if image_bytes:
+        try:
+            slide.shapes.add_picture(BytesIO(image_bytes), x, y, width=w, height=h)
+            return True
+        except Exception:
+            pass  # falls through to the decorative fallback below
+
+    # Fallback: cream panel with a big centered icon motif, echoing the
+    # brand's badge/icon language rather than an obviously-missing photo.
+    fallback = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, x, y, w, h)
+    fallback.adjustments[0] = 0.06
+    _set_fill(fallback, CREAM)
+    fallback.shadow.inherit = False
+    icon = DIAGRAM_LAYOUT_FALLBACK_ICON.get(layout, "book")
+    icon_size = Inches(1.6)
+    _icon_badge(slide, icon, x + (w - icon_size) / 2, y + (h - icon_size) / 2, icon_size, accent)
+    return False
+
+
+def _section_description(slide_data: dict) -> str:
+    """Best-effort plain-text summary of a slide's content, used as the
+    creative brief for _add_diagram_panel — pulled from whichever field
+    that slide kind actually has (paragraph body, list items, process
+    steps, or comparison panels)."""
+    kind = slide_data.get("kind")
+    if kind == "text":
+        return (slide_data.get("body") or "")[:280]
+    if kind in ("list", "bullets"):
+        items = [(_item_text_icon(it)[0]) for it in slide_data.get("items", [])[:6]]
+        return "; ".join(items)
+    if kind == "process":
+        steps = [s.get("text", "") if isinstance(s, dict) else str(s) for s in slide_data.get("steps", [])[:6]]
+        return "; ".join(steps)
+    if kind == "comparison":
+        left = slide_data.get("left", {})
+        right = slide_data.get("right", {})
+        return f"{left.get('label', '')}: {'; '.join(left.get('items', [])[:3])} vs {right.get('label', '')}: {'; '.join(right.get('items', [])[:3])}"
+    return ""
+
+
 def _add_slide_chrome(prs, slide, heading, index, accent):
     """Shared header used by every content slide: colored left accent bar,
     a numbered badge, and the heading — keeps _add_text_slide and
@@ -484,54 +572,43 @@ def _add_slide_chrome(prs, slide, heading, index, accent):
     rule.shadow.inherit = False
 
 
-def _add_text_slide(prs: Presentation, layout, heading: str, body: str, index: int, accent, image_url: str | None = None, subpoints: list | None = None) -> None:
+def _add_text_slide(prs: Presentation, layout, heading: str, body: str, index: int, accent, image_url: str | None = None, subpoints: list | None = None):
+    """NOTE: the right-hand column (image_url / subpoints "Key Points"
+    card) that used to live on THIS slide has been superseded by the
+    shared full-height AI diagram panel (_add_diagram_panel, called
+    once for every slide kind from build_pptx_from_deck_content) — so
+    the paragraph now always reserves that space rather than only when
+    an image/subpoints happened to be present. image_url/subpoints are
+    kept as accepted params (existing callers still pass them) but are
+    intentionally unused now to avoid drawing two things in the same
+    spot."""
     slide = prs.slides.add_slide(layout)
     _add_slide_chrome(prs, slide, heading, index, accent)
 
-    # When a photo/illustration is available for this section (AI-
-    # generated or Pexels — see services/slide_deck_service.py), the
-    # text column narrows to make room for it on the right instead of
-    # running full-width. Sub-point highlights (see
-    # agents/slide_deck_agent.py) share that same right-hand column,
-    # stacking below the image when both are present.
-    image_bytes = None
-    if image_url:
-        from services.image_service import fetch_image_bytes
-        image_bytes = fetch_image_bytes(image_url)
-
-    has_sidebar = bool(image_bytes) or bool(subpoints)
-    text_width = Inches(6.6) if has_sidebar else Inches(11.1)
+    text_width = Inches(CONTENT_RIGHT_EDGE_IN - 1.55)
     content_h_in = 5.35
 
     sentences = [s.strip() for s in body.replace("\n", " ").split(". ") if s.strip()]
     if not sentences:
         sentences = [body[:2000]]
 
-    # No sidebar (no image/subpoints) means the paragraph is the ONLY
-    # thing on the slide, so a short section (a demoted-to-text
-    # section can legitimately be just 1-2 sentences — see
-    # agents/slide_deck_agent.py) used to leave a big blank strip
-    # below it. Scale font size UP and center the block vertically so
-    # a short paragraph still reads as an intentional, full slide
+    # Scale font size to sentence count and vertically center the block
+    # so a short paragraph still reads as an intentional, full slide
     # instead of a stub sitting in the top-left corner.
-    if has_sidebar:
-        body_font_size = Pt(16) if len(sentences) > 5 else Pt(18)
-        body_top_in = 1.7
+    if len(sentences) <= 3:
+        body_font_size = Pt(26)
+    elif len(sentences) <= 5:
+        body_font_size = Pt(20)
     else:
-        if len(sentences) <= 3:
-            body_font_size = Pt(30)
-        elif len(sentences) <= 5:
-            body_font_size = Pt(22)
-        else:
-            body_font_size = Pt(18)
-        # Rough line-count estimate to vertically center the block —
-        # doesn't need to be exact, just close enough that a short
-        # paragraph isn't glued to the top of an otherwise empty slide.
-        chars_per_line = max(20, int(text_width / 914400 * 96 / (body_font_size.pt * 0.55)))
-        total_chars = sum(len(s) for s in sentences)
-        est_lines = max(len(sentences), -(-total_chars // chars_per_line))
-        est_h_in = est_lines * (body_font_size.pt / 72) * 1.7
-        body_top_in = 1.7 + max(0, (content_h_in - est_h_in) / 2)
+        body_font_size = Pt(17)
+    # Rough line-count estimate to vertically center the block — doesn't
+    # need to be exact, just close enough that a short paragraph isn't
+    # glued to the top of an otherwise empty slide.
+    chars_per_line = max(20, int(text_width / 914400 * 96 / (body_font_size.pt * 0.55)))
+    total_chars = sum(len(s) for s in sentences)
+    est_lines = max(len(sentences), -(-total_chars // chars_per_line))
+    est_h_in = est_lines * (body_font_size.pt / 72) * 1.7
+    body_top_in = 1.7 + max(0, (content_h_in - est_h_in) / 2)
 
     body_box = slide.shapes.add_textbox(Inches(1.55), Inches(body_top_in), text_width, Inches(content_h_in))
     text_frame = body_box.text_frame
@@ -552,36 +629,7 @@ def _add_text_slide(prs: Presentation, layout, heading: str, body: str, index: i
         run.font.color.rgb = NAVY_MID
         run.font.name = BODY_FONT
 
-    sidebar_top = Inches(1.85)
-    if image_bytes:
-        # BUG FIX: the image height was a fixed 3.15in regardless of
-        # how many "Key Points" would be stacked below it, so a
-        # section with 4 subpoints routinely pushed the last one or
-        # two PAST the bottom of the slide — not cropped, just placed
-        # off-page and invisible (that's the "only 3 of 4 key points
-        # showed up" bug). The image now shrinks (within a floor of
-        # 1.9in so it's never a sliver) to whatever height leaves the
-        # subpoints panel enough room to fit above the bottom margin.
-        panel_h_in = _estimate_subpoints_panel_height(subpoints)
-        max_img_h_in = 7.0 - 0.4 - panel_h_in - 1.85
-        img_h_in = max(1.9, min(3.15, max_img_h_in)) if subpoints else 3.15
-        img_left, img_top, img_w, img_h = Inches(8.45), sidebar_top, Inches(4.2), Inches(img_h_in)
-        # A plain add_picture() would be a hard-edged rectangle sitting on
-        # a page of otherwise all-rounded shapes — a soft accent frame
-        # behind it (peeking out on two sides) reads as an intentional
-        # framed photo instead of a raw pasted image.
-        frame = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, img_left - Inches(0.12), img_top - Inches(0.12), img_w + Inches(0.24), img_h + Inches(0.24))
-        frame.adjustments[0] = 0.04
-        _set_fill(frame, accent)
-        frame.shadow.inherit = False
-        try:
-            slide.shapes.add_picture(BytesIO(image_bytes), img_left, img_top, width=img_w, height=img_h)
-            sidebar_top = img_top + img_h + Inches(0.4)
-        except Exception:
-            pass  # a corrupt/unsupported download shouldn't break the whole deck — the accent frame alone still looks intentional
-
-    if subpoints:
-        _add_key_points_panel(slide, subpoints, Inches(8.45), sidebar_top, Inches(4.2), accent)
+    return slide
 
 
 def _estimate_subpoints_panel_height(subpoints: list) -> float:
@@ -703,12 +751,15 @@ def _item_text_icon(item) -> tuple[str, str]:
     return str(item), "check"
 
 
-def _add_bullet_slide(prs: Presentation, layout, heading: str, bullets: list, index: int, accent) -> None:
+def _add_bullet_slide(prs: Presentation, layout, heading: str, bullets: list, index: int, accent):
     """Key Takeaways — each point in its own soft-tinted rounded card
-    with a checkmark badge, instead of a plain circle+text bullet line."""
+    with a checkmark badge, instead of a plain circle+text bullet line.
+    Cards now sit in the left column only — the right column is the
+    shared AI diagram panel (_add_diagram_panel)."""
     slide = prs.slides.add_slide(layout)
     _add_slide_chrome(prs, slide, heading, index, accent)
 
+    card_w_in = CONTENT_RIGHT_EDGE_IN - 1.55
     # Card height scales to fill down to the bottom margin (see
     # _distribute_fill) — a deck with only 4-5 takeaways used to leave
     # a tall blank gap under the last card.
@@ -719,24 +770,26 @@ def _add_bullet_slide(prs: Presentation, layout, heading: str, bullets: list, in
     icon_size = Inches(0.4) if card_h_in <= 0.9 else Inches(0.5)
     for b in bullets:
         text, icon = _item_text_icon(b)
-        card = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, Inches(1.55), top, Inches(10.9), card_h)
+        card = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, Inches(1.55), top, Inches(card_w_in), card_h)
         card.adjustments[0] = 0.18
         _set_fill(card, CREAM)
         card.shadow.inherit = False
 
         _icon_badge(slide, icon, Inches(1.75), top + (card_h - icon_size) / 2, icon_size, accent)
 
-        text_box = slide.shapes.add_textbox(Inches(2.35), top + Inches(0.06), Inches(9.9), card_h - Inches(0.1))
+        text_box = slide.shapes.add_textbox(Inches(2.35), top + Inches(0.06), Inches(card_w_in - 1.0), card_h - Inches(0.1))
         tf = text_box.text_frame
         tf.word_wrap = True
         tf.vertical_anchor = MSO_ANCHOR.MIDDLE
         tf.text = text
         run = tf.paragraphs[0].runs[0]
-        run.font.size = Pt(16) if card_h_in <= 0.9 else Pt(18)
+        run.font.size = Pt(15) if card_h_in <= 0.9 else Pt(17)
         run.font.bold = True
         run.font.color.rgb = NAVY
         run.font.name = HEADING_FONT
         top += card_h + Inches(gap_in)
+
+    return slide
 
 
 def _add_list_slide(prs: Presentation, layout, heading: str, items: list, index: int, accent) -> None:
@@ -749,14 +802,16 @@ def _add_list_slide(prs: Presentation, layout, heading: str, items: list, index:
     to the bottom margin (see _distribute_fill) instead of a fixed
     1.05in — a 3-4 item list used to leave a big blank strip at the
     bottom of the slide; now the grid grows to occupy the full content
-    area (with any small leftover centered) regardless of item count."""
+    area (with any small leftover centered) regardless of item count.
+    Grid now sits in the left column only — the right column is the
+    shared AI diagram panel (_add_diagram_panel)."""
     slide = prs.slides.add_slide(layout)
     _add_slide_chrome(prs, slide, heading, index, accent)
 
-    cols = 2 if len(items) <= 4 else 3
+    cols = 1 if len(items) <= 3 else 2
     gap_in = 0.3
     area_left, area_top_in = Inches(1.55), 1.85
-    area_w = prs.slide_width - area_left - Inches(0.6)
+    area_w = Inches(CONTENT_RIGHT_EDGE_IN) - area_left
     card_w = (area_w - Inches(gap_in) * (cols - 1)) / cols
     rows = -(-len(items) // cols)  # ceil
     avail_h_in = 7.5 - area_top_in - 0.5  # down to bottom margin
@@ -790,18 +845,22 @@ def _add_list_slide(prs: Presentation, layout, heading: str, items: list, index:
         run.font.color.rgb = NAVY
         run.font.name = HEADING_FONT
 
+    return slide
 
-def _add_process_slide(prs: Presentation, layout, heading: str, steps: list, index: int, accent) -> None:
+
+def _add_process_slide(prs: Presentation, layout, heading: str, steps: list, index: int, accent):
     """"How it works" / ordered setup steps — a left-to-right chip flow
     with numbered circles and arrow connectors, instead of a bulleted
-    list that doesn't read as a sequence."""
+    list that doesn't read as a sequence. Chip row now sits in the left
+    column only — the right column is the shared AI diagram panel
+    (_add_diagram_panel)."""
     slide = prs.slides.add_slide(layout)
     _add_slide_chrome(prs, slide, heading, index, accent)
 
     n = len(steps)
     area_left = Inches(1.55)
-    area_w = prs.slide_width - area_left - Inches(0.6)
-    arrow_w = Inches(0.45)
+    area_w = Inches(CONTENT_RIGHT_EDGE_IN) - area_left
+    arrow_w = Inches(0.35)
     # Chip height GROWS for a short sequence (2-3 steps), and the whole
     # row is centered in the available vertical space, instead of a
     # fixed 1.6in row sitting near the top with a big blank stretch
@@ -854,18 +913,23 @@ def _add_process_slide(prs: Presentation, layout, heading: str, steps: list, ind
             arrow.shadow.inherit = False
             x += arrow_w
 
+    return slide
 
-def _add_comparison_slide(prs: Presentation, layout, heading: str, left: dict, right: dict, index: int) -> None:
+
+def _add_comparison_slide(prs: Presentation, layout, heading: str, left: dict, right: dict, index: int):
     """Pros/cons, before/after, X vs Y — two colored columns side by
-    side instead of one paragraph trying to hold both sides at once."""
+    side instead of one paragraph trying to hold both sides at once.
+    Columns now sit in the left content column only — the right column
+    is the shared AI diagram panel (_add_diagram_panel), e.g. a
+    weighing-scale illustration for this same comparison."""
     slide = prs.slides.add_slide(layout)
     _add_slide_chrome(prs, slide, heading, index, GOLD)
 
     col_top = Inches(1.85)
     col_h = Inches(5.15)
-    gap = Inches(0.35)
+    gap = Inches(0.25)
     area_left = Inches(1.55)
-    area_w = prs.slide_width - area_left - Inches(0.6)
+    area_w = Inches(CONTENT_RIGHT_EDGE_IN) - area_left
     col_w = (area_w - gap) / 2
 
     panels = [(left, NAVY, area_left), (right, GOLD, area_left + col_w + gap)]
@@ -909,6 +973,8 @@ def _add_comparison_slide(prs: Presentation, layout, heading: str, left: dict, r
             item_run.font.color.rgb = WHITE if color != GOLD else NAVY
             item_run.font.name = BODY_FONT
             item_top += Inches(item_h_in)
+
+    return slide
 
 
 def _set_transparency(shape, alpha_pct: int) -> None:

@@ -317,6 +317,48 @@ export default function ResourceBankScreen({ admin }) {
     }
   };
 
+  // VIDEO-ONLY, one-click path (added for the demo — simpler than the
+  // full "Generate & Publish Now" flow below since it skips AI docs/
+  // articles/github/cheatsheet entirely and just publishes ONE real
+  // YouTube video, immediately verified, for the exact (skill,
+  // effectiveTopic) the live student page will request. articleCount:0
+  // tells the backend to skip article generation cleanly (see
+  // services/resource_review_service.py's generate_and_auto_verify()).
+  // To confirm it actually reflects live: open that skill/topic(/lesson)
+  // as a student and check the video shown matches result.videos[0].
+  const handleGenerateVideo = async () => {
+    setSuggestError("");
+    setSuggestMessage("");
+    if (!suggestSkill || !suggestTopic.trim()) {
+      setSuggestError("Select a skill and enter a topic first.");
+      return;
+    }
+    if (!admin?.email) {
+      setSuggestError("No logged-in admin identity found — please log back in.");
+      return;
+    }
+    setSuggesting("video");
+    try {
+      const result = await bulkGenerateAndVerify(suggestSkill, effectiveTopic, admin.email, {
+        articleCount: 0,
+        videoCount: 1,
+      });
+      setSuggestMessage(
+        result.videos.length > 0
+          ? `Published: "${result.videos[0].title}" for ${suggestSkill} / ${effectiveTopic} — verified by ${admin.email}. Open this topic as a student to confirm it shows.`
+          : "No video found for that skill/topic — try a more specific topic name."
+      );
+      if (result.errors.length > 0) {
+        setSuggestError(result.errors.join(" · "));
+      }
+      await loadResources();
+    } catch (err) {
+      setSuggestError(err.message || "Video generation failed.");
+    } finally {
+      setSuggesting("");
+    }
+  };
+
   const handleBulkGenerate = async () => {
     setSuggestError("");
     setSuggestMessage("");
@@ -455,17 +497,32 @@ export default function ResourceBankScreen({ admin }) {
             ))}
           </select>
           <motion.button
-            onClick={() => handleSuggest("youtube")}
+            onClick={handleGenerateVideo}
             disabled={!!suggesting}
             whileHover={{ y: -1 }}
+            title="Publishes ONE real YouTube video immediately for this exact skill/topic(/lesson) — no docs/articles/github/cheatsheet, no review queue."
             className="flex items-center gap-1.5 text-sm font-semibold"
             style={{
               padding: "9px 16px", borderRadius: 9999, background: "#FF0000", color: "#fff",
               border: "none", cursor: suggesting ? "default" : "pointer", opacity: suggesting ? 0.7 : 1,
             }}
           >
+            {suggesting === "video" ? <Loader2 size={14} className="animate-spin" /> : <Youtube size={14} />}
+            Generate &amp; Publish Video
+          </motion.button>
+          <motion.button
+            onClick={() => handleSuggest("youtube")}
+            disabled={!!suggesting}
+            whileHover={{ y: -1 }}
+            title="Search only — saves as pending for review, doesn't publish."
+            className="flex items-center gap-1.5 text-sm font-semibold"
+            style={{
+              padding: "9px 16px", borderRadius: 9999, background: "#fff", color: "#DC2626",
+              border: "1px solid #DC2626", cursor: suggesting ? "default" : "pointer", opacity: suggesting ? 0.7 : 1,
+            }}
+          >
             {suggesting === "youtube" ? <Loader2 size={14} className="animate-spin" /> : <Youtube size={14} />}
-            Search YouTube
+            Search Only (review queue)
           </motion.button>
           <motion.button
             onClick={() => handleSuggest("ai")}

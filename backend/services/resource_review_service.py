@@ -131,17 +131,26 @@ def generate_and_auto_verify(
     db = get_firestore_client()
     created = {"skill": skill, "topic": topic, "articles": [], "videos": [], "errors": []}
 
+    # VIDEO-ONLY MODE: article_count <= 0 means "skip article/GitHub/
+    # cheatsheet generation entirely" (used by the Resource Bank's
+    # "Generate & Publish Video" action — see ResourceBankScreen.jsx).
+    # Guarded here rather than left to fall through to the agent call
+    # below: ResourceSuggestionAgent.run() requires 1 <= count <= 10 and
+    # raises for count=0, which would otherwise land a confusing
+    # "count must be between 1 and 10" line in created["errors"] on
+    # every video-only run, even though nothing actually went wrong.
     try:
-        agent = ResourceSuggestionAgent()
-        suggestions = agent.run(skill=skill, topic=topic, count=article_count)
-        for s in suggestions:
-            created["articles"].append(
-                add_resource(
-                    db, skill=skill, topic=topic, resource_type=s["type"],
-                    title=s["title"], url=s["url"],
-                    status="verified", source="ai_suggested", verified_by=verified_by,
+        if article_count > 0:
+            agent = ResourceSuggestionAgent()
+            suggestions = agent.run(skill=skill, topic=topic, count=article_count)
+            for s in suggestions:
+                created["articles"].append(
+                    add_resource(
+                        db, skill=skill, topic=topic, resource_type=s["type"],
+                        title=s["title"], url=s["url"],
+                        status="verified", source="ai_suggested", verified_by=verified_by,
+                    )
                 )
-            )
     except ResourceSuggestionError as exc:
         created["errors"].append(f"article/github generation: {exc}")
 

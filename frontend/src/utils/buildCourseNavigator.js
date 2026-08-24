@@ -17,8 +17,10 @@
  * whether a topic can be opened.
  *
  * PER-TOPIC FOCUS BAND (this revision): the skill-level focusBand below
- * is only ever a STARTING point — one band computed once from the
- * whole-skill diagnostic. Once a learner has actually taken a TOPIC's
+ * is only ever a STARTING point — one band computed once, either from
+ * the whole-skill diagnostic ("upcoming" skills) or from the mastered/
+ * not-assessed starting defaults (see roadmap_service.py). Once a
+ * learner has actually taken a TOPIC's
  * own quiz (backend/services/topic_quiz_service.py), that topic gets
  * its own FocusBand computed from ITS Easy/Medium/Hard breakdown
  * (backend/services/focus_band.py, same function, topic-scoped data —
@@ -48,12 +50,17 @@
 import { isTopicFullyComplete, hasLessonData, getLessonProgressCounts } from "./lessonProgress";
 
 // A skill's roadmap-computed focusBand (fundamentals/application/
-// advanced/polish) only exists for status="upcoming" skills — that's
-// the ONE band the Roadmap Agent scored from the diagnostic breakdown.
-// Skills that are already mastered or were never assessed don't have a
-// computed band at all, so "application" (a balanced, moderate default)
-// is used for every topic under them — never "locked", just a sensible
-// default level to fetch content at.
+// advanced/polish) now comes from the backend for EVERY status —
+// "upcoming" gets the diagnostic-derived band, "mastered" starts at
+// "advanced", "not_assessed" starts at "fundamentals" (see
+// backend/services/roadmap_service.py's MASTERED_STARTING_FOCUS_BAND /
+// NOT_ASSESSED_STARTING_FOCUS_BAND). Previously this fell back to a
+// flat "application" default for BOTH mastered and not_assessed
+// skills, which meant a learner who scored 100% on a skill's
+// diagnostic and a learner who never touched that skill got served
+// the identical cached notes + primary video for every topic in it.
+// DEFAULT_FOCUS_BAND now only matters as a safety net for the
+// (unexpected) case of a missing/unrecognized band from the backend.
 const DEFAULT_FOCUS_BAND = "application";
 
 /** Key used to look up a topic's recorded per-quiz progress in the
@@ -84,10 +91,7 @@ export function buildFlatTopicList(roadmap, compressedSyllabus, topicProgress = 
           ? syllabusTopics
           : [{ title: entry.skill, status: entry.status === "mastered" ? "Verified" : "Locked", order: 0 }];
 
-     const skillLevelFocusBand =
-  entry.status === "upcoming" && entry.focusBand
-    ? entry.focusBand
-    : DEFAULT_FOCUS_BAND;
+      const skillLevelFocusBand = entry.focusBand || DEFAULT_FOCUS_BAND;
 
       for (const t of topics) {
         // A recorded per-topic quiz result always wins over the

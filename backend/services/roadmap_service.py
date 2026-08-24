@@ -85,7 +85,7 @@ class RoadmapEntry:
     score_percent: float | None  # None for status="not_assessed" — never measured
     status: str  # "mastered" | "upcoming" | "not_assessed"
     week: int | None  # None for mastered/not_assessed entries — they're not "scheduled"
-    focus_band: str | None  # None for mastered/not_assessed entries
+    focus_band: str | None  # starting band for every entry (see MASTERED/NOT_ASSESSED_STARTING_FOCUS_BAND) — only None if truly undetermined
     recommendation: str
     module: str | None = None  # e.g. "Frontend", "Backend" — None when role_categories wasn't provided
 
@@ -178,6 +178,27 @@ def generate_roadmap(
         not_assessed_skills = []
         total_skills = len(assessed_skills)
 
+    # STARTING FOCUS BAND FOR MASTERED / NOT-ASSESSED (this revision):
+    # these two used to both leave focus_band=None, which meant the
+    # frontend's DEFAULT_FOCUS_BAND ("application") applied to BOTH —
+    # so a learner who scored 100% on the CSS3 diagnostic and a learner
+    # who never touched CSS3 at all got served the identical cached
+    # notes + primary video for every topic until they separately took
+    # that topic's own quiz. That's wrong on its face: these are
+    # opposite ends of the spectrum, not a shared "average" case.
+    # MASTERED -> "advanced": they already know the fundamentals, no
+    # need to force them back through a beginner's explanation, but
+    # unlike a formal deep-dive there's still room above it ("polish")
+    # for anyone who wants it.
+    # NOT_ASSESSED -> "fundamentals": a role skill the learner never
+    # claimed/tested is, by definition, unproven — same “start from
+    # scratch” treatment a Weak/Not-Attempted diagnostic result gets.
+    # Both remain only STARTING points — see buildCourseNavigator.js's
+    # per-topic focus_band, which still overrides this the moment the
+    # learner takes that specific topic's own quiz.
+    MASTERED_STARTING_FOCUS_BAND = "advanced"
+    NOT_ASSESSED_STARTING_FOCUS_BAND = "fundamentals"
+
     mastered = [s for s in assessed_skills if s["level"] == "Strong"]
     needs_work = [s for s in assessed_skills if s["level"] in NEEDS_WORK_LEVELS]
     needs_work.sort(key=lambda s: (LEVEL_PRIORITY_RANK[s["level"]], s["scorePercent"]))
@@ -195,7 +216,7 @@ def generate_roadmap(
             RoadmapEntry(
                 order=order, skill=s["skill"], current_level=s["level"],
                 score_percent=s["scorePercent"], status="mastered",
-                week=None, focus_band=None, recommendation=MASTERED_MESSAGE,
+                week=None, focus_band=MASTERED_STARTING_FOCUS_BAND, recommendation=MASTERED_MESSAGE,
                 module=skill_to_module.get(s["skill"]),
             )
         )
@@ -219,7 +240,7 @@ def generate_roadmap(
             RoadmapEntry(
                 order=order, skill=sk, current_level="Not Assessed",
                 score_percent=None, status="not_assessed",
-                week=None, focus_band=None, recommendation=NOT_ASSESSED_MESSAGE,
+                week=None, focus_band=NOT_ASSESSED_STARTING_FOCUS_BAND, recommendation=NOT_ASSESSED_MESSAGE,
                 module=skill_to_module.get(sk),
             )
         )

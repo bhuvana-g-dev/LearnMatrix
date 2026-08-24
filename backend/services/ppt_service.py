@@ -1,989 +1,371 @@
 """
-services/ppt_service.py
+services/slide_deck_service.py
 
-Builds a downloadable .pptx "Study Summary" deck, styled with the
-LearnMatrix navy/gold brand palette (colored backgrounds, accent bars,
-badge-numbered sections, colored bullet markers) instead of the
-default plain PowerPoint template. Three modes, mirroring Flashcards'
-mode selector:
-  - generate_study_summary_pptx: from an already-generated
-    learning_notes entry (services/notes_repository.py)
-  - generate_chat_summary_pptx: from one saved AI Chat session's
-    Q&A turns (services/chat_repository.py)
-  - generate_sources_summary_pptx: from the user's uploaded/linked
-    chat sources (services/embedding_service.py)
+Presentation generation service for LearnMatrix.
 
-No LLM call in ANY of the three modes — each just reshapes data that
-already exists into a {title, summary, sections, keyTakeaways} shape,
-which _build_pptx_from_notes turns into slides. Regenerating that text
-through an agent would be a slower, costlier way to get content already
-on hand.
+This service sits between the AI Presentation Director and the
+presentation renderers.
 
-There's no external image-search/stock-photo API configured in this
-backend (no Unsplash/Pexels key in config/settings.py), so "visual"
-content here means brand-colored shapes/badges/accent bars drawn
-directly with python-pptx — not photographs. Wiring in a real photo
-API is a separate, later change (would need an API key added to
-Settings).
+Responsibilities:
 
-Uses python-pptx to build the deck in memory (BytesIO) — nothing is
-written to disk, so there's no cleanup/temp-file lifecycle to manage;
-routes/ppt_routes.py streams the bytes straight back as a file download.
+1. Generate structured slide content.
+2. Read each slide's design brief.
+3. Decide whether the slide needs a visual asset.
+4. Build a richer visual prompt using:
+   - design_type
+   - visual_intent
+   - emphasis
+   - heading
+5. Generate an AI visual first.
+6. Fall back to a stock photo when appropriate.
+
+The service does NOT decide the presentation story. That happens inside
+SlideDeckAgent.
+
+The service does NOT decide final slide placement. That happens inside
+ppt_service.py.
+
+Its responsibility is only to prepare visual assets for the design
+pipeline.
 """
 
-import textwrap
-from io import BytesIO
-
-from pptx import Presentation
-from pptx.util import Pt, Inches, Emu
-from pptx.dml.color import RGBColor
-from pptx.enum.text import PP_ALIGN, MSO_ANCHOR
-from pptx.enum.shapes import MSO_SHAPE
-from pptx.oxml.ns import qn
-
-from firebase.firebase_config import get_firestore_client
-from services import chat_repository, embedding_service, notes_repository
-
-# --- Gamma-style theme palettes ---
-# Multiple curated palettes instead of one fixed brand color, per an
-# explicit request ("different users have different choice" of look).
-# THEMES[0] ("Midnight Gold") is the original LearnMatrix brand palette
-# (mirrors frontend/src/constants/theme.js) — every other entry is a
-# deliberate departure from that brand for visual variety, so a deck
-# picks a full palette, not just an accent swap. Each theme provides
-# the same 5 roles so the rest of this file can stay palette-agnostic:
-#   navy       - dark primary (slide headings, one accent slot, dark card fill)
-#   navy_mid   - a lighter tint of navy, used for BODY TEXT (never a fill)
-#   gold       - a mid-tone accent saturated enough for WHITE text on top
-#   gold_light - a paler tint of that same accent that needs DARK text on top
-#   cream      - pale tint used for light card backgrounds
-# White stays constant across all themes (card interiors, chip numbers).
-THEMES = [
-    {  # 0 Midnight Gold — original brand palette, unchanged default look
-        "name": "Midnight Gold",
-        "navy": (0x0D, 0x1B, 0x3D), "navy_mid": (0x3E, 0x4A, 0x66),
-        "gold": (0xD4, 0xA0, 0x17), "gold_light": (0xE8, 0xB9, 0x3D),
-        "cream": (0xFB, 0xF3, 0xE1),
-        "heading_font": "Segoe UI Semibold", "body_font": "Segoe UI",
-    },
-    {  # 1 Ocean Teal
-        "name": "Ocean Teal",
-        "navy": (0x0B, 0x3D, 0x42), "navy_mid": (0x2E, 0x5A, 0x5E),
-        "gold": (0x2F, 0xA4, 0xA9), "gold_light": (0x7F, 0xD8, 0xCE),
-        "cream": (0xEA, 0xF7, 0xF5),
-        "heading_font": "Segoe UI Semibold", "body_font": "Segoe UI",
-    },
-    {  # 2 Sunset Coral
-        "name": "Sunset Coral",
-        "navy": (0x3B, 0x1F, 0x2B), "navy_mid": (0x6B, 0x3F, 0x45),
-        "gold": (0xE8, 0x60, 0x4C), "gold_light": (0xF4, 0xA2, 0x61),
-        "cream": (0xFD, 0xEC, 0xE3),
-        "heading_font": "Segoe UI Semibold", "body_font": "Segoe UI",
-    },
-    {  # 3 Berry Violet
-        "name": "Berry Violet",
-        "navy": (0x2A, 0x1B, 0x3D), "navy_mid": (0x4A, 0x38, 0x62),
-        "gold": (0x8E, 0x44, 0xAD), "gold_light": (0xC9, 0x8F, 0xDE),
-        "cream": (0xF5, 0xEE, 0xFB),
-        "heading_font": "Segoe UI Semibold", "body_font": "Segoe UI",
-    },
-    {  # 4 Forest Sage
-        "name": "Forest Sage",
-        "navy": (0x1E, 0x3B, 0x2C), "navy_mid": (0x39, 0x5C, 0x46),
-        "gold": (0x4C, 0x9A, 0x6B), "gold_light": (0xA8, 0xD5, 0xA2),
-        "cream": (0xEF, 0xF7, 0xEE),
-        "heading_font": "Segoe UI Semibold", "body_font": "Segoe UI",
-    },
-    {  # 5 Slate Blue
-        "name": "Slate Blue",
-        "navy": (0x1C, 0x2B, 0x3A), "navy_mid": (0x3C, 0x56, 0x70),
-        "gold": (0x3E, 0x7C, 0xB1), "gold_light": (0x9C, 0xC6, 0xE8),
-        "cream": (0xEA, 0xF3, 0xFA),
-        "heading_font": "Segoe UI Semibold", "body_font": "Segoe UI",
-    },
-]
-
-NAVY = NAVY_MID = GOLD = GOLD_LIGHT = CREAM = None  # set by _apply_theme() below
-HEADING_FONT = BODY_FONT = "Segoe UI"
-WHITE = RGBColor(0xFF, 0xFF, 0xFF)
-
-SLIDE_W = Inches(13.333)
-SLIDE_H = Inches(7.5)
-
-ACCENT_CYCLE: list = []  # set by _apply_theme() below, alongside NAVY/GOLD/etc.
-
-
-def _apply_theme(theme: dict) -> None:
-    """Rebinds this module's NAVY/GOLD/CREAM/etc. names (and the fonts
-    every _add_*_slide function already references by these names) to
-    one palette from THEMES. Called once per build, before any slide is
-    drawn, from build_pptx_from_deck_content() — every drawing function
-    below reads these as module globals at call time, so nothing else
-    in this file needs to change to support multiple themes.
-
-    Not thread-safe against two concurrent generate calls in the SAME
-    process — fine here since this service runs under a single sync
-    Gunicorn worker (WEB_CONCURRENCY=1), so requests are handled one at
-    a time; revisit if that deployment ever changes to multiple threads
-    per worker."""
-    global NAVY, NAVY_MID, GOLD, GOLD_LIGHT, CREAM, ACCENT_CYCLE, HEADING_FONT, BODY_FONT
-    NAVY = RGBColor(*theme["navy"])
-    NAVY_MID = RGBColor(*theme["navy_mid"])
-    GOLD = RGBColor(*theme["gold"])
-    GOLD_LIGHT = RGBColor(*theme["gold_light"])
-    CREAM = RGBColor(*theme["cream"])
-    HEADING_FONT = theme["heading_font"]
-    BODY_FONT = theme["body_font"]
-    ACCENT_CYCLE = [GOLD, NAVY, GOLD_LIGHT]
-
-
-def _pick_theme(title: str) -> dict:
-    """Deterministic per-topic pick (same title -> same look on
-    regeneration) instead of a random one each time — implemented as a
-    stable hash over the title so it doesn't depend on Python's
-    randomized string hashing (hash() varies per-process)."""
-    import hashlib
-    digest = hashlib.sha256((title or "").encode("utf-8")).digest()
-    return THEMES[digest[0] % len(THEMES)]
-
-
-class PptServiceError(Exception):
-    pass
-
-
-def generate_study_summary_pptx(skill: str, topic: str, focus_band: str) -> tuple[BytesIO, str]:
-    """Raises PptServiceError if no notes exist yet for this
-    (skill, topic, focus_band) — same precondition as
-    embedding_service.index_learning_notes."""
-    db = get_firestore_client()
-    notes = notes_repository.get_cached_notes(db, skill, topic, focus_band)
-    if not notes:
-        raise PptServiceError(
-            f"No study notes found yet for '{skill} / {topic}' ({focus_band}). "
-            "Open that topic in the Learning Hub first so notes are generated."
-        )
-    safe_topic = _safe_filename(topic)
-    enriched = _enrich_notes_for_deck(notes, label=f"{skill} - {topic}") or notes
-    return _build_pptx_from_notes(enriched, subtitle=f"{focus_band.title()} level"), f"{safe_topic}_study_summary.pptx"
-
-
-def generate_sources_summary_pptx(uid: str) -> tuple[BytesIO, str]:
-    db = get_firestore_client()
-    sources_content = embedding_service.get_sources_with_text(db, uid)
-    if not sources_content:
-        raise PptServiceError("No sources found yet — upload a source first.")
-
-    notes = {
-        "title": "Your Sources",
-        "summary": "",
-        "sections": [{"heading": s["title"], "content": s["text"]} for s in sources_content],
-        "keyTakeaways": [],
-    }
-    enriched = _enrich_notes_for_deck(notes, label="these sources") or notes
-    return _build_pptx_from_notes(enriched, subtitle="Study Summary from Sources"), "sources_study_summary.pptx"
-
-
-def generate_chat_summary_pptx(uid: str, session_id: str) -> tuple[BytesIO, str]:
-    if not session_id:
-        raise PptServiceError("No chat conversation selected — open or start a chat first.")
-    db = get_firestore_client()
-    history = chat_repository.get_session_messages(db, uid, session_id, limit=0)
-    if not history:
-        raise PptServiceError("That conversation has no messages yet — ask the AI Study Assistant something first.")
-
-    sections = []
-    for i, turn in enumerate(history):
-        if turn.get("role") == "user":
-            answer = history[i + 1].get("content", "") if i + 1 < len(history) and history[i + 1].get("role") == "assistant" else ""
-            sections.append({"heading": turn.get("content", "")[:60], "content": answer})
-
-    notes = {"title": "Your Chat", "summary": "", "sections": sections, "keyTakeaways": []}
-    enriched = _enrich_notes_for_deck(notes, label="this conversation") or notes
-    return _build_pptx_from_notes(enriched, subtitle="Study Summary from AI Chat"), "chat_study_summary.pptx"
-
-
-def generate_custom_text_pptx(text: str) -> tuple[BytesIO, str]:
-    """AI-expands the student's short prompt/notes into a full deck
-    (see services/slide_deck_service.py) rather than dumping the raw
-    text onto a single slide — same idea as Gamma/NotebookLM turning a
-    one-line prompt into a real presentation."""
-    if not text or not text.strip():
-        raise PptServiceError("Type something first.")
-    from services.slide_deck_service import generate_deck_content, SlideDeckServiceError
-
-    try:
-        notes = generate_deck_content(text.strip())
-    except SlideDeckServiceError as exc:
-        raise PptServiceError(str(exc)) from exc
-    return build_pptx_from_deck_content(notes, subtitle="Study Summary"), f"{_safe_filename(notes.get('title') or 'custom')}_study_summary.pptx"
-
-
-def _enrich_notes_for_deck(notes: dict, label: str) -> dict | None:
-    """Runs the SAME Gamma/NotebookLM-style AI enrichment the "type a
-    topic" custom deck already gets (agents/slide_deck_agent.py, via
-    services/slide_deck_service.py) on top of already-existing plain
-    notes/chat/sources content — so every export mode gets varied
-    layouts (list/process/comparison), per-item icons, and real
-    AI-generated images, not just the custom-prompt one.
-
-    Returns None (caller falls back to the original plain notes) if the
-    AI call fails for any reason — a slow/unavailable LLM should
-    degrade an export to "plain but still downloadable", never break it
-    outright. This does mean every pptx download now makes an LLM call
-    plus per-section image calls — see services/slide_deck_service.py's
-    _attach_section_images, which is sequential per section, so a
-    gunicorn worker timeout that's too short (see routes/ai_assessment_routes.py
-    and routes/slidedeck_routes.py's own timeout notes) will surface here too."""
-    from services.slide_deck_service import generate_deck_content, SlideDeckServiceError
-
-    combined = (notes.get("title") or "").strip() + "\n\n"
-    for s in notes.get("sections", []):
-        combined += f"## {s.get('heading', '')}\n{s.get('content', '')}\n\n"
-    combined = combined.strip()
-    if not combined:
-        return None
-
-    try:
-        return generate_deck_content(combined[:6000], label=label)
-    except SlideDeckServiceError:
-        return None
-
-
-# ---------------------------------------------------------------------------
-# Deck assembly — collects the notes dict content shared by every mode above
-# into a `_DeckContent`-shaped list of sections, so the PDF service
-# (services/pdf_service.py) can build a matching-design PDF from the exact
-# same content without duplicating the Firestore-fetching logic in each
-# generate_* function above.
-# ---------------------------------------------------------------------------
-
-def build_deck_sections(notes: dict) -> list[dict]:
-    """Turns a {title, summary, sections, keyTakeaways} notes dict into
-    the flat list of slide dicts both the pptx and pdf builders render,
-    so the two file formats never drift apart. Each slide's "kind" is
-    one of "text", "list", "comparison", "process", or "bullets" (Key
-    Takeaways) — this is what gives the deck varied layouts instead of
-    every slide being a plain heading+paragraph (see
-    agents/slide_deck_agent.py, which tags each section's layout and
-    per-item icon based on its content)."""
-    slides = []
-    if notes.get("summary"):
-        slides.append({"kind": "text", "heading": "Summary", "body": notes["summary"]})
-
-    for section in notes.get("sections", []):
-        heading = section.get("heading", "Section")
-        layout = section.get("layout", "text")
-
-        if layout == "list" and isinstance(section.get("items"), list) and section["items"]:
-            slides.append({"kind": "list", "heading": heading, "items": section["items"]})
-        elif layout == "process" and isinstance(section.get("steps"), list) and section["steps"]:
-            slides.append({"kind": "process", "heading": heading, "steps": section["steps"]})
-        elif layout == "comparison" and isinstance(section.get("left"), dict) and isinstance(section.get("right"), dict):
-            slides.append({"kind": "comparison", "heading": heading, "left": section["left"], "right": section["right"]})
-        elif section.get("content"):
-            slide = {"kind": "text", "heading": heading, "body": section["content"]}
-            if section.get("image_url"):
-                slide["image_url"] = section["image_url"]
-            if section.get("subpoints"):
-                slide["subpoints"] = section["subpoints"]
-            slides.append(slide)
-
-    takeaways = notes.get("keyTakeaways", [])
-    if takeaways:
-        slides.append({"kind": "bullets", "heading": "Key Takeaways", "items": takeaways})
-    return slides
-
-
-def _build_pptx_from_notes(notes: dict, subtitle: str) -> BytesIO:
-    return build_pptx_from_deck_content(notes, subtitle)
-
-
-def build_pptx_from_deck_content(notes: dict, subtitle: str) -> BytesIO:
-    """Public entry point used both by the generate_*_pptx functions
-    above (which fetch/produce `notes` themselves) and by
-    routes/ppt_routes.py's "from-content" endpoint, which receives an
-    already-generated deck (e.g. from the AI slide-deck preview the
-    student already looked at) and just needs it rendered — no second
-    LLM call, so the downloaded file always matches what was previewed."""
-    _apply_theme(_pick_theme(notes.get("title") or ""))
-
-    prs = Presentation()
-    prs.slide_width = SLIDE_W
-    prs.slide_height = SLIDE_H
-    blank_layout = prs.slide_layouts[6]  # fully blank — every element below is hand-placed
-
-    _add_title_slide(prs, blank_layout, notes.get("title") or "Study Summary", subtitle)
-
-    deck_sections = build_deck_sections(notes)
-    for i, slide_data in enumerate(deck_sections):
-        accent = ACCENT_CYCLE[i % len(ACCENT_CYCLE)]
-        kind = slide_data["kind"]
-        if kind == "bullets":
-            slide = _add_bullet_slide(prs, blank_layout, slide_data["heading"], slide_data["items"], i + 1, accent)
-        elif kind == "list":
-            slide = _add_list_slide(prs, blank_layout, slide_data["heading"], slide_data["items"], i + 1, accent)
-        elif kind == "process":
-            slide = _add_process_slide(prs, blank_layout, slide_data["heading"], slide_data["steps"], i + 1, accent)
-        elif kind == "comparison":
-            slide = _add_comparison_slide(prs, blank_layout, slide_data["heading"], slide_data["left"], slide_data["right"], i + 1)
-        else:
-            slide = _add_text_slide(prs, blank_layout, slide_data["heading"], slide_data["body"], i + 1, accent, slide_data.get("image_url"), slide_data.get("subpoints"))
-
-        # Give every content slide (not just "text") a shot at the large
-        # AI diagram panel — this is the main visual upgrade over the
-        # old "small corner photo on text slides only" behaviour.
-        # Comparison slides draw their own chrome in GOLD regardless of
-        # the accent cycle (see _add_comparison_slide), so match that.
-        diagram_accent = GOLD if kind == "comparison" else accent
-        _add_diagram_panel(slide, slide_data["heading"], _section_description(slide_data), kind, diagram_accent)
-
-    buffer = BytesIO()
-    prs.save(buffer)
-    buffer.seek(0)
-    return buffer
-
-
-def _safe_filename(value: str) -> str:
-    return "".join(c if c.isalnum() or c in " -_" else "_" for c in value)
-
-
-# ---------------------------------------------------------------------------
-# Slide builders — every shape is hand-placed on a blank layout so the
-# design (colored backgrounds, accent bars, numbered badges, bullet
-# markers) is fully controlled rather than inherited from a default
-# PowerPoint theme.
-# ---------------------------------------------------------------------------
-
-def _set_fill(shape, color):
-    shape.fill.solid()
-    shape.fill.fore_color.rgb = color
-    shape.line.fill.background()
-
-
-def _distribute_fill(n: int, avail_h_in: float, gap_in: float, min_item: float, max_item: float) -> tuple[float, float]:
-    """Shared fix for the "few items -> big blank strip at the bottom
-    of the slide" problem across list/bullet/comparison layouts. Given
-    n stacked items and the available vertical space, grows each
-    item's height to fill that space (clamped to [min_item, max_item]
-    so a 1-2 item slide doesn't get one absurdly tall card), and
-    returns a top offset so any leftover space is centered rather than
-    left as dead space below the last item. Returns (item_height_in,
-    top_offset_in), both in inches."""
-    if n <= 0:
-        return min_item, 0.0
-    ideal = (avail_h_in - gap_in * (n - 1)) / n
-    item_h_in = max(min_item, min(ideal, max_item))
-    content_h_in = item_h_in * n + gap_in * (n - 1)
-    offset_in = max(0.0, (avail_h_in - content_h_in) / 2)
-    return item_h_in, offset_in
-
-
-def _add_title_slide(prs: Presentation, layout, title: str, subtitle: str) -> None:
-    slide = prs.slides.add_slide(layout)
-
-    bg = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, 0, 0, prs.slide_width, prs.slide_height)
-    _set_fill(bg, NAVY)
-    bg.shadow.inherit = False
-
-    # Large soft gold arc/circle bleeding off the right edge as a decorative
-    # accent — stands in for photography since no image-search API is
-    # configured (see module docstring).
-    circle = slide.shapes.add_shape(MSO_SHAPE.OVAL, Inches(9.2), Inches(-2.5), Inches(7), Inches(7))
-    _set_fill(circle, GOLD)
-    circle.fill.fore_color.brightness = 0.0
-    circle.shadow.inherit = False
-    _set_transparency(circle, 70)
-
-    circle2 = slide.shapes.add_shape(MSO_SHAPE.OVAL, Inches(10.6), Inches(3.6), Inches(3.4), Inches(3.4))
-    _set_fill(circle2, GOLD_LIGHT)
-    circle2.shadow.inherit = False
-    _set_transparency(circle2, 40)
-
-    # Thin gold rule above the title, LearnMatrix wordmark styling.
-    rule = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(0.7), Inches(2.55), Inches(1.1), Pt(4))
-    _set_fill(rule, GOLD)
-    rule.shadow.inherit = False
-
-    brand_box = slide.shapes.add_textbox(Inches(0.7), Inches(2.05), Inches(6), Inches(0.5))
-    brand_tf = brand_box.text_frame
-    brand_tf.text = "LEARNMATRIX"
-    brand_run = brand_tf.paragraphs[0].runs[0]
-    brand_run.font.size = Pt(15)
-    brand_run.font.bold = True
-    brand_run.font.color.rgb = GOLD_LIGHT
-    brand_run.font.name = HEADING_FONT
-
-    title_box = slide.shapes.add_textbox(Inches(0.65), Inches(2.9), Inches(9.5), Inches(2.4))
-    title_tf = title_box.text_frame
-    title_tf.word_wrap = True
-    title_tf.text = title
-    title_run = title_tf.paragraphs[0].runs[0]
-    title_run.font.size = Pt(40)
-    title_run.font.bold = True
-    title_run.font.color.rgb = WHITE
-    title_run.font.name = HEADING_FONT
-
-    # BUG FIX: the subtitle box used to sit at a FIXED y=4.9in
-    # regardless of how many lines the title wrapped to. A long title
-    # (this deck's ran 3 lines at 40pt bold) reached past that point
-    # and the subtitle got drawn right on top of it. There's no text
-    # measurement API in python-pptx, so this estimates the wrapped
-    # line count from character width (bold-Arial-40pt average glyph
-    # width) the same way the reportlab PDF path uses real
-    # stringWidth() — close enough to guarantee clearance since we
-    # round the estimate up and add a margin.
-    chars_per_line = max(10, int((9.5 * 72) / (40 * 0.52)))
-    est_lines = max(1, len(textwrap.wrap(title, width=chars_per_line)) or 1)
-    line_h_in = 40 * 1.15 / 72
-    sub_top_in = max(4.9, 2.9 + est_lines * line_h_in + 0.2)
-
-    sub_box = slide.shapes.add_textbox(Inches(0.7), Inches(sub_top_in), Inches(9), Inches(0.6))
-    sub_tf = sub_box.text_frame
-    sub_tf.text = f"{subtitle}"
-    sub_run = sub_tf.paragraphs[0].runs[0]
-    sub_run.font.size = Pt(18)
-    sub_run.font.color.rgb = CREAM
-    sub_run.font.name = BODY_FONT
-
-
-# Shared right-hand panel reserved on every content slide for a large
-# AI-generated diagram illustration (see services/image_service.py's
-# generate_diagram_illustration) — this is what closes the "looks too
-# plain / just bullets" gap against NotebookLM-style decks: instead of
-# a small corner photo, every slide gets a full-height custom diagram,
-# and the text-bearing layout (paragraph / list cards / process chips /
-# comparison panels) narrows to make room for it on the left.
-DIAGRAM_X_IN = 8.55
-DIAGRAM_Y_IN = 1.85
-DIAGRAM_W_IN = 4.15
-DIAGRAM_H_IN = 5.05
-CONTENT_RIGHT_EDGE_IN = DIAGRAM_X_IN - 0.35  # left content area stops here to leave a gap
-
-
-DIAGRAM_LAYOUT_FALLBACK_ICON = {"process": "gear", "comparison": "star", "list": "network", "text": "book"}
-
-
-def _add_diagram_panel(slide, heading: str, description: str, layout: str, accent) -> bool:
-    """Fetches and places one AI diagram illustration in the shared
-    right-hand panel (see constants above). If AI generation is
-    unavailable or fails (missing GEMINI_API_KEY, safety block, network
-    hiccup — see generate_diagram_illustration), falls back to a soft
-    decorative panel with a large icon motif instead of leaving that
-    whole column blank white space, since the surrounding layouts have
-    already been narrowed to make room for this column either way.
-    Returns True only when the real AI picture was placed."""
-    from services.image_service import generate_diagram_illustration
-
-    try:
-        image_bytes = generate_diagram_illustration(heading, description, layout)
-    except Exception:
-        image_bytes = None
-
-    x, y = Inches(DIAGRAM_X_IN), Inches(DIAGRAM_Y_IN)
-    w, h = Inches(DIAGRAM_W_IN), Inches(DIAGRAM_H_IN)
-    frame = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, x - Inches(0.12), y - Inches(0.12), w + Inches(0.24), h + Inches(0.24))
-    frame.adjustments[0] = 0.04
-    _set_fill(frame, accent)
-    frame.shadow.inherit = False
-
-    if image_bytes:
-        try:
-            slide.shapes.add_picture(BytesIO(image_bytes), x, y, width=w, height=h)
-            return True
-        except Exception:
-            pass  # falls through to the decorative fallback below
-
-    # Fallback: cream panel with a big centered icon motif, echoing the
-    # brand's badge/icon language rather than an obviously-missing photo.
-    fallback = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, x, y, w, h)
-    fallback.adjustments[0] = 0.06
-    _set_fill(fallback, CREAM)
-    fallback.shadow.inherit = False
-    icon = DIAGRAM_LAYOUT_FALLBACK_ICON.get(layout, "book")
-    icon_size = Inches(1.6)
-    _icon_badge(slide, icon, x + (w - icon_size) / 2, y + (h - icon_size) / 2, icon_size, accent)
-    return False
-
-
-def _section_description(slide_data: dict) -> str:
-    """Best-effort plain-text summary of a slide's content, used as the
-    creative brief for _add_diagram_panel — pulled from whichever field
-    that slide kind actually has (paragraph body, list items, process
-    steps, or comparison panels)."""
-    kind = slide_data.get("kind")
-    if kind == "text":
-        return (slide_data.get("body") or "")[:280]
-    if kind in ("list", "bullets"):
-        items = [(_item_text_icon(it)[0]) for it in slide_data.get("items", [])[:6]]
-        return "; ".join(items)
-    if kind == "process":
-        steps = [s.get("text", "") if isinstance(s, dict) else str(s) for s in slide_data.get("steps", [])[:6]]
-        return "; ".join(steps)
-    if kind == "comparison":
-        left = slide_data.get("left", {})
-        right = slide_data.get("right", {})
-        return f"{left.get('label', '')}: {'; '.join(left.get('items', [])[:3])} vs {right.get('label', '')}: {'; '.join(right.get('items', [])[:3])}"
-    return ""
-
-
-def _add_slide_chrome(prs, slide, heading, index, accent):
-    """Shared header used by every content slide: colored left accent bar,
-    a numbered badge, and the heading — keeps _add_text_slide and
-    _add_bullet_slide visually consistent."""
-    # Full-height accent bar down the left edge.
-    bar = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, 0, 0, Inches(0.35), prs.slide_height)
-    _set_fill(bar, accent)
-    bar.shadow.inherit = False
-
-    # White page background.
-    bg = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(0.35), 0, prs.slide_width - Inches(0.35), prs.slide_height)
-    _set_fill(bg, WHITE)
-    bg.shadow.inherit = False
-    # send background behind everything added after it by re-adding chrome on top — python-pptx has no z-order API,
-    # so shapes are simply added in back-to-front order (bar/bg first, since they're added first, is already correct).
-
-    # Numbered badge.
-    badge = slide.shapes.add_shape(MSO_SHAPE.OVAL, Inches(0.75), Inches(0.55), Inches(0.55), Inches(0.55))
-    _set_fill(badge, accent)
-    badge.shadow.inherit = False
-    badge_tf = badge.text_frame
-    badge_tf.word_wrap = False
-    badge_tf.vertical_anchor = MSO_ANCHOR.MIDDLE
-    badge_tf.text = str(index)
-    badge_run = badge_tf.paragraphs[0].runs[0]
-    badge_tf.paragraphs[0].alignment = PP_ALIGN.CENTER
-    badge_run.font.size = Pt(18)
-    badge_run.font.bold = True
-    badge_run.font.color.rgb = WHITE if accent != GOLD_LIGHT else NAVY
-    badge_run.font.name = HEADING_FONT
-
-    heading_box = slide.shapes.add_textbox(Inches(1.55), Inches(0.5), Inches(11), Inches(0.75))
-    heading_tf = heading_box.text_frame
-    heading_tf.word_wrap = True
-    heading_tf.text = heading
-    heading_run = heading_tf.paragraphs[0].runs[0]
-    heading_run.font.size = Pt(26)
-    heading_run.font.bold = True
-    heading_run.font.color.rgb = NAVY
-    heading_run.font.name = HEADING_FONT
-
-    rule = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(1.55), Inches(1.35), Inches(1.4), Pt(3))
-    _set_fill(rule, accent)
-    rule.shadow.inherit = False
-
-
-def _add_text_slide(prs: Presentation, layout, heading: str, body: str, index: int, accent, image_url: str | None = None, subpoints: list | None = None):
-    """NOTE: the right-hand column (image_url / subpoints "Key Points"
-    card) that used to live on THIS slide has been superseded by the
-    shared full-height AI diagram panel (_add_diagram_panel, called
-    once for every slide kind from build_pptx_from_deck_content) — so
-    the paragraph now always reserves that space rather than only when
-    an image/subpoints happened to be present. image_url/subpoints are
-    kept as accepted params (existing callers still pass them) but are
-    intentionally unused now to avoid drawing two things in the same
-    spot."""
-    slide = prs.slides.add_slide(layout)
-    _add_slide_chrome(prs, slide, heading, index, accent)
-
-    text_width = Inches(CONTENT_RIGHT_EDGE_IN - 1.55)
-    content_h_in = 5.35
-
-    sentences = [s.strip() for s in body.replace("\n", " ").split(". ") if s.strip()]
-    if not sentences:
-        sentences = [body[:2000]]
-
-    # Scale font size to sentence count and vertically center the block
-    # so a short paragraph still reads as an intentional, full slide
-    # instead of a stub sitting in the top-left corner.
-    if len(sentences) <= 3:
-        body_font_size = Pt(26)
-    elif len(sentences) <= 5:
-        body_font_size = Pt(20)
-    else:
-        body_font_size = Pt(17)
-    # Rough line-count estimate to vertically center the block — doesn't
-    # need to be exact, just close enough that a short paragraph isn't
-    # glued to the top of an otherwise empty slide.
-    chars_per_line = max(20, int(text_width / 914400 * 96 / (body_font_size.pt * 0.55)))
-    total_chars = sum(len(s) for s in sentences)
-    est_lines = max(len(sentences), -(-total_chars // chars_per_line))
-    est_h_in = est_lines * (body_font_size.pt / 72) * 1.7
-    body_top_in = 1.7 + max(0, (content_h_in - est_h_in) / 2)
-
-    body_box = slide.shapes.add_textbox(Inches(1.55), Inches(body_top_in), text_width, Inches(content_h_in))
-    text_frame = body_box.text_frame
-    text_frame.word_wrap = True
-
-    # A single dense paragraph reads poorly on a slide, so split on
-    # sentence boundaries into shorter paragraphs rather than dumping
-    # the whole block into one text run.
-    first = True
-    for sentence in sentences[:26]:  # cap paragraphs per slide — very long sources shouldn't produce one giant slide
-        text = sentence + ("." if not sentence.endswith(".") else "")
-        p = text_frame.paragraphs[0] if first else text_frame.add_paragraph()
-        first = False
-        p.space_after = Pt(10)
-        run = p.add_run()
-        run.text = text
-        run.font.size = body_font_size
-        run.font.color.rgb = NAVY_MID
-        run.font.name = BODY_FONT
-
-    return slide
-
-
-def _estimate_subpoints_panel_height(subpoints: list) -> float:
-    """Mirrors _add_key_points_panel's own row-height math (label +
-    per-item wrap estimate) so the text slide can decide the image
-    height BEFORE drawing the panel, instead of finding out after the
-    fact that it ran off the bottom of the slide."""
-    if not subpoints:
-        return 0.0
-    total_in = 0.38  # "KEY POINTS" label + gap before first row
-    for sp in subpoints[:5]:
-        text, _icon = _item_text_icon(sp)
-        if not text:
-            continue
-        line_count = max(1, -(-len(text) // 42))
-        total_in += 0.24 * line_count + 0.16
-    return total_in
-
-
-def _add_key_points_panel(slide, subpoints: list, x, y, width, accent) -> None:
-    """A compact 'Key Points' card stacked in the text slide's sidebar
-    (below the image when one is present) — short highlight bullets
-    (see agents/slide_deck_agent.py's "subpoints") give a Gamma/
-    NotebookLM-style at-a-glance summary alongside the long-form
-    paragraph, instead of forcing the reader through the whole
-    paragraph to find the key facts."""
-    label_box = slide.shapes.add_textbox(x, y, width, Inches(0.35))
-    lf = label_box.text_frame
-    lf.word_wrap = True
-    lp = lf.paragraphs[0]
-    lrun = lp.add_run()
-    lrun.text = "KEY POINTS"
-    lrun.font.size = Pt(12)
-    lrun.font.bold = True
-    lrun.font.name = HEADING_FONT
-    lrun.font.color.rgb = accent
-
-    row_y = y + Inches(0.38)
-    # HARD SAFETY NET: even after sizing the image to leave room (see
-    # _estimate_subpoints_panel_height), stop adding rows once the
-    # next one would cross the slide's bottom margin. An estimate can
-    # still be a little off (wrap-width heuristic vs. actual PowerPoint
-    # font metrics) — better to quietly drop a low-priority trailing
-    # point than draw it off-slide where it's invisible either way.
-    bottom_limit = Inches(7.1)
-    for sp in subpoints[:5]:
-        text, _icon = _item_text_icon(sp)
-        if not text:
-            continue
-        line_count = max(1, -(-len(text) // 42))  # rough wrap estimate, matches ~4.2" width at 13pt
-        row_h = Inches(0.24 * line_count + 0.16)
-        if row_y + row_h > bottom_limit:
-            break
-        dot = slide.shapes.add_shape(MSO_SHAPE.OVAL, x, row_y + Inches(0.06), Inches(0.09), Inches(0.09))
-        _set_fill(dot, accent)
-        dot.shadow.inherit = False
-        dot.line.fill.background()
-
-        item_box = slide.shapes.add_textbox(x + Inches(0.22), row_y - Inches(0.05), width - Inches(0.22), Inches(0.6))
-        tf = item_box.text_frame
-        tf.word_wrap = True
-        p = tf.paragraphs[0]
-        run = p.add_run()
-        run.text = text
-        run.font.size = Pt(13)
-        run.font.name = BODY_FONT
-        run.font.color.rgb = NAVY_MID
-
-        row_y += row_h
-
-
-# icon tag (see agents/slide_deck_agent.py's ICON_VOCAB) -> a built-in
-# python-pptx autoshape that reads as that icon at a glance, so list
-# items and key-takeaway cards vary by MEANING instead of every card
-# using the same numbered circle.
-ICON_SHAPE_MAP = {
-    "check": MSO_SHAPE.OVAL,
-    "star": MSO_SHAPE.STAR_5_POINT,
-    "warning": MSO_SHAPE.ISOSCELES_TRIANGLE,
-    "gear": MSO_SHAPE.GEAR_6,
-    "database": MSO_SHAPE.CAN,
-    "network": MSO_SHAPE.HEXAGON,
-    "shield": MSO_SHAPE.PENTAGON,
-    "zap": MSO_SHAPE.LIGHTNING_BOLT,
-    "cloud": MSO_SHAPE.CLOUD,
-    "book": MSO_SHAPE.OVAL,
+from agents.slide_deck_agent import (
+    SlideDeckAgent,
+    SlideDeckAgentError,
+)
+
+from services.image_service import (
+    find_photo_url,
+    generate_ai_image,
+    image_bytes_to_data_uri,
+)
+
+
+SlideDeckServiceError = SlideDeckAgentError
+
+
+# ------------------------------------------------------------
+# DESIGN TYPES THAT BENEFIT FROM A GENERATED VISUAL
+# ------------------------------------------------------------
+
+VISUAL_DESIGN_TYPES = {
+    "hero",
+    "big_statement",
+    "concept",
+    "timeline",
+    "process_flow",
+    "cycle",
+    "architecture",
+    "data_story",
+    "visual_metaphor",
+    "case_study",
+    "feature_showcase",
+    "application_map",
 }
 
 
-def _icon_badge(slide, icon: str, x, y, size, fill_color):
-    """Adds one icon-shaped badge (see ICON_SHAPE_MAP) filled with
-    fill_color. "check" gets a checkmark glyph overlaid — every other
-    icon's shape alone (star, triangle, gear, hexagon, ...) is
-    recognizable without needing a text glyph on top, which sidesteps
-    relying on emoji/symbol font support in PowerPoint/LibreOffice."""
-    shape_type = ICON_SHAPE_MAP.get(icon, MSO_SHAPE.OVAL)
-    shape = slide.shapes.add_shape(shape_type, x, y, size, size)
-    _set_fill(shape, fill_color)
-    shape.shadow.inherit = False
-    if icon in ("check", "book"):
-        tf = shape.text_frame
-        tf.vertical_anchor = MSO_ANCHOR.MIDDLE
-        tf.text = "\u2713" if icon == "check" else ""
-        tf.paragraphs[0].alignment = PP_ALIGN.CENTER
-        if tf.paragraphs[0].runs:
-            run = tf.paragraphs[0].runs[0]
-            run.font.size = Pt(max(10, int(size.pt * 0.42)))
-            run.font.bold = True
-            run.font.color.rgb = WHITE if fill_color != GOLD_LIGHT else NAVY
-    return shape
+# ------------------------------------------------------------
+# DESIGN TYPES WHERE A STOCK PHOTO CAN ALSO WORK
+# ------------------------------------------------------------
+
+PHOTO_FRIENDLY_DESIGN_TYPES = {
+    "hero",
+    "concept",
+    "case_study",
+    "feature_showcase",
+    "application_map",
+}
 
 
-def _item_text_icon(item) -> tuple[str, str]:
-    """List items / key takeaways are {"text","icon"} dicts once past
-    the agent's normalization, but this also accepts a plain string
-    (e.g. an older cached deck) so nothing breaks on legacy content."""
-    if isinstance(item, dict):
-        return item.get("text", ""), item.get("icon", "check")
-    return str(item), "check"
+def generate_deck_content(
+    text: str,
+    label: str = "this topic",
+) -> dict:
+    """
+    Generates the presentation structure and prepares visual assets.
+
+    Pipeline:
+
+        Student Input
+             ↓
+        SlideDeckAgent
+             ↓
+        Design Brief Per Slide
+             ↓
+        Visual Decision
+             ↓
+        AI Visual Generation
+             ↓
+        Stock Photo Fallback
+             ↓
+        Return Presentation Data
+    """
+
+    agent = SlideDeckAgent()
+
+    notes = agent.run(
+        text=text,
+        label=label,
+    )
+
+    _attach_section_visuals(notes)
+
+    return notes
 
 
-def _add_bullet_slide(prs: Presentation, layout, heading: str, bullets: list, index: int, accent):
-    """Key Takeaways — each point in its own soft-tinted rounded card
-    with a checkmark badge, instead of a plain circle+text bullet line.
-    Cards now sit in the left column only — the right column is the
-    shared AI diagram panel (_add_diagram_panel)."""
-    slide = prs.slides.add_slide(layout)
-    _add_slide_chrome(prs, slide, heading, index, accent)
+def _attach_section_visuals(
+    notes: dict,
+) -> None:
+    """
+    Attach visuals based on each slide's design brief.
 
-    card_w_in = CONTENT_RIGHT_EDGE_IN - 1.55
-    # Card height scales to fill down to the bottom margin (see
-    # _distribute_fill) — a deck with only 4-5 takeaways used to leave
-    # a tall blank gap under the last card.
-    top_in, gap_in = 1.85, 0.18
-    card_h_in, offset_in = _distribute_fill(len(bullets), 7.5 - top_in - 0.5, gap_in, min_item=0.72, max_item=1.35)
-    top = Inches(top_in + offset_in)
-    card_h = Inches(card_h_in)
-    icon_size = Inches(0.4) if card_h_in <= 0.9 else Inches(0.5)
-    for b in bullets:
-        text, icon = _item_text_icon(b)
-        card = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, Inches(1.55), top, Inches(card_w_in), card_h)
-        card.adjustments[0] = 0.18
-        _set_fill(card, CREAM)
-        card.shadow.inherit = False
+    The previous implementation generated images only for:
 
-        _icon_badge(slide, icon, Inches(1.75), top + (card_h - icon_size) / 2, icon_size, accent)
+        layout == "text"
 
-        text_box = slide.shapes.add_textbox(Inches(2.35), top + Inches(0.06), Inches(card_w_in - 1.0), card_h - Inches(0.1))
-        tf = text_box.text_frame
-        tf.word_wrap = True
-        tf.vertical_anchor = MSO_ANCHOR.MIDDLE
-        tf.text = text
-        run = tf.paragraphs[0].runs[0]
-        run.font.size = Pt(15) if card_h_in <= 0.9 else Pt(17)
-        run.font.bold = True
-        run.font.color.rgb = NAVY
-        run.font.name = HEADING_FONT
-        top += card_h + Inches(gap_in)
+    That approach is too limited because a timeline, architecture,
+    process, concept, or visual metaphor may also need a custom visual.
 
-    return slide
+    The renderer may not yet use every attached visual. That is okay.
+    We prepare the visual data now so the next renderer upgrade can use
+    it without changing the generation pipeline again.
+    """
 
+    for section in notes.get("sections", []):
 
-def _add_list_slide(prs: Presentation, layout, heading: str, items: list, index: int, accent) -> None:
-    """Features/steps/examples — a grid of colored icon cards instead
-    of a plain bulleted paragraph, e.g. for a "Key Features" section.
-    Each item's icon (see agents/slide_deck_agent.py) is picked per its
-    own meaning rather than a generic sequence number.
+        if not isinstance(section, dict):
+            continue
 
-    Card height/row-gap SCALE to fill the available vertical space down
-    to the bottom margin (see _distribute_fill) instead of a fixed
-    1.05in — a 3-4 item list used to leave a big blank strip at the
-    bottom of the slide; now the grid grows to occupy the full content
-    area (with any small leftover centered) regardless of item count.
-    Grid now sits in the left column only — the right column is the
-    shared AI diagram panel (_add_diagram_panel)."""
-    slide = prs.slides.add_slide(layout)
-    _add_slide_chrome(prs, slide, heading, index, accent)
+        if not _should_generate_visual(section):
+            continue
 
-    cols = 1 if len(items) <= 3 else 2
-    gap_in = 0.3
-    area_left, area_top_in = Inches(1.55), 1.85
-    area_w = Inches(CONTENT_RIGHT_EDGE_IN) - area_left
-    card_w = (area_w - Inches(gap_in) * (cols - 1)) / cols
-    rows = -(-len(items) // cols)  # ceil
-    avail_h_in = 7.5 - area_top_in - 0.5  # down to bottom margin
-    card_h_in, offset_in = _distribute_fill(rows, avail_h_in, gap_in, min_item=1.05, max_item=2.1)
-    card_h = Inches(card_h_in)
-    area_top = Inches(area_top_in + offset_in)
+        visual_prompt = _build_visual_prompt(section)
 
-    for i, item in enumerate(items):
-        text, icon = _item_text_icon(item)
-        r, c = divmod(i, cols)
-        x = area_left + c * (card_w + Inches(gap_in))
-        y = area_top + r * (card_h + Inches(gap_in))
+        image_bytes = generate_ai_image(
+            visual_prompt
+        )
 
-        card = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, x, y, card_w, card_h)
-        card.adjustments[0] = 0.12
-        _set_fill(card, CREAM)
-        card.line.color.rgb = accent
-        card.line.width = Pt(1)
-        card.shadow.inherit = False
+        if image_bytes:
 
-        _icon_badge(slide, icon, x + Inches(0.18), y + Inches(0.18), Inches(0.4), accent)
+            section["image_url"] = (
+                image_bytes_to_data_uri(
+                    image_bytes
+                )
+            )
 
-        text_box = slide.shapes.add_textbox(x + Inches(0.72), y + Inches(0.1), card_w - Inches(0.88), card_h - Inches(0.2))
-        tf = text_box.text_frame
-        tf.word_wrap = True
-        tf.vertical_anchor = MSO_ANCHOR.MIDDLE
-        tf.text = text
-        run = tf.paragraphs[0].runs[0]
-        run.font.size = Pt(13)
-        run.font.bold = True
-        run.font.color.rgb = NAVY
-        run.font.name = HEADING_FONT
+            section["visual_source"] = (
+                "ai_generated"
+            )
 
-    return slide
+            continue
+
+        # Only use stock photos when the design type is naturally
+        # compatible with photography.
+        #
+        # For diagrams, timelines, cycles, architecture, etc., a random
+        # stock image usually makes the slide worse rather than better.
+
+        design_type = section.get(
+            "design_type",
+            "concept",
+        )
+
+        if design_type not in (
+            PHOTO_FRIENDLY_DESIGN_TYPES
+        ):
+            continue
+
+        photo_query = _build_photo_query(
+            section
+        )
+
+        url = find_photo_url(
+            photo_query
+        )
+
+        if url:
+
+            section["image_url"] = url
+
+            section["visual_source"] = (
+                "stock_photo"
+            )
 
 
-def _add_process_slide(prs: Presentation, layout, heading: str, steps: list, index: int, accent):
-    """"How it works" / ordered setup steps — a left-to-right chip flow
-    with numbered circles and arrow connectors, instead of a bulleted
-    list that doesn't read as a sequence. Chip row now sits in the left
-    column only — the right column is the shared AI diagram panel
-    (_add_diagram_panel)."""
-    slide = prs.slides.add_slide(layout)
-    _add_slide_chrome(prs, slide, heading, index, accent)
+def _should_generate_visual(
+    section: dict,
+) -> bool:
+    """
+    Decide whether this slide deserves a generated visual.
 
-    n = len(steps)
-    area_left = Inches(1.55)
-    area_w = Inches(CONTENT_RIGHT_EDGE_IN) - area_left
-    arrow_w = Inches(0.35)
-    # Chip height GROWS for a short sequence (2-3 steps), and the whole
-    # row is centered in the available vertical space, instead of a
-    # fixed 1.6in row sitting near the top with a big blank stretch
-    # below it — a 2-step process used to look like a stub.
-    content_top_in, content_bottom_in = 1.7, 7.0
-    chip_h_in = 1.6 if n >= 5 else (2.7 if n <= 2 else 2.1)
-    chip_h = Inches(chip_h_in)
-    area_top = Inches(content_top_in + 0.3 + max(0, (content_bottom_in - content_top_in - 0.3 - chip_h_in) / 2))
-    chip_w = (area_w - arrow_w * (n - 1)) / n
+    Rules:
 
-    x = area_left
-    for i, step in enumerate(steps):
-        text = step.get("text", "") if isinstance(step, dict) else str(step)
+    HIGH priority:
+        Generate visual whenever the design type supports visuals.
 
-        chip = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, x, area_top, chip_w, chip_h)
-        chip.adjustments[0] = 0.15
-        _set_fill(chip, accent)
-        chip.shadow.inherit = False
+    MEDIUM priority:
+        Generate visual for visually expressive design types.
 
-        num = slide.shapes.add_shape(MSO_SHAPE.OVAL, x + chip_w / 2 - Inches(0.22), area_top - Inches(0.22), Inches(0.44), Inches(0.44))
-        _set_fill(num, WHITE)
-        num.line.color.rgb = NAVY
-        num.line.width = Pt(1.5)
-        num.shadow.inherit = False
-        num_tf = num.text_frame
-        num_tf.vertical_anchor = MSO_ANCHOR.MIDDLE
-        num_tf.text = str(i + 1)
-        num_tf.paragraphs[0].alignment = PP_ALIGN.CENTER
-        num_run = num_tf.paragraphs[0].runs[0]
-        num_run.font.size = Pt(14)
-        num_run.font.bold = True
-        num_run.font.color.rgb = NAVY
+    LOW priority:
+        Usually keep the slide clean unless it is a hero or
+        visual-metaphor slide.
+    """
 
-        text_box = slide.shapes.add_textbox(x + Inches(0.1), area_top + Inches(0.25), chip_w - Inches(0.2), chip_h - Inches(0.35))
-        tf = text_box.text_frame
-        tf.word_wrap = True
-        tf.vertical_anchor = MSO_ANCHOR.MIDDLE
-        tf.text = text
-        p = tf.paragraphs[0]
-        p.alignment = PP_ALIGN.CENTER
-        run = p.runs[0]
-        run.font.size = Pt(13)
-        run.font.bold = True
-        run.font.color.rgb = WHITE if accent != GOLD_LIGHT else NAVY
+    design_type = section.get(
+        "design_type",
+        "concept",
+    )
 
-        x += chip_w
-        if i < n - 1:
-            arrow = slide.shapes.add_shape(MSO_SHAPE.RIGHT_ARROW, x, area_top + chip_h / 2 - Inches(0.14), arrow_w, Inches(0.28))
-            _set_fill(arrow, NAVY_MID)
-            arrow.shadow.inherit = False
-            x += arrow_w
+    visual_priority = section.get(
+        "visual_priority",
+        "medium",
+    )
 
-    return slide
+    if design_type not in (
+        VISUAL_DESIGN_TYPES
+    ):
+        return False
+
+    if visual_priority == "high":
+        return True
+
+    if visual_priority == "medium":
+
+        return design_type in {
+            "hero",
+            "concept",
+            "process_flow",
+            "architecture",
+            "visual_metaphor",
+            "case_study",
+            "feature_showcase",
+            "application_map",
+        }
+
+    if visual_priority == "low":
+
+        return design_type in {
+            "hero",
+            "visual_metaphor",
+        }
+
+    return False
 
 
-def _add_comparison_slide(prs: Presentation, layout, heading: str, left: dict, right: dict, index: int):
-    """Pros/cons, before/after, X vs Y — two colored columns side by
-    side instead of one paragraph trying to hold both sides at once.
-    Columns now sit in the left content column only — the right column
-    is the shared AI diagram panel (_add_diagram_panel), e.g. a
-    weighing-scale illustration for this same comparison."""
-    slide = prs.slides.add_slide(layout)
-    _add_slide_chrome(prs, slide, heading, index, GOLD)
+def _build_visual_prompt(
+    section: dict,
+) -> str:
+    """
+    Convert the slide's design brief into a richer image-generation
+    query.
 
-    col_top = Inches(1.85)
-    col_h = Inches(5.15)
-    gap = Inches(0.25)
-    area_left = Inches(1.55)
-    area_w = Inches(CONTENT_RIGHT_EDGE_IN) - area_left
-    col_w = (area_w - gap) / 2
+    Example:
 
-    panels = [(left, NAVY, area_left), (right, GOLD, area_left + col_w + gap)]
-    for panel, color, x in panels:
-        card = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, x, col_top, col_w, col_h)
-        card.adjustments[0] = 0.05
-        _set_fill(card, color)
-        card.shadow.inherit = False
+    Instead of:
 
-        label_box = slide.shapes.add_textbox(x + Inches(0.3), col_top + Inches(0.22), col_w - Inches(0.6), Inches(0.5))
-        label_tf = label_box.text_frame
-        label_tf.text = panel.get("label", "")
-        label_run = label_tf.paragraphs[0].runs[0]
-        label_run.font.size = Pt(18)
-        label_run.font.bold = True
-        label_run.font.color.rgb = WHITE if color != GOLD else NAVY
+        "Python programming"
 
-        # Item spacing scales to spread the list across the FULL column
-        # height (see _distribute_fill) — a 2-3 item side used to leave
-        # a big blank stretch under the last item while the panel's
-        # colored background kept going.
-        items_list = panel.get("items", [])
-        label_h_in = 0.85
-        avail_h_in = (col_h / 914400) - label_h_in - 0.3  # EMU -> inches, minus bottom padding
-        item_h_in, offset_in = _distribute_fill(len(items_list), avail_h_in, 0.0, min_item=0.5, max_item=1.0)
-        item_top = col_top + Inches(label_h_in + offset_in)
-        for item in items_list:
-            marker = slide.shapes.add_shape(MSO_SHAPE.OVAL, x + Inches(0.3), item_top + Inches(0.08), Inches(0.12), Inches(0.12))
-            marker.fill.solid()
-            marker.fill.fore_color.rgb = WHITE if color != GOLD else NAVY
-            marker.line.fill.background()
-            marker.shadow.inherit = False
+    the AI image generator receives something closer to:
 
-            item_box = slide.shapes.add_textbox(x + Inches(0.58), item_top - Inches(0.08), col_w - Inches(0.9), Inches(item_h_in))
-            item_tf = item_box.text_frame
-            item_tf.word_wrap = True
-            item_tf.vertical_anchor = MSO_ANCHOR.TOP
-            item_tf.text = item
-            item_run = item_tf.paragraphs[0].runs[0]
-            item_run.font.size = Pt(14)
-            item_run.font.color.rgb = WHITE if color != GOLD else NAVY
-            item_run.font.name = BODY_FONT
-            item_top += Inches(item_h_in)
+        "Visual metaphor showing Python as a bridge connecting
+        beginners, automation, data science and AI."
 
-    return slide
+    This produces visuals that are more connected to the actual
+    slide story.
+    """
+
+    heading = str(
+        section.get(
+            "heading",
+            "",
+        )
+    ).strip()
+
+    design_type = str(
+        section.get(
+            "design_type",
+            "concept",
+        )
+    ).strip()
+
+    visual_intent = str(
+        section.get(
+            "visual_intent",
+            "",
+        )
+    ).strip()
+
+    emphasis = str(
+        section.get(
+            "emphasis",
+            "",
+        )
+    ).strip()
+
+    image_query = str(
+        section.get(
+            "image_query",
+            "",
+        )
+    ).strip()
+
+    content = str(
+        section.get(
+            "content",
+            "",
+        )
+    ).strip()
+
+    return (
+        f"Presentation topic: {heading}. "
+        f"Design type: {design_type}. "
+        f"Visual concept: {visual_intent}. "
+        f"Main visual emphasis: {emphasis}. "
+        f"Supporting context: {image_query}. "
+        f"Slide idea: {content[:300]}. "
+        "Create a single clean presentation-ready visual that "
+        "communicates the concept immediately. Avoid generic stock "
+        "photography. Use a strong visual composition, clear subject "
+        "hierarchy, modern educational presentation aesthetics, and "
+        "minimal visual clutter."
+    )
 
 
-def _set_transparency(shape, alpha_pct: int) -> None:
-    """python-pptx has no first-class alpha API — this pokes the
-    <a:alpha> element directly into the shape's solid fill XML.
-    alpha_pct is how OPAQUE the shape should look (0 = invisible, 100 = solid)."""
-    sp = shape.fill.fore_color._xFill
-    alpha = sp.find(qn("a:srgbClr"))
-    if alpha is None:
-        return
-    a = alpha.makeelement(qn("a:alpha"), {"val": str(alpha_pct * 1000)})
-    alpha.append(a)
+def _build_photo_query(
+    section: dict,
+) -> str:
+    """
+    Build a short query for Pexels.
+
+    Stock search works better with short concrete phrases than with
+    long design briefs.
+    """
+
+    image_query = str(
+        section.get(
+            "image_query",
+            "",
+        )
+    ).strip()
+
+    heading = str(
+        section.get(
+            "heading",
+            "",
+        )
+    ).strip()
+
+    design_type = str(
+        section.get(
+            "design_type",
+            "",
+        )
+    ).strip()
+
+    if image_query:
+        return image_query
+
+    if design_type == "hero":
+        return heading
+
+    return heading

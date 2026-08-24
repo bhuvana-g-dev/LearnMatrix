@@ -1,41 +1,27 @@
 """
 agents/slide_deck_agent.py
 
-Turns a short student-typed prompt (e.g. "explain the RIP protocol,
-features, pros and cons") into a FULL structured slide deck — a title,
-a one-line summary, several content sections, and a closing set of key
-takeaways — the same way Gamma/NotebookLM expand a one-line prompt into
-a real presentation, instead of just dumping the raw prompt text onto
-a single "Your Input" slide.
+AI Presentation Planning Agent for LearnMatrix.
 
-Each section carries a "layout" tag — "text", "list", "comparison", or
-"process" — plus, for "list"/"process"/keyTakeaways, a small ICON tag
-per item from a fixed vocabulary (see ICON_VOCAB below). The model
-picks both based on the section's CONTENT, not just its heading: a
-"Pros and Cons" section becomes "comparison", a "How It Works" section
-becomes "process" (ordered steps), a "Key Features" section becomes
-"list" with a fitting icon per feature. This is what makes the deck
-look like a real designed presentation instead of a wall of identical
-heading+paragraph slides — the model judges shape and iconography far
-better than a downstream keyword heuristic could.
+This agent does not only generate slide content. It also creates a
+design brief for every slide so the PPT renderer can decide HOW the
+idea should be presented visually.
 
-Deliberately does NOT ask the model for any numbers, statistics, or
-chart data — a topic typed as a one-line prompt has no real dataset
-behind it, so a bar/line chart here would mean the model inventing
-plausible-looking numbers, which is misleading in a study tool. Visual
-richness instead comes from layout variety + icons, not fabricated data.
+The output remains backward compatible with the existing renderer:
+    layout:
+        text | list | process | comparison
 
-Output shape matches what services/ppt_service.py's
-build_deck_sections()/build_pptx_from_deck_content() and
-services/pdf_service.py's build_pdf_from_deck_content() expect:
-    {"title": str, "summary": str,
-     "sections": [{"heading": str, "content": str, "layout": str,
-                    "items"?: [{"text": str, "icon": str}],
-                    "steps"?: [{"text": str}],
-                    "left"?: {...}, "right"?: {...}}],
-     "keyTakeaways": [{"text": str, "icon": str}, ...]}
-so this agent's output can be handed straight to either builder with
-no reshaping — same contract MindMapAgent has with mindmap_service.py.
+Additional design intelligence:
+    design_type
+    visual_intent
+    visual_priority
+    text_density
+    emphasis
+    image_query
+
+The current PPT renderer may ignore these additional fields temporarily.
+Later renderer updates will use them to create more professional and
+visually varied slides.
 """
 
 import time
@@ -44,15 +30,66 @@ from agents.base_agent import BaseAgent, AgentError
 from config.settings import settings
 from utils.gemini_client import generate_json, GeminiClientError
 
+
 REQUIRED_FIELDS = ["title", "sections"]
+
 MIN_SECTIONS = 5
 MAX_SECTIONS = 10
-VALID_LAYOUTS = {"text", "list", "comparison", "process"}
-# Kept deliberately small — every icon here has a reliable-looking shape
-# or glyph on BOTH the pptx and pdf builders (see services/ppt_service.py's
-# _icon_badge / services/pdf_service.py's _draw_icon). A tag outside this
-# set falls back to a plain checkmark rather than being rejected.
-ICON_VOCAB = {"check", "star", "warning", "gear", "database", "network", "shield", "zap", "cloud", "book"}
+
+# Existing renderer-compatible layouts
+VALID_LAYOUTS = {
+    "text",
+    "list",
+    "comparison",
+    "process",
+}
+
+# New design intelligence categories
+VALID_DESIGN_TYPES = {
+    "hero",
+    "big_statement",
+    "concept",
+    "timeline",
+    "process_flow",
+    "cycle",
+    "comparison",
+    "before_after",
+    "architecture",
+    "data_story",
+    "icon_grid",
+    "problem_solution",
+    "visual_metaphor",
+    "case_study",
+    "summary",
+    "feature_showcase",
+    "application_map",
+}
+
+VALID_TEXT_DENSITY = {
+    "low",
+    "medium",
+    "high",
+}
+
+VALID_VISUAL_PRIORITY = {
+    "low",
+    "medium",
+    "high",
+}
+
+ICON_VOCAB = {
+    "check",
+    "star",
+    "warning",
+    "gear",
+    "database",
+    "network",
+    "shield",
+    "zap",
+    "cloud",
+    "book",
+}
+
 DEFAULT_ICON = "check"
 
 
@@ -70,222 +107,810 @@ class SlideDeckAgent(BaseAgent):
         prompt = self._build_prompt(text, label)
 
         last_error: Exception | None = None
-        for attempt in range(settings.AI_GENERATION_MAX_RETRIES + 1):
+
+        for attempt in range(
+            settings.AI_GENERATION_MAX_RETRIES + 1
+        ):
             try:
-                raw = generate_json(prompt, temperature=0.6)
+                raw = generate_json(
+                    prompt,
+                    temperature=0.65
+                )
+
                 self._validate(raw)
+
                 return raw
-            except (GeminiClientError, SlideDeckAgentError) as exc:
+
+            except (
+                GeminiClientError,
+                SlideDeckAgentError
+            ) as exc:
                 last_error = exc
+
                 if attempt != settings.AI_GENERATION_MAX_RETRIES:
                     time.sleep(2)
+
                 continue
 
         raise SlideDeckAgentError(
-            f"Slide deck generation failed after {settings.AI_GENERATION_MAX_RETRIES + 1} attempt(s): {last_error}"
+            f"Slide deck generation failed after "
+            f"{settings.AI_GENERATION_MAX_RETRIES + 1} attempt(s): "
+            f"{last_error}"
         )
 
     def _build_prompt(self, text: str, label: str) -> str:
         trimmed = text[:6000]
-        icons = ", ".join(sorted(ICON_VOCAB))
 
-        return f"""You are building a study slide deck from {label} for a
-computer science student, in the style of Gamma or NotebookLM — expand
-a short prompt or notes into a FULL, DETAILED, VISUALLY VARIED
-presentation. Every slide must be genuinely substantial, the way Gamma
-or NotebookLM write a deck — NOT a thin 3-5 line summary slide and NOT
-a wall of identical heading+paragraph slides either.
+        icons = ", ".join(
+            sorted(ICON_VOCAB)
+        )
+
+        return f"""
+You are an expert AI Presentation Director.
+
+Your job is NOT simply to write content for PowerPoint slides.
+
+Your job is to think like a professional presentation designer and
+decide how every idea should be communicated visually.
+
+You are creating a high-quality educational presentation from
+{label} for a student.
+
+The presentation should feel like a professionally designed AI
+presentation with visual storytelling, varied layouts, strong visual
+hierarchy, and minimal unnecessary text.
 
 --- STUDENT INPUT START ---
 {trimmed}
 --- STUDENT INPUT END ---
 
-Build a deck with:
-- A short, clear title (3-8 words) for the overall topic.
-- A two-to-three sentence summary of what the deck covers and why it matters.
-- Between {MIN_SECTIONS} and {MAX_SECTIONS} content sections that break the
-  topic into a logical, thorough sequence (e.g. definition/overview,
-  background/context, how it works internally, key features, real-world
-  examples, comparisons, pros, cons, common pitfalls, use cases, best
-  practices — pick whichever sections actually fit this specific topic,
-  and go deep rather than staying surface-level).
+==================================================
+CORE PRESENTATION PRINCIPLE
+==================================================
 
-For EACH section, choose the layout that best fits its content:
-- "comparison" — the section is naturally two contrasting sides (pros
-  vs cons, advantages vs disadvantages, before vs after, X vs Y). Give
-  "left" and "right", each a {{"label": str, "items": [4-6 short phrases,
-  each with enough specificity to stand alone — not just one word]}}.
-- "process" — the section is naturally an ORDERED sequence (how
-  something works step by step, a protocol handshake, a setup
-  procedure). Give "steps": 4-6 phrases (5-10 words each, specific
-  enough to actually explain that step, not just a label), in order.
-- "list" — the section is naturally a set of PARALLEL, unordered items
-  (features, examples, types, use cases). Give "items": 4-6 objects,
-  each {{"text": "<one full descriptive sentence, 8-16 words, that
-  explains the item, not just names it>", "icon": "<one of: {icons}>"}}
-  — pick whichever icon best matches that specific item's meaning (e.g.
-  "warning" for a limitation, "database" for storage-related, "network"
-  for connectivity-related, "shield" for security, "zap" for
-  speed/performance, "gear" for configuration, "book" for a
-  definition/concept, "star" for a standout feature, "check" as the
-  general-purpose default).
-- "text" — a narrative explanation that doesn't reduce to a list, a
-  sequence, or a two-sided comparison. Give "content": a FULL, RICH
-  explanation — AT LEAST 90 WORDS, ideally 120-160 words, across 5-8
-  sentences (multiple paragraphs' worth of substance — define the
-  concept, explain WHY it matters, give context or an example, not just
-  a one-line definition). Never settle for 2-3 short sentences here —
-  if your first draft of "content" is under 90 words, expand it with
-  more concrete explanation before finalizing the JSON. ALSO give
-  "subpoints": 3-5 short supporting bullet phrases (4-10 words each)
-  that highlight the most important facts from that section at a
-  glance, like the "key points" callouts Gamma/NotebookLM add beside a
-  long paragraph.
+Every slide must communicate ONE main idea.
 
-Every section still needs "heading" (2-5 words) and a "content" string.
-For "list"/"comparison"/"process" layouts, "content" is a 1-2 sentence
-plain-text fallback summary of the section (used as its plain
-description elsewhere in the app) — it does NOT need to be as long as a
-"text" layout's "content".
+Do NOT create slides that are simply:
 
-Do NOT invent numbers, percentages, dates, or statistics anywhere —
-this deck is built from a short prompt with no real dataset behind it,
-so any figures would just be made up. Stick to qualitative, factual
-statements, but be thorough and specific with the qualitative detail
-you do give — avoid vague filler sentences that could apply to any topic.
+Title
++
+Large paragraph
++
+Bullet points
 
-Use "comparison", "list", and "process" layouts wherever the content
-genuinely fits — a deck that's ALL "text" layout looks exactly like
-the plain version this is meant to replace. Aim for at least half the
-sections to use one of those three when the topic supports it.
+Instead, first understand the idea and decide:
 
-Also include 4-6 "key takeaways" — objects like {{"text": "<one full
-sentence, 8-14 words, specific to this topic — not a generic
-platitude>", "icon": "<one of: {icons}>"}} — summarizing the most
-important points a student should remember after this deck.
+1. What is the core message?
+2. What should the audience understand in 3 seconds?
+3. What visual structure best communicates this idea?
+4. How much text is actually necessary?
+5. What kind of visual should support the message?
 
-Also give EACH "text" layout section an "image_query": a short (2-5
-word) plain-English visual search phrase that captures what a fitting
-illustrative image for that section would show (e.g. "server data
-center racks", "handshake network diagram") — used to find or generate
-a matching picture for that slide.
+==================================================
+PRESENTATION STRUCTURE
+==================================================
 
-Respond with ONLY a JSON object, no prose, no markdown fences, in this
-exact shape (include only the fields that apply to each section's layout):
+Create between {MIN_SECTIONS} and {MAX_SECTIONS}
+content sections.
+
+The presentation should have a strong narrative flow.
+
+Possible flow:
+
+- Introduction
+- Core concept
+- Background or history
+- How it works
+- Key features
+- Applications
+- Advantages and limitations
+- Comparison
+- Examples
+- Key insights
+- Conclusion
+
+Do NOT blindly use this structure.
+Choose the best structure for the actual topic.
+
+==================================================
+DESIGN TYPES
+==================================================
+
+For EACH section choose ONE design_type:
+
+1. "hero"
+   Use for powerful introductions or major concepts.
+
+2. "big_statement"
+   Use for one strong idea that should dominate the slide.
+
+3. "concept"
+   Use for explaining a definition or core concept.
+
+4. "timeline"
+   Use for history, evolution, stages over time, or chronological events.
+
+5. "process_flow"
+   Use for step-by-step systems or workflows.
+
+6. "cycle"
+   Use for repeating systems or feedback loops.
+
+7. "comparison"
+   Use for two contrasting concepts.
+
+8. "before_after"
+   Use for transformation or change.
+
+9. "architecture"
+   Use for technical systems, components, or relationships.
+
+10. "data_story"
+    Use only when meaningful qualitative trends or relationships can
+    be visualized WITHOUT inventing numerical data.
+
+11. "icon_grid"
+    Use for features, categories, or applications.
+
+12. "problem_solution"
+    Use when explaining a challenge and its solution.
+
+13. "visual_metaphor"
+    Use when an abstract idea can be communicated through a strong
+    visual metaphor.
+
+14. "case_study"
+    Use for examples or real-world scenarios.
+
+15. "summary"
+    Use for major conclusions or key takeaways.
+
+16. "feature_showcase"
+    Use when highlighting important capabilities.
+
+17. "application_map"
+    Use when showing different real-world applications or domains.
+
+IMPORTANT:
+Do NOT repeat the same design_type unnecessarily.
+
+A 10-slide deck should ideally contain several different visual
+structures.
+
+==================================================
+TEXT RULES
+==================================================
+
+Prefer LOW text density.
+
+Do NOT write 100+ word paragraphs for a normal presentation slide.
+
+Use:
+
+- 1 strong core message
+- Short supporting explanation
+- 3 to 5 concise supporting points when needed
+- Visual-first storytelling
+
+A slide should normally contain approximately 20 to 60 words.
+
+Only use more content when absolutely necessary.
+
+==================================================
+VISUAL PLANNING
+==================================================
+
+For EVERY section provide:
+
+"visual_intent"
+
+This must explain what visual structure should communicate the idea.
+
+Examples:
+
+"The rise and collapse of AI funding shown as a dramatic trend curve."
+
+"A circular cycle showing expectation, hype, disappointment, and
+funding decline."
+
+"A technical architecture showing components connected through arrows."
+
+"A split visual comparing interpreted and compiled execution."
+
+"An ecosystem map connecting Python to web development, data science,
+automation, and AI."
+
+Do NOT write generic visual_intent values like:
+
+"Add an image"
+"Use graphics"
+"Make it attractive"
+
+Be specific about the actual visual composition.
+
+==================================================
+VISUAL PRIORITY
+==================================================
+
+Choose:
+
+"high"
+"medium"
+"low"
+
+Most important conceptual slides should usually have "high".
+
+==================================================
+TEXT DENSITY
+==================================================
+
+Choose:
+
+"low"
+"medium"
+"high"
+
+Most presentation slides should use "low" or "medium".
+
+==================================================
+EMPHASIS
+==================================================
+
+Provide a short phrase describing the element that should visually
+stand out most on the slide.
+
+Examples:
+
+"The interpreter"
+
+"The funding collapse"
+
+"The comparison between two approaches"
+
+"The circular feedback loop"
+
+"The four major applications"
+
+==================================================
+LAYOUT FIELD
+==================================================
+
+The renderer currently supports these layout values:
+
+"text"
+"list"
+"process"
+"comparison"
+
+Choose the closest compatible layout.
+
+IMPORTANT:
+
+The "layout" field is technical renderer compatibility.
+
+The "design_type" field describes the actual intended professional
+visual design.
+
+For example:
+
+A timeline may temporarily use:
+layout = "process"
+design_type = "timeline"
+
+An architecture may temporarily use:
+layout = "process"
+design_type = "architecture"
+
+A visual metaphor may temporarily use:
+layout = "text"
+design_type = "visual_metaphor"
+
+==================================================
+CONTENT BY LAYOUT
+==================================================
+
+For "text":
+
+Provide:
+
+- heading
+- content
+- subpoints
+- image_query
+
+Content should normally be concise and visually presentation-friendly.
+
+For "list":
+
+Provide:
+
+- heading
+- content
+- items
+
+Each item must be:
+
+{{
+  "text": "...",
+  "icon": "..."
+}}
+
+Use 3 to 6 items.
+
+For "process":
+
+Provide:
+
+- heading
+- content
+- steps
+
+Use 3 to 6 steps.
+
+Each step:
+
+{{
+  "text": "..."
+}}
+
+For "comparison":
+
+Provide:
+
+- heading
+- content
+- left
+- right
+
+Each side must contain:
+
+{{
+  "label": "...",
+  "items": ["...", "..."]
+}}
+
+==================================================
+ACCURACY RULES
+==================================================
+
+Do NOT invent:
+
+- Statistics
+- Percentages
+- Dates
+- Research results
+- Numerical performance claims
+
+unless they are clearly present in the student's provided content.
+
+Do not fabricate data just to create a chart.
+
+==================================================
+IMAGE QUERY
+==================================================
+
+Every section should include "image_query".
+
+It should be a short search phrase describing the desired visual.
+
+Examples:
+
+"python programming code"
+
+"machine learning workflow"
+
+"computer network architecture"
+
+"artificial intelligence history"
+
+"data science ecosystem"
+
+==================================================
+KEY TAKEAWAYS
+==================================================
+
+Include 4 to 6 key takeaways.
+
+Each:
+
+{{
+  "text": "...",
+  "icon": "..."
+}}
+
+==================================================
+REQUIRED JSON FORMAT
+==================================================
+
+Return ONLY a valid JSON object.
+
+Use exactly this structure:
+
 {{
   "title": "<deck title>",
-  "summary": "<two-to-three sentence overview>",
+
+  "summary": "<short overview>",
+
   "sections": [
-    {{"heading": "<heading>", "content": "<5-8 sentence rich explanation>", "layout": "text",
-      "subpoints": [{{"text": "<short highlight 1>"}}, {{"text": "<short highlight 2>"}}, {{"text": "<short highlight 3>"}}],
-      "image_query": "<2-5 word visual search phrase>"}},
-    {{"heading": "<heading>", "content": "<1-2 sentence summary>", "layout": "list",
-      "items": [{{"text": "<full descriptive sentence>", "icon": "check"}}, {{"text": "<full descriptive sentence>", "icon": "database"}}]}},
-    {{"heading": "<heading>", "content": "<1-2 sentence summary>", "layout": "process",
-      "steps": [{{"text": "<detailed step 1>"}}, {{"text": "<detailed step 2>"}}, {{"text": "<detailed step 3>"}}]}},
-    {{"heading": "<heading>", "content": "<1-2 sentence summary>", "layout": "comparison",
-      "left": {{"label": "Pros", "items": ["<specific item>", "<specific item>"]}},
-      "right": {{"label": "Cons", "items": ["<specific item>", "<specific item>"]}}}}
+    {{
+      "heading": "<slide title>",
+
+      "content": "<concise explanation>",
+
+      "layout": "text",
+
+      "design_type": "concept",
+
+      "visual_intent": "<specific visual composition>",
+
+      "visual_priority": "high",
+
+      "text_density": "low",
+
+      "emphasis": "<main visual focus>",
+
+      "subpoints": [
+        {{"text": "<short key point>"}},
+        {{"text": "<short key point>"}},
+        {{"text": "<short key point>"}}
+      ],
+
+      "image_query": "<visual search phrase>"
+    }},
+
+    {{
+      "heading": "<slide title>",
+
+      "content": "<short explanation>",
+
+      "layout": "process",
+
+      "design_type": "timeline",
+
+      "visual_intent": "<timeline visual explanation>",
+
+      "visual_priority": "high",
+
+      "text_density": "low",
+
+      "emphasis": "<main focus>",
+
+      "image_query": "<visual search phrase>",
+
+      "steps": [
+        {{"text": "<step 1>"}},
+        {{"text": "<step 2>"}},
+        {{"text": "<step 3>"}}
+      ]
+    }},
+
+    {{
+      "heading": "<slide title>",
+
+      "content": "<short explanation>",
+
+      "layout": "comparison",
+
+      "design_type": "comparison",
+
+      "visual_intent": "<split comparison visual>",
+
+      "visual_priority": "high",
+
+      "text_density": "medium",
+
+      "emphasis": "<main contrast>",
+
+      "image_query": "<visual search phrase>",
+
+      "left": {{
+        "label": "<left side>",
+        "items": [
+          "<item>",
+          "<item>"
+        ]
+      }},
+
+      "right": {{
+        "label": "<right side>",
+        "items": [
+          "<item>",
+          "<item>"
+        ]
+      }}
+    }}
   ],
-  "keyTakeaways": [{{"text": "<specific takeaway 1>", "icon": "star"}}, {{"text": "<specific takeaway 2>", "icon": "check"}}]
-}}"""
+
+  "keyTakeaways": [
+    {{
+      "text": "<takeaway>",
+      "icon": "star"
+    }}
+  ]
+}}
+"""
 
     def _validate(self, raw: dict) -> None:
         if not isinstance(raw, dict):
-            raise SlideDeckAgentError("Model response was not a JSON object.")
-        missing = [f for f in REQUIRED_FIELDS if f not in raw]
+            raise SlideDeckAgentError(
+                "Model response was not a JSON object."
+            )
+
+        missing = [
+            field
+            for field in REQUIRED_FIELDS
+            if field not in raw
+        ]
+
         if missing:
-            raise SlideDeckAgentError(f"Response missing required field(s): {missing}")
+            raise SlideDeckAgentError(
+                f"Response missing required field(s): {missing}"
+            )
+
         sections = raw["sections"]
-        if not isinstance(sections, list) or len(sections) < 2:
-            raise SlideDeckAgentError("'sections' must be a non-trivial list.")
 
-        for i, s in enumerate(sections):
-            if not isinstance(s, dict) or "heading" not in s or "content" not in s:
-                raise SlideDeckAgentError(f"Section at index {i} is missing 'heading' or 'content'.")
+        if (
+            not isinstance(sections, list)
+            or len(sections) < 2
+        ):
+            raise SlideDeckAgentError(
+                "'sections' must be a non-trivial list."
+            )
 
-            original_layout = s.get("layout", "text")  # captured before any fallback demotion below
+        for index, section in enumerate(sections):
+
+            if (
+                not isinstance(section, dict)
+                or "heading" not in section
+                or "content" not in section
+            ):
+                raise SlideDeckAgentError(
+                    f"Section at index {index} is missing "
+                    "'heading' or 'content'."
+                )
+
+            self._normalize_design_fields(section)
+
+            original_layout = section.get(
+                "layout",
+                "text"
+            )
+
             layout = original_layout
+
             if layout not in VALID_LAYOUTS:
-                s["layout"] = "text"  # unknown tag from the model — fall back rather than reject the whole deck
+                section["layout"] = "text"
                 layout = "text"
 
             if layout == "list":
-                items = s.get("items")
-                if not isinstance(items, list) or len(items) < 2:
-                    s["layout"] = "text"
-                else:
-                    s["items"] = [self._normalize_icon_item(it) for it in items]
+                self._validate_list_section(section)
+
             elif layout == "process":
-                steps = s.get("steps")
-                if not isinstance(steps, list) or len(steps) < 2:
-                    s["layout"] = "text"  # malformed step payload — degrade to plain text rather than failing
-                else:
-                    s["steps"] = [{"text": self._item_text(st)} for st in steps if self._item_text(st)]
-                    if len(s["steps"]) < 2:
-                        s["layout"] = "text"
+                self._validate_process_section(section)
+
             elif layout == "comparison":
-                left, right = s.get("left"), s.get("right")
-                valid = (
-                    isinstance(left, dict) and isinstance(right, dict)
-                    and isinstance(left.get("items"), list) and isinstance(right.get("items"), list)
-                    and len(left["items"]) >= 1 and len(right["items"]) >= 1
-                )
-                if not valid:
-                    s["layout"] = "text"
+                self._validate_comparison_section(section)
 
-            if s["layout"] == "text":
-                # Short highlight bullets alongside the long-form paragraph
-                # (see module docstring) — optional, so a model that omits
-                # them just falls back to plain paragraph-only text.
-                subpoints = s.get("subpoints")
-                if isinstance(subpoints, list) and subpoints:
-                    cleaned = [self._item_text(sp) for sp in subpoints]
-                    s["subpoints"] = [{"text": t} for t in cleaned if t]
-                    if not s["subpoints"]:
-                        s.pop("subpoints", None)
-                else:
-                    s.pop("subpoints", None)
-
-                # Enforce the "AT LEAST 90 WORDS" instruction above rather
-                # than trusting the model to have followed it — but only
-                # for a section the model genuinely intended as "text";
-                # a section DEMOTED here from list/process/comparison
-                # (malformed items/steps/sides) legitimately only has its
-                # short 1-2 sentence fallback summary, so it's exempt —
-                # otherwise every malformed list would force a pointless
-                # whole-deck retry instead of just rendering as text.
-                if original_layout == "text":
-                    word_count = len(s["content"].split())
-                    if word_count < 60:
-                        raise SlideDeckAgentError(
-                            f"Section '{s.get('heading', '?')}' content is only {word_count} words "
-                            "(need >=60) — model under-delivered on the full-depth 'text' layout."
-                        )
+            if section.get("layout") == "text":
+                self._normalize_text_section(section)
 
         if "keyTakeaways" in raw:
+
             takeaways = raw["keyTakeaways"]
+
             if not isinstance(takeaways, list):
-                raise SlideDeckAgentError("'keyTakeaways' must be a list when present.")
-            raw["keyTakeaways"] = [self._normalize_icon_item(t) for t in takeaways]
+                raise SlideDeckAgentError(
+                    "'keyTakeaways' must be a list."
+                )
+
+            raw["keyTakeaways"] = [
+                self._normalize_icon_item(item)
+                for item in takeaways
+            ]
+
+    def _normalize_design_fields(
+        self,
+        section: dict
+    ) -> None:
+
+        design_type = section.get(
+            "design_type",
+            "concept"
+        )
+
+        if design_type not in VALID_DESIGN_TYPES:
+            design_type = "concept"
+
+        section["design_type"] = design_type
+
+        visual_priority = section.get(
+            "visual_priority",
+            "medium"
+        )
+
+        if visual_priority not in VALID_VISUAL_PRIORITY:
+            visual_priority = "medium"
+
+        section["visual_priority"] = visual_priority
+
+        text_density = section.get(
+            "text_density",
+            "low"
+        )
+
+        if text_density not in VALID_TEXT_DENSITY:
+            text_density = "low"
+
+        section["text_density"] = text_density
+
+        visual_intent = str(
+            section.get(
+                "visual_intent",
+                ""
+            )
+        ).strip()
+
+        if not visual_intent:
+            visual_intent = (
+                f"Visual explanation of "
+                f"{section.get('heading', 'this concept')}"
+            )
+
+        section["visual_intent"] = visual_intent
+
+        emphasis = str(
+            section.get(
+                "emphasis",
+                section.get("heading", "")
+            )
+        ).strip()
+
+        section["emphasis"] = emphasis
+
+        image_query = str(
+            section.get(
+                "image_query",
+                section.get("heading", "")
+            )
+        ).strip()
+
+        section["image_query"] = image_query
+
+    def _validate_list_section(
+        self,
+        section: dict
+    ) -> None:
+
+        items = section.get("items")
+
+        if (
+            not isinstance(items, list)
+            or len(items) < 2
+        ):
+            section["layout"] = "text"
+            return
+
+        section["items"] = [
+            self._normalize_icon_item(item)
+            for item in items
+        ]
+
+    def _validate_process_section(
+        self,
+        section: dict
+    ) -> None:
+
+        steps = section.get("steps")
+
+        if (
+            not isinstance(steps, list)
+            or len(steps) < 2
+        ):
+            section["layout"] = "text"
+            return
+
+        cleaned_steps = []
+
+        for step in steps:
+            text = self._item_text(step)
+
+            if text:
+                cleaned_steps.append({
+                    "text": text
+                })
+
+        if len(cleaned_steps) < 2:
+            section["layout"] = "text"
+            return
+
+        section["steps"] = cleaned_steps
+
+    def _validate_comparison_section(
+        self,
+        section: dict
+    ) -> None:
+
+        left = section.get("left")
+        right = section.get("right")
+
+        valid = (
+            isinstance(left, dict)
+            and isinstance(right, dict)
+            and isinstance(left.get("items"), list)
+            and isinstance(right.get("items"), list)
+            and len(left["items"]) >= 1
+            and len(right["items"]) >= 1
+        )
+
+        if not valid:
+            section["layout"] = "text"
+
+    def _normalize_text_section(
+        self,
+        section: dict
+    ) -> None:
+
+        subpoints = section.get("subpoints")
+
+        if (
+            isinstance(subpoints, list)
+            and subpoints
+        ):
+            cleaned = []
+
+            for subpoint in subpoints:
+                text = self._item_text(subpoint)
+
+                if text:
+                    cleaned.append({
+                        "text": text
+                    })
+
+            if cleaned:
+                section["subpoints"] = cleaned
+            else:
+                section.pop(
+                    "subpoints",
+                    None
+                )
+
+        else:
+            section.pop(
+                "subpoints",
+                None
+            )
 
     @staticmethod
     def _item_text(item) -> str:
+
         if isinstance(item, dict):
-            return str(item.get("text", "")).strip()
+            return str(
+                item.get("text", "")
+            ).strip()
+
         return str(item).strip()
 
     @classmethod
-    def _normalize_icon_item(cls, item) -> dict:
-        """Accepts either a plain string or a {"text","icon"} object (the
-        model doesn't always follow the icon-object shape consistently)
-        and always returns a well-formed {"text","icon"} dict, falling
-        back to DEFAULT_ICON for a missing/unrecognized icon tag."""
+    def _normalize_icon_item(
+        cls,
+        item
+    ) -> dict:
+
         if isinstance(item, dict):
-            text = str(item.get("text", "")).strip()
+            text = str(
+                item.get("text", "")
+            ).strip()
+
             icon = item.get("icon")
+
         else:
-            text, icon = str(item).strip(), None
+            text = str(item).strip()
+            icon = None
+
         if icon not in ICON_VOCAB:
             icon = DEFAULT_ICON
-        return {"text": text, "icon": icon}
+
+        return {
+            "text": text,
+            "icon": icon
+        }

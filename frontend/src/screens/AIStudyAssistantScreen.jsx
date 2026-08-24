@@ -2629,7 +2629,7 @@ function SlideKeyPoints({ subpoints, accent }) {
       <p className="text-[9px] font-bold tracking-wide" style={{ color: accent }}>
         KEY POINTS
       </p>
-      {(subpoints || []).slice(0, 5).map((sp, i) => {
+      {subpoints.slice(0, 5).map((sp, i) => {
         const text = typeof sp === "object" ? sp.text : sp;
         if (!text) return null;
         return (

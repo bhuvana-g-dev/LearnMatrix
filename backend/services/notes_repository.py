@@ -87,6 +87,55 @@ def get_cached_notes(db, skill: str, topic: str, focus_band: str) -> dict | None
     return snap.to_dict() if snap.exists else None
 
 
+def list_all_notes(db, skill: str | None = None, topic: str | None = None) -> list[dict]:
+    """
+    Every cached notes document — this is the actual reusable/shared
+    "System-generated content" the Admin Panel's Generated Content
+    Management section shows (see routes/generated_content_routes.py).
+    Each doc already carries its own (skill, topic, focusBand) fields
+    plus its deterministic doc ID, so no extra bookkeeping collection
+    is needed — this repository IS the cache, listing it IS the admin
+    view of what's currently being reused.
+
+    skill/topic are optional equality filters, same additive pattern as
+    services/resource_repository.py's list_resources().
+    """
+    docs = db.collection(settings.LEARNING_NOTES_COLLECTION).stream()
+    results = []
+    for doc in docs:
+        data = doc.to_dict()
+        data["id"] = doc.id
+        if skill and data.get("skill") != skill:
+            continue
+        if topic and data.get("topic") != topic:
+            continue
+        results.append(data)
+    return results
+
+
+def get_notes_by_id(db, doc_id: str) -> dict | None:
+    """Single cached notes doc by its deterministic ID (see _doc_id()) —
+    for the Generated Content Management \"View\" action."""
+    snap = db.collection(settings.LEARNING_NOTES_COLLECTION).document(doc_id).get()
+    if not snap.exists:
+        return None
+    data = snap.to_dict()
+    data["id"] = snap.id
+    return data
+
+
+def delete_notes(db, doc_id: str) -> None:
+    """
+    Removes one cached notes doc. This is THE control an admin has over
+    reused/shared AI-generated content (see services/learning_content_service.py's
+    get_topic_package(): a cache miss on the next request for this exact
+    (skill, topic, focusBand) regenerates fresh content via
+    NotesGenerationAgent and re-caches it under the same doc ID — nothing
+    else needs to change for that to happen automatically.
+    """
+    db.collection(settings.LEARNING_NOTES_COLLECTION).document(doc_id).delete()
+
+
 def save_notes(db, skill: str, topic: str, focus_band: str, notes: dict) -> dict:
     """
     `notes` is the raw dict returned by

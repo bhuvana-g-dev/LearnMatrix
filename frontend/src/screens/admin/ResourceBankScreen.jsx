@@ -109,13 +109,10 @@ export default function ResourceBankScreen({ admin }) {
   const [formError, setFormError] = useState("");
 
   const [suggestRole, setSuggestRole] = useState("");
-  const [suggestSkill, setSuggestSkill] = useState("");
-  const [suggestTopic, setSuggestTopic] = useState(""); // selected from suggestTopicOptions below, or manually typed when a skill has no seeded topics
-  const [suggestTopicOptions, setSuggestTopicOptions] = useState([]);
-  const [suggestTopicCustomMode, setSuggestTopicCustomMode] = useState(false); // true = typing a topic name manually instead of picking from the list
-  const [suggesting, setSuggesting] = useState(""); // "ai" | "youtube" | "video" | "bulk" | ""
-  const [suggestError, setSuggestError] = useState("");
-  const [suggestMessage, setSuggestMessage] = useState("");
+  // No topic picker anymore — each skill gets its own section below, and
+  // generation for a skill loops over every topic seeded for it.
+  const [suggestingKey, setSuggestingKey] = useState(""); // `${skill}:${action}` while a request is in flight, else ""
+  const [skillMessages, setSkillMessages] = useState({}); // skill -> { message, error }
 
   const [skillsForRole, setSkillsForRole] = useState([]); // suggest-panel skill list for suggestRole
   const [skillsLoading, setSkillsLoading] = useState(false);
@@ -179,14 +176,14 @@ export default function ResourceBankScreen({ admin }) {
     return () => { cancelled = true; };
   }, [filterSkill]);
 
-  // ---- Generate Suggestions panel: Role -> Skill -> Topic (datalist) ----
+  // ---- Generate Suggestions panel: Role -> Skill sections (no topic picker) ----
+  // Each skill under the selected role gets its own section. Generating for
+  // a skill fetches its seeded topics and runs the action across all of them.
 
   const handleSuggestRoleChange = async (roleId) => {
     setSuggestRole(roleId);
-    setSuggestSkill("");
-    setSuggestTopic("");
-    setSuggestTopicOptions([]);
     setSkillsForRole([]);
+    setSkillMessages({});
     if (!roleId) return;
     setSkillsLoading(true);
     setSuggestError2("");
@@ -200,37 +197,6 @@ export default function ResourceBankScreen({ admin }) {
       setSkillsLoading(false);
     }
   };
-
-  const handleSuggestSkillChange = (skill) => {
-    setSuggestSkill(skill);
-    setSuggestTopic(""); // reset topic — previous skill's topic won't be valid for a new skill
-    setSuggestTopicCustomMode(false);
-  };
-
-  useEffect(() => {
-    if (!suggestSkill) {
-      setSuggestTopicOptions([]);
-      return;
-    }
-    let cancelled = false;
-    (async () => {
-      try {
-        const topics = await getTopicsForSkill(suggestSkill);
-        if (!cancelled) {
-          setSuggestTopicOptions(topics || []);
-          // No seeded topic tree for this skill -> nothing to pick from,
-          // go straight to manual entry instead of showing an empty select.
-          setSuggestTopicCustomMode((topics || []).length === 0);
-        }
-      } catch {
-        if (!cancelled) {
-          setSuggestTopicOptions([]);
-          setSuggestTopicCustomMode(true);
-        }
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [suggestSkill]);
 
   const loadResources = useCallback(async () => {
     setLoading(true);
@@ -355,98 +321,124 @@ export default function ResourceBankScreen({ admin }) {
     }
   };
 
-  const handleSuggest = async (via) => {
-    setSuggestError("");
-    setSuggestMessage("");
-    if (!suggestSkill || !suggestTopic.trim()) {
-      setSuggestError("Select a skill and enter a topic first.");
-      return;
-    }
-    setSuggesting(via);
+  // Every action below now runs at the SKILL level: it looks up every
+  // topic seeded for that skill and repeats the action once per topic,
+  // aggregating the results into one message for that skill's section.
+  const setSkillMsg = (skill, patch) =>
+    setSkillMessages((m) => ({ ...m, [skill]: { message: "", error: "", ...m[skill], ...patch } }));
+
+  const topicsFor = async (skill) => {
     try {
-      const results =
-        via === "youtube"
-          ? await suggestResourcesViaYouTube(suggestSkill, suggestTopic)
-          : await suggestResourcesViaAI(suggestSkill, suggestTopic);
-      setSuggestMessage(
-        results.length > 0
-          ? `Found ${results.length} suggestion(s) — review them below before they go live.`
-          : "No results found for that skill/topic."
-      );
-      await loadPending();
-    } catch (err) {
-      setSuggestError(err.message || "Suggestion request failed.");
-    } finally {
-      setSuggesting("");
+      const topics = await getTopicsForSkill(skill);
+      return (topics || []).map((t) => t.Title).filter(Boolean);
+    } catch {
+      return [];
     }
   };
 
-  // VIDEO-ONLY, one-click path — publishes ONE real YouTube video,
-  // immediately verified, for the exact (skill, topic) the live student
-  // page will request. articleCount:0 tells the backend to skip article
-  // generation cleanly (see services/resource_review_service.py's
-  // generate_and_auto_verify()).
-  const handleGenerateVideo = async () => {
-    setSuggestError("");
-    setSuggestMessage("");
-    if (!suggestSkill || !suggestTopic.trim()) {
-      setSuggestError("Select a skill and enter a topic first.");
+  const handleSuggest = async (skill, via) => {
+    setSkillMsg(skill, { message: "", error: "" });
+    const topics = await topicsFor(skill);
+    if (topics.length === 0) {
+      setSkillMsg(skill, { error: "No topics seeded for this skill yet." });
       return;
     }
-    if (!admin?.email) {
-      setSuggestError("No logged-in admin identity found — please log back in.");
-      return;
-    }
-    setSuggesting("video");
+    setSuggestingKey(`${skill}:${via}`);
     try {
-      const result = await bulkGenerateAndVerify(suggestSkill, suggestTopic, admin.email, {
-        articleCount: 0,
-        videoCount: 1,
+      let found = 0;
+      const errors = [];
+      for (const topic of topics) {
+        try {
+          const results =
+            via === "youtube"
+              ? await suggestResourcesViaYouTube(skill, topic)
+              : await suggestResourcesViaAI(skill, topic);
+          found += results.length;
+        } catch (err) {
+          errors.push(`${topic}: ${err.message || "failed"}`);
+        }
+      }
+      setSkillMsg(skill, {
+        message: found > 0 ? `Found ${found} suggestion(s) across ${topics.length} topic(s) — review below before they go live.` : "No results found.",
+        error: errors.join(" · "),
       });
-      setSuggestMessage(
-        result.videos.length > 0
-          ? `Published: "${result.videos[0].title}" for ${suggestSkill} / ${suggestTopic} — verified by ${admin.email}. Open this topic as a student to confirm it shows.`
-          : "No video found for that skill/topic — try a more specific topic name."
-      );
-      if (result.errors.length > 0) {
-        setSuggestError(result.errors.join(" · "));
-      }
-      await loadResources();
-    } catch (err) {
-      setSuggestError(err.message || "Video generation failed.");
+      await loadPending();
     } finally {
-      setSuggesting("");
+      setSuggestingKey("");
     }
   };
 
-  const handleBulkGenerate = async () => {
-    setSuggestError("");
-    setSuggestMessage("");
-    if (!suggestSkill || !suggestTopic.trim()) {
-      setSuggestError("Select a skill and enter a topic first.");
-      return;
-    }
+  // VIDEO-ONLY, one-click path — publishes one real YouTube video per
+  // topic, immediately verified. articleCount:0 tells the backend to
+  // skip article generation cleanly (see resource_review_service.py's
+  // generate_and_auto_verify()).
+  const handleGenerateVideo = async (skill) => {
+    setSkillMsg(skill, { message: "", error: "" });
     if (!admin?.email) {
-      setSuggestError("No logged-in admin identity found — please log back in.");
+      setSkillMsg(skill, { error: "No logged-in admin identity found — please log back in." });
       return;
     }
-    setSuggesting("bulk");
+    const topics = await topicsFor(skill);
+    if (topics.length === 0) {
+      setSkillMsg(skill, { error: "No topics seeded for this skill yet." });
+      return;
+    }
+    setSuggestingKey(`${skill}:video`);
     try {
-      const result = await bulkGenerateAndVerify(suggestSkill, suggestTopic, admin.email);
-      const total = result.articles.length + result.videos.length;
-      setSuggestMessage(
-        total > 0
-          ? `Published ${total} resource(s) straight to students (${result.articles.length} article/doc/practice + ${result.videos.length} video) — verified by ${admin.email}.`
-          : "No resources could be generated for that skill/topic."
-      );
-      if (result.errors.length > 0) {
-        setSuggestError(result.errors.join(" · "));
+      let published = 0;
+      const errors = [];
+      for (const topic of topics) {
+        try {
+          const result = await bulkGenerateAndVerify(skill, topic, admin.email, { articleCount: 0, videoCount: 1 });
+          published += result.videos.length;
+          if (result.errors.length > 0) errors.push(...result.errors);
+        } catch (err) {
+          errors.push(`${topic}: ${err.message || "failed"}`);
+        }
       }
+      setSkillMsg(skill, {
+        message: published > 0 ? `Published ${published} video(s) across ${topics.length} topic(s) — verified by ${admin.email}.` : "No videos found for any topic.",
+        error: errors.join(" · "),
+      });
       await loadResources();
-    } catch (err) {
-      setSuggestError(err.message || "Bulk generation failed.");
     } finally {
-      setSuggesting("");
+      setSuggestingKey("");
+    }
+  };
+
+  const handleBulkGenerate = async (skill) => {
+    setSkillMsg(skill, { message: "", error: "" });
+    if (!admin?.email) {
+      setSkillMsg(skill, { error: "No logged-in admin identity found — please log back in." });
+      return;
+    }
+    const topics = await topicsFor(skill);
+    if (topics.length === 0) {
+      setSkillMsg(skill, { error: "No topics seeded for this skill yet." });
+      return;
+    }
+    setSuggestingKey(`${skill}:bulk`);
+    try {
+      let articles = 0, videos = 0;
+      const errors = [];
+      for (const topic of topics) {
+        try {
+          const result = await bulkGenerateAndVerify(skill, topic, admin.email);
+          articles += result.articles.length;
+          videos += result.videos.length;
+          if (result.errors.length > 0) errors.push(...result.errors);
+        } catch (err) {
+          errors.push(`${topic}: ${err.message || "failed"}`);
+        }
+      }
+      const total = articles + videos;
+      setSkillMsg(skill, {
+        message: total > 0 ? `Published ${total} resource(s) across ${topics.length} topic(s) (${articles} article/doc/practice + ${videos} video) — verified by ${admin.email}.` : "No resources could be generated.",
+        error: errors.join(" · "),
+      });
+      await loadResources();
+    } finally {
+      setSuggestingKey("");
     }
   };
 
@@ -505,143 +497,104 @@ export default function ResourceBankScreen({ admin }) {
         </motion.button>
       </div>
 
-      {/* Generate suggestions: real YouTube search + AI-suggested docs/articles/github/etc, scoped to Role -> Skill -> Topic */}
+      {/* Generate suggestions: real YouTube search + AI-suggested docs/articles/github/etc.
+          Scoped to Role -> Skill only — no topic picker. Pick a role, then
+          each skill under it gets its own section below; generating for a
+          skill runs across every topic seeded for it automatically. */}
       <div className="p-5 mb-6" style={{ ...GLASS_CARD, borderRadius: 20 }}>
         <p className="text-sm font-bold mb-3" style={{ color: COLORS.textDark }}>Generate Suggestions</p>
         {suggestError2 && (
           <p className="text-xs font-semibold mb-2" style={{ color: "#DC2626" }}>{suggestError2}</p>
         )}
-        <div className="flex flex-wrap items-center gap-2.5">
-          <select
-            value={suggestRole}
-            onChange={(e) => handleSuggestRoleChange(e.target.value)}
-            disabled={rolesLoading}
-            className="text-sm px-3 py-2 rounded-lg outline-none"
-            style={{ border: `1px solid ${COLORS.border}`, background: "#fff", minWidth: 180, color: suggestRole ? COLORS.textDark : COLORS.textLight }}
-          >
-            <option value="">{rolesLoading ? "Loading roles…" : "Select role"}</option>
-            {roles.map((r) => (
-              <option key={r.id} value={r.id}>{r.title || r.id}</option>
-            ))}
-          </select>
-          <select
-            value={suggestSkill}
-            onChange={(e) => handleSuggestSkillChange(e.target.value)}
-            disabled={!suggestRole || skillsLoading}
-            className="text-sm px-3 py-2 rounded-lg outline-none"
-            style={{ border: `1px solid ${COLORS.border}`, background: "#fff", minWidth: 180, color: suggestSkill ? COLORS.textDark : COLORS.textLight, opacity: suggestRole ? 1 : 0.6 }}
-          >
-            <option value="">{!suggestRole ? "Select a role first" : skillsLoading ? "Loading skills…" : "Select skill"}</option>
-            {skillsForRole.map((skill) => (
-              <option key={skill} value={skill}>{skill}</option>
-            ))}
-          </select>
-          {suggestTopicCustomMode ? (
-            <div className="flex items-center gap-1.5">
-              <input
-                value={suggestTopic}
-                onChange={(e) => setSuggestTopic(e.target.value)}
-                disabled={!suggestSkill}
-                placeholder="Topic (e.g. Variables)"
-                className="text-sm px-3 py-2 rounded-lg outline-none"
-                style={{ border: `1px solid ${COLORS.border}`, background: "#fff", minWidth: 200, opacity: suggestSkill ? 1 : 0.6 }}
-              />
-              {suggestTopicOptions.length > 0 && (
-                <button
-                  onClick={() => { setSuggestTopicCustomMode(false); setSuggestTopic(""); }}
-                  title="Choose from this skill's topics instead"
-                  className="text-xs font-semibold underline"
-                  style={{ color: COLORS.textMid, background: "none", border: "none", cursor: "pointer" }}
-                >
-                  Choose from list
-                </button>
-              )}
-            </div>
-          ) : (
-            <select
-              value={suggestTopic}
-              onChange={(e) => {
-                if (e.target.value === "__custom__") {
-                  setSuggestTopicCustomMode(true);
-                  setSuggestTopic("");
-                } else {
-                  setSuggestTopic(e.target.value);
-                }
-              }}
-              disabled={!suggestSkill}
-              className="text-sm px-3 py-2 rounded-lg outline-none"
-              style={{ border: `1px solid ${COLORS.border}`, background: "#fff", minWidth: 200, color: suggestTopic ? COLORS.textDark : COLORS.textLight, opacity: suggestSkill ? 1 : 0.6 }}
-            >
-              <option value="">Select topic</option>
-              {suggestTopicOptions.map((t) => (
-                <option key={t.TopicID || t.Title} value={t.Title}>{t.Title}</option>
-              ))}
-              <option value="__custom__">✏️ Other / type manually</option>
-            </select>
+        <select
+          value={suggestRole}
+          onChange={(e) => handleSuggestRoleChange(e.target.value)}
+          disabled={rolesLoading}
+          className="text-sm px-3 py-2 rounded-lg outline-none mb-4"
+          style={{ border: `1px solid ${COLORS.border}`, background: "#fff", minWidth: 220, color: suggestRole ? COLORS.textDark : COLORS.textLight }}
+        >
+          <option value="">{rolesLoading ? "Loading roles…" : "Select role"}</option>
+          {roles.map((r) => (
+            <option key={r.id} value={r.id}>{r.title || r.id}</option>
+          ))}
+        </select>
+
+        {skillsLoading && <p className="text-xs" style={{ color: COLORS.textLight }}>Loading skills…</p>}
+
+        <div className="flex flex-col gap-3">
+          {skillsForRole.map((skill) => {
+            const busy = suggestingKey.startsWith(`${skill}:`);
+            const busyAction = busy ? suggestingKey.split(":")[1] : "";
+            const msg = skillMessages[skill] || {};
+            return (
+              <div key={skill} className="p-3.5 rounded-xl" style={{ background: "rgba(255,255,255,0.55)", border: `1px solid ${COLORS.border}` }}>
+                <p className="text-sm font-bold mb-2" style={{ color: COLORS.textDark }}>{skill}</p>
+                <div className="flex flex-wrap items-center gap-2.5">
+                  <motion.button
+                    onClick={() => handleGenerateVideo(skill)}
+                    disabled={!!suggestingKey}
+                    whileHover={{ y: -1 }}
+                    title="Publishes one real YouTube video per topic, immediately — no docs/articles/github/cheatsheet, no review queue."
+                    className="flex items-center gap-1.5 text-sm font-semibold"
+                    style={{
+                      padding: "9px 16px", borderRadius: 9999, background: "#FF0000", color: "#fff",
+                      border: "none", cursor: suggestingKey ? "default" : "pointer", opacity: suggestingKey ? 0.7 : 1,
+                    }}
+                  >
+                    {busyAction === "video" ? <Loader2 size={14} className="animate-spin" /> : <Youtube size={14} />}
+                    Generate &amp; Publish Video
+                  </motion.button>
+                  <motion.button
+                    onClick={() => handleSuggest(skill, "youtube")}
+                    disabled={!!suggestingKey}
+                    whileHover={{ y: -1 }}
+                    title="Search only — saves as pending for review, doesn't publish."
+                    className="flex items-center gap-1.5 text-sm font-semibold"
+                    style={{
+                      padding: "9px 16px", borderRadius: 9999, background: "#fff", color: "#DC2626",
+                      border: "1px solid #DC2626", cursor: suggestingKey ? "default" : "pointer", opacity: suggestingKey ? 0.7 : 1,
+                    }}
+                  >
+                    {busyAction === "youtube" ? <Loader2 size={14} className="animate-spin" /> : <Youtube size={14} />}
+                    Search Only (review queue)
+                  </motion.button>
+                  <motion.button
+                    onClick={() => handleSuggest(skill, "ai")}
+                    disabled={!!suggestingKey}
+                    whileHover={{ y: -1 }}
+                    className="flex items-center gap-1.5 text-sm font-semibold"
+                    style={{
+                      padding: "9px 16px", borderRadius: 9999, background: GRADIENTS.purpleSky, color: "#fff",
+                      border: "none", cursor: suggestingKey ? "default" : "pointer", opacity: suggestingKey ? 0.7 : 1,
+                    }}
+                  >
+                    {busyAction === "ai" ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+                    AI Suggest (docs/articles/github)
+                  </motion.button>
+                  <motion.button
+                    onClick={() => handleBulkGenerate(skill)}
+                    disabled={!!suggestingKey}
+                    whileHover={{ y: -1 }}
+                    title="Generates AI docs/articles/github AND a YouTube video per topic, and publishes them immediately — no review queue."
+                    className="flex items-center gap-1.5 text-sm font-semibold"
+                    style={{
+                      padding: "9px 16px", borderRadius: 9999, background: "#22C55E", color: "#fff",
+                      border: "none", cursor: suggestingKey ? "default" : "pointer", opacity: suggestingKey ? 0.7 : 1,
+                    }}
+                  >
+                    {busyAction === "bulk" ? <Loader2 size={14} className="animate-spin" /> : <Zap size={14} />}
+                    Generate &amp; Publish Now
+                  </motion.button>
+                </div>
+                {msg.error && <p className="text-xs mt-2 font-medium" style={{ color: "#DC2626" }}>{msg.error}</p>}
+                {msg.message && <p className="text-xs mt-2 font-medium" style={{ color: COLORS.textMid }}>{msg.message}</p>}
+              </div>
+            );
+          })}
+          {suggestRole && !skillsLoading && skillsForRole.length === 0 && (
+            <p className="text-xs" style={{ color: COLORS.textLight }}>No skills found for this role.</p>
           )}
-          <motion.button
-            onClick={handleGenerateVideo}
-            disabled={!!suggesting}
-            whileHover={{ y: -1 }}
-            title="Publishes ONE real YouTube video immediately for this exact skill/topic — no docs/articles/github/cheatsheet, no review queue."
-            className="flex items-center gap-1.5 text-sm font-semibold"
-            style={{
-              padding: "9px 16px", borderRadius: 9999, background: "#FF0000", color: "#fff",
-              border: "none", cursor: suggesting ? "default" : "pointer", opacity: suggesting ? 0.7 : 1,
-            }}
-          >
-            {suggesting === "video" ? <Loader2 size={14} className="animate-spin" /> : <Youtube size={14} />}
-            Generate &amp; Publish Video
-          </motion.button>
-          <motion.button
-            onClick={() => handleSuggest("youtube")}
-            disabled={!!suggesting}
-            whileHover={{ y: -1 }}
-            title="Search only — saves as pending for review, doesn't publish."
-            className="flex items-center gap-1.5 text-sm font-semibold"
-            style={{
-              padding: "9px 16px", borderRadius: 9999, background: "#fff", color: "#DC2626",
-              border: "1px solid #DC2626", cursor: suggesting ? "default" : "pointer", opacity: suggesting ? 0.7 : 1,
-            }}
-          >
-            {suggesting === "youtube" ? <Loader2 size={14} className="animate-spin" /> : <Youtube size={14} />}
-            Search Only (review queue)
-          </motion.button>
-          <motion.button
-            onClick={() => handleSuggest("ai")}
-            disabled={!!suggesting}
-            whileHover={{ y: -1 }}
-            className="flex items-center gap-1.5 text-sm font-semibold"
-            style={{
-              padding: "9px 16px", borderRadius: 9999, background: GRADIENTS.purpleSky, color: "#fff",
-              border: "none", cursor: suggesting ? "default" : "pointer", opacity: suggesting ? 0.7 : 1,
-            }}
-          >
-            {suggesting === "ai" ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
-            AI Suggest (docs/articles/github)
-          </motion.button>
-          <motion.button
-            onClick={handleBulkGenerate}
-            disabled={!!suggesting}
-            whileHover={{ y: -1 }}
-            title="Generates AI docs/articles/github AND a YouTube video, and publishes them immediately — no review queue."
-            className="flex items-center gap-1.5 text-sm font-semibold"
-            style={{
-              padding: "9px 16px", borderRadius: 9999, background: "#22C55E", color: "#fff",
-              border: "none", cursor: suggesting ? "default" : "pointer", opacity: suggesting ? 0.7 : 1,
-            }}
-          >
-            {suggesting === "bulk" ? <Loader2 size={14} className="animate-spin" /> : <Zap size={14} />}
-            Generate &amp; Publish Now
-          </motion.button>
         </div>
-        {suggestSkill && suggestTopic && (
-          <p className="text-[11px] mt-2.5" style={{ color: COLORS.textLight }}>
-            Will generate for: <strong>{suggestSkill}</strong> / <strong>{suggestTopic}</strong>
-          </p>
-        )}
-        {suggestError && <p className="text-xs mt-2.5 font-medium" style={{ color: "#DC2626" }}>{suggestError}</p>}
-        {suggestMessage && <p className="text-xs mt-2.5 font-medium" style={{ color: COLORS.textMid }}>{suggestMessage}</p>}
       </div>
 
       {/* Pending Review queue — preserves the existing pending/verified/rejected workflow */}

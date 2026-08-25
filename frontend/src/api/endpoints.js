@@ -134,7 +134,7 @@ export const ENDPOINTS = {
   ADMIN: {
     // Resource Bank — backend: routes/learning_routes.py
     RESOURCES: {
-      LIST: "/admin/learning-resources", // GET, supports ?skill=&topic=&type=&difficulty=&status=
+      LIST: "/admin/learning-resources", // GET, supports ?skill=&band=&type=&status=
       CREATE: "/admin/learning-resources", // POST
       UPDATE: (resourceId) => `/admin/learning-resources/${resourceId}`, // PATCH — general field edit
       DELETE: (resourceId) => `/admin/learning-resources/${resourceId}`, // DELETE
@@ -174,18 +174,6 @@ export const ENDPOINTS = {
       LIST: "/admin/generated-content", // GET, supports ?skill=&topic=
       GET: (id) => `/admin/generated-content/${id}`, // GET — full content
       DELETE: (id) => `/admin/generated-content/${id}`, // DELETE
-    },
-    // Lesson Plan Management — backend: routes/admin_lesson_routes.py
-    // Read + delete only for the cached ordered-lesson-list (Titles)
-    // per (skill, topic) — the `lesson_plans` collection. Separate from
-    // GENERATED_CONTENT above: deleting a topic's cached notes there
-    // does NOT clear this, which is why the site kept showing the old
-    // lesson list even after "deleting" generated content. Deleting
-    // here is what actually makes get_lessons() regenerate fresh.
-    LESSON_PLANS: {
-      LIST: "/admin/lesson-plans", // GET, supports ?skill=&topic=
-      DELETE: (skill, topic) =>
-        `/admin/lesson-plans/${encodeURIComponent(skill)}/${encodeURIComponent(topic)}`, // DELETE
     },
   },
 };

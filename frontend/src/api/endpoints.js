@@ -175,5 +175,15 @@ export const ENDPOINTS = {
       GET: (id) => `/admin/generated-content/${id}`, // GET — full content
       DELETE: (id) => `/admin/generated-content/${id}`, // DELETE
     },
+    // Lesson Plan Management — backend: routes/admin_lesson_routes.py
+    // Read + delete only for the cached ordered lesson-plan list
+    // (lesson_plans collection) — separate cache from GENERATED_CONTENT
+    // above (that's the learning_notes cache for each lesson's actual
+    // content; this is just the ordered Title list per skill/topic).
+    LESSON_PLANS: {
+      LIST: "/admin/lesson-plans", // GET, supports ?skill=&topic=
+      DELETE: (skill, topic) =>
+        `/admin/lesson-plans/${encodeURIComponent(skill)}/${encodeURIComponent(topic)}`, // DELETE — regenerates on next learner request
+    },
   },
 };

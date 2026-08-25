@@ -15,8 +15,6 @@ import {
   CalendarDays,
   ChevronDown,
   Search,
-  Briefcase,
-  School,
 } from "lucide-react";
 import PageShell from "../components/layout/PageShell";
 import Logo from "../components/common/Logo";
@@ -51,11 +49,7 @@ function getSignupErrorMessage(err) {
 const STRONG_PASSWORD_REGEX =
   /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]).{8,}$/;
 
-const USER_TYPES = [
-  { key: "college", label: "College Student", icon: GraduationCap },
-  { key: "fresher", label: "Fresher", icon: School },
-  { key: "professional", label: "Professional", icon: Briefcase },
-];
+const USER_TYPES = [{ key: "college", label: "College Student", icon: GraduationCap }];
 
 // Firestore documents cap out at 1MB, so we keep the base64 photo small
 // by resizing it down before storing it.
@@ -449,4 +443,135 @@ export default function SignUpScreen({ auth, onLogin, onSuccess, onBack }) {
 
             {/* Mobile */}
             <div style={{ position: "relative" }}>
-              <Phone size={17} style={{ position:
+              <Phone size={17} style={{ position: "absolute", left: 15, top: "50%", transform: "translateY(-50%)" }} />
+              <span
+                className="text-sm font-medium"
+                style={{ position: "absolute", left: 40, top: "50%", transform: "translateY(-50%)", color: COLORS.textMid }}
+              >
+                🇮🇳 +91
+              </span>
+              <input
+                type="tel"
+                style={{ ...inputStyle, paddingLeft: 92 }}
+                placeholder="Mobile Number *"
+                value={mobile}
+                onChange={(e) => setMobile(e.target.value.replace(/\D/g, "").slice(0, 10))}
+                disabled={loading || !!successMessage}
+              />
+            </div>
+
+            {/* User type */}
+            <div>
+              <p className="text-xs font-semibold mb-2" style={{ color: COLORS.textMid }}>
+                User Type *
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {USER_TYPES.map((t) => {
+                  const Icon = t.icon;
+                  const isActive = userType === t.key;
+                  return (
+                    <button
+                      key={t.key}
+                      type="button"
+                      onClick={() => setUserType(t.key)}
+                      disabled={loading || !!successMessage}
+                      className="flex items-center gap-1.5 text-xs font-semibold"
+                      style={{
+                        padding: "9px 16px",
+                        borderRadius: 9999,
+                        border: `1.5px solid ${isActive ? "transparent" : COLORS.border}`,
+                        background: isActive ? GRADIENTS.purpleSky : "rgba(255,255,255,0.55)",
+                        color: isActive ? "#fff" : COLORS.textDark,
+                        cursor: "pointer",
+                      }}
+                    >
+                      <Icon size={14} />
+                      {t.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* College fields — only for College Student */}
+            {userType === "college" && (
+              <>
+                <CollegeDropdown value={college} onChange={setCollege} disabled={loading || !!successMessage} />
+
+                <div style={{ position: "relative" }}>
+                  <GraduationCap size={17} style={{ position: "absolute", left: 15, top: "50%", transform: "translateY(-50%)" }} />
+                  <input
+                    style={inputStyle}
+                    placeholder="Department (e.g. B.Sc. Computer Science) *"
+                    value={department}
+                    onChange={(e) => setDepartment(e.target.value)}
+                    disabled={loading || !!successMessage}
+                  />
+                </div>
+
+                <div style={{ position: "relative" }}>
+                  <CalendarDays size={17} style={{ position: "absolute", left: 15, top: "50%", transform: "translateY(-50%)" }} />
+                  <input
+                    style={inputStyle}
+                    placeholder="Academic Year (e.g. Final Year (2027)) *"
+                    value={academicYear}
+                    onChange={(e) => setAcademicYear(e.target.value)}
+                    disabled={loading || !!successMessage}
+                  />
+                </div>
+              </>
+            )}
+
+            {/* Terms */}
+            <label className="flex items-start gap-2 text-xs" style={{ color: COLORS.textMid, cursor: "pointer" }}>
+              <input
+                type="checkbox"
+                checked={agreed}
+                onChange={(e) => setAgreed(e.target.checked)}
+                disabled={loading || !!successMessage}
+                style={{ marginTop: 2 }}
+              />
+              <span>
+                All your information is collected, stored, and processed as per our data
+                processing guidelines. By signing up, you agree to our Privacy Policy and
+                Terms of Use.
+              </span>
+            </label>
+
+            {error && (
+              <p className="text-center text-sm" style={{ color: "red" }}>
+                {error}
+              </p>
+            )}
+
+            {successMessage && (
+              <div
+                className="flex items-start gap-2 text-sm p-3"
+                style={{ borderRadius: 14, background: "rgba(34,192,142,0.12)", color: "#22C08E" }}
+              >
+                <CheckCircle2 size={16} className="flex-shrink-0 mt-0.5" />
+                <span>{successMessage}</span>
+              </div>
+            )}
+
+            <motion.button
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              onClick={handleSignup}
+              disabled={loading || !!successMessage}
+              className="w-full"
+              style={{
+                padding: "14px",
+                borderRadius: 9999,
+                border: "none",
+                background: GRADIENTS.purplePink,
+                color: "#fff",
+                fontWeight: 700,
+                cursor: loading || successMessage ? "default" : "pointer",
+                opacity: loading || successMessage ? 0.8 : 1,
+              }}
+            >
+              {successMessage ? "Redirecting..." : loading ? "Creating Account..." : "Continue"}
+            </motion.button>
+
+            <p

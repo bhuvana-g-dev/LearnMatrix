@@ -31,6 +31,32 @@ export default function AdminSidebar({ activeKey, onNavigate, onLogout }) {
         {ADMIN_NAV_SECTIONS.map((section) => {
           const SectionIcon = section.icon;
           const isOpen = openSections[section.key];
+
+          // Single-child sections: render as one flat nav item (no
+          // redundant "Title" + "Title" subtopic, no chevron/dropdown).
+          if (section.children.length === 1) {
+            const only = section.children[0];
+            const isActive = activeKey === only.key;
+            return (
+              <div key={section.key} className="mb-1.5">
+                <button
+                  onClick={() => onNavigate(only.key)}
+                  className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all"
+                  style={{
+                    color: isActive ? "#fff" : COLORS.textDark,
+                    background: isActive ? GRADIENTS.purplePink : "transparent",
+                    border: "none",
+                    cursor: "pointer",
+                    boxShadow: isActive ? "0 4px 12px rgba(192,132,252,0.4)" : "none",
+                  }}
+                >
+                  <SectionIcon size={16} color={isActive ? "#fff" : COLORS.purple} />
+                  {section.title}
+                </button>
+              </div>
+            );
+          }
+
           return (
             <div key={section.key} className="mb-1.5">
               <button

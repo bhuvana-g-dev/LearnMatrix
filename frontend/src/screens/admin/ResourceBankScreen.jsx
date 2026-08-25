@@ -110,8 +110,9 @@ export default function ResourceBankScreen({ admin }) {
 
   const [suggestRole, setSuggestRole] = useState("");
   const [suggestSkill, setSuggestSkill] = useState("");
-  const [suggestTopic, setSuggestTopic] = useState(""); // free-typed, e.g. "Variables" — backed by a datalist below
+  const [suggestTopic, setSuggestTopic] = useState(""); // selected from suggestTopicOptions below, or manually typed when a skill has no seeded topics
   const [suggestTopicOptions, setSuggestTopicOptions] = useState([]);
+  const [suggestTopicCustomMode, setSuggestTopicCustomMode] = useState(false); // true = typing a topic name manually instead of picking from the list
   const [suggesting, setSuggesting] = useState(""); // "ai" | "youtube" | "video" | "bulk" | ""
   const [suggestError, setSuggestError] = useState("");
   const [suggestMessage, setSuggestMessage] = useState("");
@@ -203,6 +204,7 @@ export default function ResourceBankScreen({ admin }) {
   const handleSuggestSkillChange = (skill) => {
     setSuggestSkill(skill);
     setSuggestTopic(""); // reset topic — previous skill's topic won't be valid for a new skill
+    setSuggestTopicCustomMode(false);
   };
 
   useEffect(() => {
@@ -214,9 +216,17 @@ export default function ResourceBankScreen({ admin }) {
     (async () => {
       try {
         const topics = await getTopicsForSkill(suggestSkill);
-        if (!cancelled) setSuggestTopicOptions(topics || []);
+        if (!cancelled) {
+          setSuggestTopicOptions(topics || []);
+          // No seeded topic tree for this skill -> nothing to pick from,
+          // go straight to manual entry instead of showing an empty select.
+          setSuggestTopicCustomMode((topics || []).length === 0);
+        }
       } catch {
-        if (!cancelled) setSuggestTopicOptions([]);
+        if (!cancelled) {
+          setSuggestTopicOptions([]);
+          setSuggestTopicCustomMode(true);
+        }
       }
     })();
     return () => { cancelled = true; };
@@ -526,20 +536,49 @@ export default function ResourceBankScreen({ admin }) {
               <option key={skill} value={skill}>{skill}</option>
             ))}
           </select>
-          <input
-            value={suggestTopic}
-            onChange={(e) => setSuggestTopic(e.target.value)}
-            disabled={!suggestSkill}
-            placeholder="Topic (e.g. Variables)"
-            list="suggest-topic-options"
-            className="text-sm px-3 py-2 rounded-lg outline-none"
-            style={{ border: `1px solid ${COLORS.border}`, background: "#fff", minWidth: 200, opacity: suggestSkill ? 1 : 0.6 }}
-          />
-          <datalist id="suggest-topic-options">
-            {suggestTopicOptions.map((t) => (
-              <option key={t.TopicID || t.Title} value={t.Title} />
-            ))}
-          </datalist>
+          {suggestTopicCustomMode ? (
+            <div className="flex items-center gap-1.5">
+              <input
+                value={suggestTopic}
+                onChange={(e) => setSuggestTopic(e.target.value)}
+                disabled={!suggestSkill}
+                placeholder="Topic (e.g. Variables)"
+                className="text-sm px-3 py-2 rounded-lg outline-none"
+                style={{ border: `1px solid ${COLORS.border}`, background: "#fff", minWidth: 200, opacity: suggestSkill ? 1 : 0.6 }}
+              />
+              {suggestTopicOptions.length > 0 && (
+                <button
+                  onClick={() => { setSuggestTopicCustomMode(false); setSuggestTopic(""); }}
+                  title="Choose from this skill's topics instead"
+                  className="text-xs font-semibold underline"
+                  style={{ color: COLORS.textMid, background: "none", border: "none", cursor: "pointer" }}
+                >
+                  Choose from list
+                </button>
+              )}
+            </div>
+          ) : (
+            <select
+              value={suggestTopic}
+              onChange={(e) => {
+                if (e.target.value === "__custom__") {
+                  setSuggestTopicCustomMode(true);
+                  setSuggestTopic("");
+                } else {
+                  setSuggestTopic(e.target.value);
+                }
+              }}
+              disabled={!suggestSkill}
+              className="text-sm px-3 py-2 rounded-lg outline-none"
+              style={{ border: `1px solid ${COLORS.border}`, background: "#fff", minWidth: 200, color: suggestTopic ? COLORS.textDark : COLORS.textLight, opacity: suggestSkill ? 1 : 0.6 }}
+            >
+              <option value="">Select topic</option>
+              {suggestTopicOptions.map((t) => (
+                <option key={t.TopicID || t.Title} value={t.Title}>{t.Title}</option>
+              ))}
+              <option value="__custom__">✏️ Other / type manually</option>
+            </select>
+          )}
           <motion.button
             onClick={handleGenerateVideo}
             disabled={!!suggesting}

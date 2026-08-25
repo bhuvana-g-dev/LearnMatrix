@@ -28,24 +28,39 @@ import { getTopicsForSkill } from "../../services/skillTopicService";
 // get_topic_package(skill, topic, focusBand)) — no lesson-level
 // selection or composite topic keys here anymore.
 
-const PRACTICE_TYPES = ["github", "practice"];
-const REFERENCE_TYPES = ["article", "cheatsheet", "documentation", "pdf"];
-const VIDEO_TYPES = ["video"];
+// Mirrors backend config/settings.py's DEFAULT_CATEGORY_BY_TYPE exactly
+// — used to derive a resource's effective category when it (or a
+// legacy resource with no stored category) doesn't have one set.
+// "video" has no entry on purpose: it's never part of either category,
+// same as the backend and the learner-facing TopicContentPane.jsx.
+const DEFAULT_CATEGORY_BY_TYPE = {
+  github: "practice", practice: "practice",
+  documentation: "reference", article: "reference", pdf: "reference", cheatsheet: "reference",
+};
+const CATEGORY_TYPES = {
+  practice: ["github", "practice"],
+  reference: ["documentation", "article", "pdf", "cheatsheet"],
+};
+function effectiveCategory(resource) {
+  if (resource.type === "video") return "video";
+  return resource.category || DEFAULT_CATEGORY_BY_TYPE[resource.type] || "reference";
+}
 
-const RESOURCE_TYPES = ["video", "documentation", "article", "pdf", "cheatsheet", "practice", "github"];
 const DIFFICULTIES = ["Beginner", "Intermediate", "Advanced"];
 const TYPE_LABELS = {
   video: "📺 Video", documentation: "📄 Documentation", article: "📝 Article",
   pdf: "📚 PDF/Notes", cheatsheet: "📚 Cheat Sheet", practice: "🎯 Practice", github: "💻 GitHub",
 };
+const CATEGORY_LABELS = { practice: "🎯 Practice", reference: "📖 Reference & Reading", video: "📺 Video" };
+const CATEGORY_OPTIONS = ["practice", "reference", "video"];
 
 const TABS = [
-  { key: "practice", label: "Practice Resources", types: PRACTICE_TYPES },
-  { key: "reference", label: "Reference & Reading", types: REFERENCE_TYPES },
-  { key: "video", label: "Videos", types: VIDEO_TYPES },
+  { key: "practice", label: "Practice Resources" },
+  { key: "reference", label: "Reference & Reading" },
+  { key: "video", label: "Videos" },
 ];
 
-const EMPTY_FORM = { skill: "", topic: "", type: "video", title: "", url: "", difficulty: "", description: "" };
+const EMPTY_FORM = { skill: "", topic: "", category: "practice", type: "practice", title: "", url: "", difficulty: "", description: "" };
 
 /**
  * ResourceBankScreen — the admin Resource Management section.
@@ -253,15 +268,20 @@ export default function ResourceBankScreen({ admin }) {
 
   const openAddModal = () => {
     setEditingResource(null);
-    setForm({ ...EMPTY_FORM, type: TABS.find((t) => t.key === activeTab)?.types[0] || "video" });
+    // Pre-fill category/type from whichever tab is open.
+    const category = activeTab;
+    setForm({ ...EMPTY_FORM, category, type: category === "video" ? "video" : CATEGORY_TYPES[category][0] });
     setFormError("");
     setShowFormModal(true);
   };
 
   const openEditModal = (resource) => {
     setEditingResource(resource);
+    const category = effectiveCategory(resource);
     setForm({
-      skill: resource.skill || "", topic: resource.topic || "", type: resource.type || "video",
+      skill: resource.skill || "", topic: resource.topic || "",
+      category,
+      type: resource.type || (category === "video" ? "video" : CATEGORY_TYPES[category][0]),
       title: resource.title || "", url: resource.url || "", difficulty: resource.difficulty || "",
       description: resource.description || "",
     });
@@ -277,7 +297,11 @@ export default function ResourceBankScreen({ admin }) {
     }
     setSaving(true);
     try {
-      const payload = { ...form, difficulty: form.difficulty || null };
+      // "video" is a form-only pseudo-category (see CATEGORY_OPTIONS) —
+      // video resources don't carry a category on the backend, same as
+      // everywhere else in the app (video is its own thing, never part
+      // of Practice/Reference & Reading).
+      const payload = { ...form, difficulty: form.difficulty || null, category: form.category === "video" ? null : form.category };
       if (editingResource) {
         await updateResource(editingResource.id, payload);
       } else {
@@ -446,7 +470,7 @@ export default function ResourceBankScreen({ admin }) {
     }
   };
 
-  const visibleResources = resources.filter((r) => TABS.find((t) => t.key === activeTab)?.types.includes(r.type));
+  const visibleResources = resources.filter((r) => effectiveCategory(r) === activeTab);
 
   return (
     <div className="px-4 sm:px-8 pt-8 pb-12">
@@ -630,8 +654,11 @@ export default function ResourceBankScreen({ admin }) {
         </div>
       )}
 
-      {/* Filter bar: Role -> Skill -> Topic, plus Status */}
-      <div className="flex flex-wrap items-center gap-2.5 mb-4">
+      {/* Search bar: Role -> Skill only, plus Status — no Topic filter field.
+          Once a skill is picked, its seeded topics (if any) show below as
+          selectable chips instead, per the "don't need topic in search"
+          simplification. */}
+      <div className="flex flex-wrap items-center gap-2.5 mb-3">
         <select
           value={filterRole}
           onChange={(e) => handleFilterRoleChange(e.target.value)}
@@ -656,20 +683,6 @@ export default function ResourceBankScreen({ admin }) {
             <option key={skill} value={skill}>{skill}</option>
           ))}
         </select>
-        <input
-          value={filterTopic}
-          onChange={(e) => setFilterTopic(e.target.value)}
-          disabled={!filterSkill}
-          placeholder="Topic"
-          list="filter-topic-options"
-          className="text-sm px-3 py-2 rounded-lg outline-none"
-          style={{ border: `1px solid ${COLORS.border}`, background: "#fff", opacity: filterSkill ? 1 : 0.6 }}
-        />
-        <datalist id="filter-topic-options">
-          {filterTopicOptions.map((t) => (
-            <option key={t.TopicID || t.Title} value={t.Title} />
-          ))}
-        </datalist>
         <select
           value={filterStatus}
           onChange={(e) => setFilterStatus(e.target.value)}
@@ -691,11 +704,44 @@ export default function ResourceBankScreen({ admin }) {
         )}
       </div>
 
+      {/* Topic chips — only once a skill is picked, and only when that
+          skill has a seeded topic tree. "select ... the relevant topic"
+          without a raw text filter field. */}
+      {filterSkill && filterTopicOptions.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 mb-4">
+          <button
+            onClick={() => setFilterTopic("")}
+            className="text-xs font-semibold px-3 py-1.5 rounded-full"
+            style={{
+              background: !filterTopic ? COLORS.textDark : "#fff",
+              color: !filterTopic ? "#fff" : COLORS.textMid,
+              border: `1px solid ${!filterTopic ? "transparent" : COLORS.border}`, cursor: "pointer",
+            }}
+          >
+            All topics
+          </button>
+          {filterTopicOptions.map((t) => (
+            <button
+              key={t.TopicID || t.Title}
+              onClick={() => setFilterTopic(t.Title)}
+              className="text-xs font-semibold px-3 py-1.5 rounded-full"
+              style={{
+                background: filterTopic === t.Title ? GRADIENTS.purplePink : "#fff",
+                color: filterTopic === t.Title ? "#fff" : COLORS.textMid,
+                border: `1px solid ${filterTopic === t.Title ? "transparent" : COLORS.border}`, cursor: "pointer",
+              }}
+            >
+              {t.Title}
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* Practice / Reference & Reading / Videos tabs */}
       <div className="flex items-center gap-2 mb-4">
         {TABS.map((tab) => {
           const isActive = activeTab === tab.key;
-          const count = resources.filter((r) => tab.types.includes(r.type)).length;
+          const count = resources.filter((r) => effectiveCategory(r) === tab.key).length;
           return (
             <button
               key={tab.key}
@@ -849,15 +895,36 @@ export default function ResourceBankScreen({ admin }) {
               />
               <div className="grid grid-cols-2 gap-2.5">
                 <select
-                  value={form.type}
-                  onChange={(e) => setForm((f) => ({ ...f, type: e.target.value }))}
+                  value={form.category}
+                  onChange={(e) => {
+                    const category = e.target.value;
+                    // Switching category resets type to that category's
+                    // first valid type (or "video" for the video pseudo-category)
+                    // so form.type never points at a type outside the
+                    // chosen category.
+                    const type = category === "video" ? "video" : CATEGORY_TYPES[category][0];
+                    setForm((f) => ({ ...f, category, type }));
+                  }}
                   className="text-sm px-3 py-2 rounded-lg outline-none"
                   style={{ border: `1px solid ${COLORS.border}` }}
                 >
-                  {RESOURCE_TYPES.map((t) => (
+                  {CATEGORY_OPTIONS.map((c) => (
+                    <option key={c} value={c}>{CATEGORY_LABELS[c]}</option>
+                  ))}
+                </select>
+                <select
+                  value={form.type}
+                  onChange={(e) => setForm((f) => ({ ...f, type: e.target.value }))}
+                  disabled={form.category === "video"}
+                  className="text-sm px-3 py-2 rounded-lg outline-none"
+                  style={{ border: `1px solid ${COLORS.border}`, opacity: form.category === "video" ? 0.6 : 1 }}
+                >
+                  {(form.category === "video" ? ["video"] : CATEGORY_TYPES[form.category]).map((t) => (
                     <option key={t} value={t}>{TYPE_LABELS[t]}</option>
                   ))}
                 </select>
+              </div>
+              <div className="grid grid-cols-2 gap-2.5">
                 <select
                   value={form.difficulty}
                   onChange={(e) => setForm((f) => ({ ...f, difficulty: e.target.value }))}

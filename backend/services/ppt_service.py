@@ -346,8 +346,65 @@ def build_pptx_from_deck_content(notes: dict, subtitle: str) -> BytesIO:
         elif design_type in {"big_statement", "visual_metaphor"}:
             _add_big_statement_slide(prs, blank_layout, heading, body, i + 1, accent, image_url)
 
+        elif design_type == "case_study":
+            # A case study is a spotlight moment — reuse the hero
+            # treatment (large heading + supporting image) rather than
+            # falling through to the plain text slide, so a "real
+            # world example" section reads as a highlight, not a stub.
+            _add_hero_slide(prs, blank_layout, heading, body, i + 1, accent, image_url)
+
+        elif design_type == "concept":
+            _add_concept_slide(
+                prs, blank_layout, heading, body,
+                slide_data.get("emphasis", ""), i + 1, accent, image_url
+            )
+
+        elif design_type in {"icon_grid", "feature_showcase"}:
+            # Features/applications/highlights read far better as a
+            # card grid (see _add_list_slide) than as a paragraph.
+            # Fall back to subpoints if the section has no "items"
+            # (e.g. it was demoted from a text section).
+            grid_items = slide_data.get("items") or slide_data.get("subpoints") or []
+            if len(grid_items) >= 2:
+                _add_list_slide(prs, blank_layout, heading, grid_items, i + 1, accent)
+            else:
+                _add_concept_slide(
+                    prs, blank_layout, heading, body,
+                    slide_data.get("emphasis", ""), i + 1, accent, image_url
+                )
+
+        elif design_type == "before_after":
+            left = slide_data.get("left") or {}
+            right = slide_data.get("right") or {}
+            if left.get("items") and right.get("items"):
+                _add_comparison_slide(prs, blank_layout, heading, left, right, i + 1)
+            else:
+                _add_big_statement_slide(prs, blank_layout, heading, body, i + 1, accent, image_url)
+
+        elif design_type == "summary":
+            summary_items = slide_data.get("items") or slide_data.get("subpoints") or []
+            if len(summary_items) >= 2:
+                _add_bullet_slide(prs, blank_layout, heading, summary_items, i + 1, accent)
+            else:
+                _add_big_statement_slide(prs, blank_layout, heading, body, i + 1, accent, image_url)
+
         elif design_type == "timeline":
             _add_timeline_slide(prs, blank_layout, heading, slide_data.get("steps", []), body, i + 1, accent)
+
+        elif design_type == "process_flow":
+            steps = slide_data.get("steps") or slide_data.get("items") or []
+            if len(steps) >= 2:
+                _add_process_slide(prs, blank_layout, heading, steps, i + 1, accent)
+            else:
+                _add_timeline_slide(prs, blank_layout, heading, steps, body, i + 1, accent)
+
+        elif design_type == "comparison":
+            left = slide_data.get("left") or {}
+            right = slide_data.get("right") or {}
+            if left.get("items") and right.get("items"):
+                _add_comparison_slide(prs, blank_layout, heading, left, right, i + 1)
+            else:
+                _add_big_statement_slide(prs, blank_layout, heading, body, i + 1, accent, image_url)
 
         elif design_type == "cycle":
             _add_cycle_slide(
@@ -596,6 +653,14 @@ def _add_text_slide(prs: Presentation, layout, heading: str, body: str, index: i
         body_font_size = Pt(16) if len(sentences) > 5 else Pt(18)
         body_top_in = 1.7
     else:
+        # A full-width paragraph with no image/subpoints is the exact
+        # "content kammiya, neraya spacing" case — same fix as
+        # _add_concept_slide: a faint decorative accent circle bleeding
+        # off the edge so the page reads as designed, not empty.
+        circle = slide.shapes.add_shape(MSO_SHAPE.OVAL, Inches(9.8), Inches(-1.4), Inches(5.2), Inches(5.2))
+        _set_fill(circle, accent)
+        circle.shadow.inherit = False
+        _set_transparency(circle, 87)
         if len(sentences) <= 3:
             body_font_size = Pt(30)
         elif len(sentences) <= 5:
@@ -953,9 +1018,15 @@ def _add_comparison_slide(prs: Presentation, layout, heading: str, left: dict, r
         _set_fill(card, color)
         card.shadow.inherit = False
 
+        # BUG FIX: label_tf.text = "" leaves the paragraph with zero
+        # runs, so .runs[0] below raised IndexError on any panel with
+        # a missing/blank label (e.g. a "before_after" or "comparison"
+        # design_type section whose left/right came through without a
+        # "label" key) — the whole deck generation crashed on one bad
+        # section instead of just showing an unlabeled panel.
         label_box = slide.shapes.add_textbox(x + Inches(0.3), col_top + Inches(0.22), col_w - Inches(0.6), Inches(0.5))
         label_tf = label_box.text_frame
-        label_tf.text = panel.get("label", "")
+        label_tf.text = panel.get("label") or ("Before" if color == NAVY else "After")
         label_run = label_tf.paragraphs[0].runs[0]
         label_run.font.size = Pt(18)
         label_run.font.bold = True
@@ -1123,6 +1194,95 @@ def _add_big_statement_slide(prs, layout, heading, body, index, accent, image_ur
         shape = slide.shapes.add_shape(MSO_SHAPE.OVAL, Inches(8.7), Inches(2.0), Inches(3.0), Inches(3.0))
         _set_fill(shape, accent)
         shape.shadow.inherit = False
+
+
+def _add_concept_slide(prs, layout, heading, body, emphasis, index, accent, image_url=None) -> None:
+    """"concept" is the most common design_type the agent picks, and
+    it used to fall through to _add_text_slide — fine when there was
+    an image, but a short 1-2 sentence definition with NO image landed
+    as a lone paragraph on an otherwise blank page (the "kammiya
+    content, neraya spacing" complaint). This gives every concept
+    slide an emphasis chip and a decorative watermark so short content
+    still reads as an intentional card, image or not."""
+    slide = prs.slides.add_slide(layout)
+    _add_slide_chrome(prs, slide, heading, index, accent)
+
+    image_bytes = _load_slide_image(image_url)
+    has_image = bool(image_bytes)
+    text_width = Inches(6.5) if has_image else Inches(9.6)
+
+    # Emphasis (the agent's one-line "main visual focus" for this
+    # section) becomes a small uppercase tag above the definition —
+    # gives the eye a second, larger-type anchor point instead of one
+    # paragraph sitting alone in the middle of the page.
+    body_top_in = 1.7
+    emphasis = (emphasis or "").strip()
+    if emphasis and emphasis.lower() not in ("n/a", "none", ""):
+        chip_w = Inches(min(6.0, max(1.8, 0.11 * len(emphasis) + 0.6)))
+        chip = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, Inches(1.55), Inches(body_top_in), chip_w, Inches(0.42))
+        chip.adjustments[0] = 0.5
+        _set_fill(chip, CREAM)
+        chip.line.color.rgb = accent
+        chip.line.width = Pt(1.25)
+        chip.shadow.inherit = False
+        chip_tf = chip.text_frame
+        chip_tf.word_wrap = False
+        chip_tf.vertical_anchor = MSO_ANCHOR.MIDDLE
+        chip_tf.text = emphasis.upper()
+        chip_tf.paragraphs[0].alignment = PP_ALIGN.CENTER
+        chip_run = chip_tf.paragraphs[0].runs[0]
+        chip_run.font.size = Pt(11)
+        chip_run.font.bold = True
+        chip_run.font.name = HEADING_FONT
+        chip_run.font.color.rgb = accent
+        body_top_in += 0.68
+
+    # No photo for this section (visual generation is best-effort and
+    # often skipped/fails) shouldn't mean an empty page — a large,
+    # low-opacity accent circle bleeding off the edge fills that dead
+    # space the same way the title slide's decorative arc does.
+    if not has_image:
+        circle = slide.shapes.add_shape(MSO_SHAPE.OVAL, Inches(9.6), Inches(-1.2), Inches(5.0), Inches(5.0))
+        _set_fill(circle, accent)
+        circle.shadow.inherit = False
+        _set_transparency(circle, 85)
+        circle2 = slide.shapes.add_shape(MSO_SHAPE.OVAL, Inches(10.6), Inches(4.4), Inches(2.4), Inches(2.4))
+        _set_fill(circle2, accent)
+        circle2.shadow.inherit = False
+        _set_transparency(circle2, 75)
+
+    content_h_in = 7.0 - body_top_in
+    sentences = [s.strip() for s in (body or heading).replace("\n", " ").split(". ") if s.strip()] or [body or heading]
+    total_chars = sum(len(s) for s in sentences)
+    body_font_size = Pt(30) if total_chars <= 110 else Pt(24) if total_chars <= 220 else Pt(18)
+
+    box = slide.shapes.add_textbox(Inches(1.55), Inches(body_top_in), text_width, Inches(content_h_in))
+    tf = box.text_frame
+    tf.word_wrap = True
+    tf.vertical_anchor = MSO_ANCHOR.MIDDLE
+    first = True
+    for sentence in sentences[:10]:
+        text = sentence + ("." if not sentence.endswith(".") else "")
+        p = tf.paragraphs[0] if first else tf.add_paragraph()
+        first = False
+        p.space_after = Pt(10)
+        run = p.add_run()
+        run.text = text
+        run.font.size = body_font_size
+        run.font.bold = total_chars <= 110
+        run.font.color.rgb = NAVY_MID
+        run.font.name = BODY_FONT
+
+    if has_image:
+        img_left, img_top, img_w, img_h = Inches(8.45), Inches(1.7), Inches(4.2), Inches(4.9)
+        frame = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, img_left - Inches(0.12), img_top - Inches(0.12), img_w + Inches(0.24), img_h + Inches(0.24))
+        frame.adjustments[0] = 0.04
+        _set_fill(frame, accent)
+        frame.shadow.inherit = False
+        try:
+            slide.shapes.add_picture(BytesIO(image_bytes), img_left, img_top, width=img_w, height=img_h)
+        except Exception:
+            pass
 
 
 def _add_timeline_slide(prs, layout, heading, steps, body, index, accent):

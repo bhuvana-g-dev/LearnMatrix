@@ -6,14 +6,18 @@ import { ENDPOINTS } from "../api/endpoints";
  * Same convention as the other admin services — screens/hooks never call
  * apiClient or ENDPOINTS directly, everything about "how" a resource is
  * fetched/saved lives here.
+ *
+ * Resources are keyed by (skill, band) — band is one of "fundamentals" |
+ * "application" | "advanced" | "polish" (config/settings.py's
+ * VALID_RESOURCE_BANDS, the same vocabulary the learner's per-topic
+ * quiz mastery already resolves to). There is no topic here anymore.
  */
 
 export async function fetchResources(filters = {}) {
   const params = {};
   if (filters.skill) params.skill = filters.skill;
-  if (filters.topic) params.topic = filters.topic;
+  if (filters.band) params.band = filters.band;
   if (filters.type) params.type = filters.type;
-  if (filters.difficulty) params.difficulty = filters.difficulty;
   if (filters.status) params.status = filters.status;
 
   const { data } = await apiClient.get(ENDPOINTS.ADMIN.RESOURCES.LIST, { params });
@@ -48,10 +52,10 @@ export async function setResourceEnabled(resourceId, enabled) {
 /** AI-suggests documentation/article/github/pdf/cheatsheet/practice
  * resources (never video — see agents/resource_suggestion_agent.py),
  * saved as status="pending" for review below. */
-export async function suggestResourcesViaAI(skill, topic, count = 5) {
+export async function suggestResourcesViaAI(skill, band, count = 5) {
   const { data } = await apiClient.post(
     ENDPOINTS.ADMIN.RESOURCES.SUGGEST_AI,
-    { skill, topic, count },
+    { skill, band, count },
     { timeout: 60000 } // AI generation call, same longer timeout convention as aiAssessmentService.js
   );
   if (!data.success) throw new Error(data.error || data.message || "AI suggestion failed.");
@@ -60,34 +64,34 @@ export async function suggestResourcesViaAI(skill, topic, count = 5) {
 
 /** Real YouTube Data API v3 search, saved as status="pending" for
  * review below — every result here is a real, existing video. */
-export async function suggestResourcesViaYouTube(skill, topic, count = 6) {
+export async function suggestResourcesViaYouTube(skill, band, count = 6) {
   const { data } = await apiClient.post(
     ENDPOINTS.ADMIN.RESOURCES.SUGGEST_YOUTUBE,
-    { skill, topic, count },
+    { skill, band, count },
     { timeout: 20000 }
   );
   if (!data.success) throw new Error(data.error || data.message || "YouTube search failed.");
   return data.data;
 }
 
-/** One-click "fill this topic in" — generates AND immediately verifies
+/** One-click "fill this in" — generates AND immediately verifies
  * both non-video and video resources, skipping the pending queue.
  * verifiedBy is the logged-in admin's identity (see hooks/useAdminAuth.js),
  * recorded on every resource created for the audit trail. */
-export async function bulkGenerateAndVerify(skill, topic, verifiedBy, { articleCount = 5, videoCount = 4 } = {}) {
+export async function bulkGenerateAndVerify(skill, band, verifiedBy, { articleCount = 5, videoCount = 4 } = {}) {
   const { data } = await apiClient.post(
     ENDPOINTS.ADMIN.RESOURCES.BULK_GENERATE_AND_VERIFY,
-    { skill, topic, verifiedBy, articleCount, videoCount },
+    { skill, band, verifiedBy, articleCount, videoCount },
     { timeout: 60000 }
   );
   if (!data.success) throw new Error(data.error || data.message || "Bulk generation failed.");
-  return data.data; // { skill, topic, articles: [...], videos: [...], errors: [...] }
+  return data.data; // { skill, band, articles: [...], videos: [...], errors: [...] }
 }
 
 export async function fetchPendingResources(filters = {}) {
   const params = {};
   if (filters.skill) params.skill = filters.skill;
-  if (filters.topic) params.topic = filters.topic;
+  if (filters.band) params.band = filters.band;
 
   const { data } = await apiClient.get(ENDPOINTS.ADMIN.RESOURCES.PENDING, { params });
   return data.data;

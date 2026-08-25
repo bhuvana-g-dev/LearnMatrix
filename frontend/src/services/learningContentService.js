@@ -6,35 +6,25 @@ import apiClient from "../api/axiosClient";
  * skill/topic/focusBand. Returns AI-generated (cached) notes plus any
  * admin-verified curated resources.
  *
- * NOTE on scope: `skill` and `topic` are independent by now — topics
- * come from the compressed syllabus / per-topic quiz progress
- * (utils/buildCourseNavigator.js), and lessons pass a composite
- * "{topic} — {lessonTitle}" key here as `topic` (see
- * lessonService.compositeTopicKey()). Earlier revisions of this app
- * only tracked one focusBand per skill and passed topic === skill;
- * that's no longer the case anywhere this function is called from.
- *
- * `resourceTopic` (optional): the PLAIN topic name, used only to match
- * admin-managed resources — see backend's "TOPIC vs RESOURCE_TOPIC"
- * note in services/learning_content_service.py. Pass this whenever
- * `topic` above is a lesson-composited key, so admin-verified
- * resources (matched on the plain topic) still show up regardless of
- * which lesson the learner is on. Omit it when `topic` is already
- * plain (e.g. LearningSessionScreen's non-lesson flow) — the backend
- * defaults resourceTopic to `topic` in that case.
+ * NOTE on scope: `topic` only drives the AI-generated notes (which may
+ * be a lesson-composited "{topic} — {lessonTitle}" key — see
+ * lessonService.compositeTopicKey()). Admin-managed resources are no
+ * longer matched by topic at all — the backend matches them on
+ * (skill, focusBand) instead (see services/resource_repository.py's
+ * module docstring), so there's nothing extra to pass for resources to
+ * show up correctly regardless of which lesson the learner is on.
  *
  * Uses a longer timeout on first load (same reasoning as
  * aiAssessmentService.js) — a cache MISS means a live Gemini/Groq call
  * happens before the response comes back; a cache HIT is fast.
  */
-export async function getTopicPackage(skill, topic, focusBand, resourceTopic) {
-  const params = resourceTopic && resourceTopic !== topic ? { resourceTopic } : undefined;
+export async function getTopicPackage(skill, topic, focusBand) {
   const { data } = await apiClient.get(
     `/learning/topic/${encodeURIComponent(skill)}/${encodeURIComponent(topic)}/${encodeURIComponent(focusBand)}`,
-    { timeout: 60000, params }
+    { timeout: 60000 }
   );
   if (!data.success) {
     throw new Error(data.error || data.message || "Failed to load learning content.");
   }
-  return data.data; // { skill, topic, resourceTopic, focusBand, notes, notesFromCache, resources, resourcesByCategory, ... }
+  return data.data; // { skill, topic, focusBand, notes, notesFromCache, resources, resourcesByCategory, ... }
 }

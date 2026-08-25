@@ -73,6 +73,7 @@ import {
   downloadChatSummaryPdf,
 } from "../services/pptService";
 import { generateMindMap } from "../services/mindmapService";
+import { generateAudioOverview, synthesizeAudioForScript } from "../services/audioOverviewService";
 import { generateSlideDeckPreview, downloadDeckContentPptx, downloadDeckContentPdf } from "../services/slideDeckService";
 import { listStudioArtifacts, getStudioArtifact, saveStudioArtifact } from "../services/studioService";
 import { getUserProfile } from "../services/profileService";
@@ -193,7 +194,6 @@ export default function AIStudyAssistantScreen({ uid }) {
       })
       .catch(() => {});
 
-    return () => window.speechSynthesis?.cancel();
   }, [uid]);
 
   useEffect(() => {
@@ -241,9 +241,8 @@ export default function AIStudyAssistantScreen({ uid }) {
   }
 
   // Voice input — dictate the chat message via the browser's built-in
-  // Web Speech API (SpeechRecognition), same "no extra dependency"
-  // approach as the Audio Overview player, which already uses
-  // window.speechSynthesis for the reverse direction (text-to-speech).
+  // Web Speech API (SpeechRecognition) — no extra dependency needed for
+  // speech-to-text here.
   function handleToggleListening() {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SpeechRecognition) {
@@ -446,10 +445,6 @@ export default function AIStudyAssistantScreen({ uid }) {
   }
 
   // ---------------- Studio: Mind Map / Audio Overview (Sources / Chat / Type) ----------------
-  function notesFromSections(title, sections) {
-    return { title, summary: "", sections, keyTakeaways: [] };
-  }
-
   /** Raw combined text + a label describing it — used as MindMapAgent
    * input. Audio Overview builds its own (structured-by-source)
    * version separately below, since reading aloud doesn't need the
@@ -466,28 +461,6 @@ export default function AIStudyAssistantScreen({ uid }) {
       if (messages.length === 0) throw new Error("This conversation has no messages yet.");
       const text = messages.map((m) => `${m.role === "user" ? "Student" : "Assistant"}: ${m.content}`).join("\n");
       return { label: "a chat conversation", text };
-    }
-    throw new Error("Unknown mode.");
-  }
-
-  async function buildAudioNotesForMode(mode) {
-    if (mode === "sources") {
-      if (sources.length === 0) throw new Error("Add a source first.");
-      const content = await getSourcesContent(uid);
-      if (content.length === 0) throw new Error("Couldn't load your sources' content.");
-      return notesFromSections("Your Sources", content.map((s) => ({ heading: s.title, content: s.text })));
-    }
-    if (mode === "chat") {
-      if (!activeSessionId) throw new Error("Open or start a chat first.");
-      const sections = [];
-      for (let i = 0; i < messages.length; i++) {
-        if (messages[i].role === "user") {
-          const answer = messages[i + 1]?.role === "assistant" ? messages[i + 1].content : "";
-          sections.push({ heading: messages[i].content.slice(0, 60), content: answer });
-        }
-      }
-      if (sections.length === 0) throw new Error("This conversation has no messages yet.");
-      return notesFromSections("Your Chat", sections);
     }
     throw new Error("Unknown mode.");
   }
@@ -536,8 +509,22 @@ export default function AIStudyAssistantScreen({ uid }) {
         setFlashFlipped(false);
         setStudioModal("flashcards");
       } else if (full.type === "audio") {
-        setAudioNotes(full.content);
+        // Saved artifacts only carry {title, script} — the audio itself
+        // is never persisted (see backend/services/audio_overview_service.py's
+        // docstring), so reopening one re-renders the audio via a single
+        // TTS-only call before the dock opens (no script LLM call).
+        setStudioLoading(true);
+        setStudioError("");
         setStudioModal("audio");
+        setAudioNotes(null);
+        try {
+          const audioDataUri = await synthesizeAudioForScript(full.content.script);
+          setAudioNotes({ ...full.content, audioDataUri });
+        } catch (err) {
+          setStudioError(err.message || "Couldn't load that Audio Overview.");
+        } finally {
+          setStudioLoading(false);
+        }
       }
     } catch (err) {
       setStudioError(err.message || "Couldn't load that item.");
@@ -566,17 +553,15 @@ export default function AIStudyAssistantScreen({ uid }) {
       setStudioModal("custom-input");
       return;
     }
-    runStudioBuild("audio", () => buildAudioNotesForMode(mode), setAudioNotes, (notes) => {
-      // Audio Overview is built entirely client-side (no backend call
-      // knows the session the way Mind Map/Slide Deck's own generate
-      // endpoints do — see mindmap_routes.py/slidedeck_routes.py), so
-      // it's saved into Studio history explicitly here instead.
-      if (activeSessionId && notes) {
-        saveStudioArtifact(uid, activeSessionId, "audio", notes.title || "Audio Overview", notes)
-          .then(refreshStudioArtifacts)
-          .catch(() => {}); // best-effort — a save failure shouldn't block playback the student already has
-      }
-    });
+    runStudioBuild("audio", async () => {
+      const { label, text } = await getRawTextForMode(mode);
+      // Real two-host podcast script + rendered audio (backend's
+      // AudioOverviewAgent + Gemini multi-speaker TTS) — the backend
+      // call itself saves the script into Studio history when
+      // uid/sessionId are passed (routes/audio_overview_routes.py), so
+      // no separate client-side save step is needed here anymore.
+      return generateAudioOverview(text, label, uid, activeSessionId);
+    }, setAudioNotes, refreshStudioArtifacts);
   }
 
   async function runStudioBuild(modalKey, buildFn, setNotes, onSuccess) {
@@ -614,9 +599,17 @@ export default function AIStudyAssistantScreen({ uid }) {
         setStudioLoading(false);
       }
     } else if (customTarget === "audio") {
-      const firstLine = text.split("\n")[0].slice(0, 60);
-      setAudioNotes(notesFromSections(firstLine || "Your Topic", [{ heading: "Your Input", content: text }]));
+      setStudioLoading(true);
       setStudioModal("audio");
+      setStudioError("");
+      try {
+        setAudioNotes(await generateAudioOverview(text, "the student's own notes", uid, activeSessionId));
+        refreshStudioArtifacts();
+      } catch (err) {
+        setStudioError(err.message || "Couldn't generate the Audio Overview.");
+      } finally {
+        setStudioLoading(false);
+      }
     } else if (customTarget === "flashcards") {
       setStudioLoading(true);
       setStudioModal("flashcards");
@@ -645,7 +638,6 @@ export default function AIStudyAssistantScreen({ uid }) {
   }
 
   function closeStudioModal() {
-    window.speechSynthesis?.cancel();
     setStudioModal(null);
     setStudioError("");
     setSlideDeckContent(null);
@@ -3020,19 +3012,8 @@ const mmControlBtnStyleLight = {
 
 const AUDIO_RATE_OPTIONS = [0.75, 1, 1.25, 1.5, 1.75, 2];
 
-function buildAudioScript(notes) {
-  const parts = [`Here's your overview on ${notes.title}.`, notes.summary];
-  for (const section of notes.sections || []) parts.push(`${section.heading}. ${section.content}`);
-  if (notes.keyTakeaways?.length) parts.push("Key takeaways: " + notes.keyTakeaways.join(". "));
-  return parts.filter(Boolean).join(" ");
-}
-
-function estimateAudioSeconds(wordCount) {
-  return Math.max(20, Math.round((wordCount / 150) * 60));
-}
-
 function formatTime(totalSeconds) {
-  const s = Math.max(0, Math.round(totalSeconds));
+  const s = Math.max(0, Math.round(totalSeconds || 0));
   const mm = Math.floor(s / 60);
   const ss = s % 60;
   return `${mm}:${String(ss).padStart(2, "0")}`;
@@ -3045,118 +3026,62 @@ function formatTime(totalSeconds) {
  * underneath stays fully visible and interactive while audio plays —
  * closer to a podcast-app mini-player than a dialog.
  *
- * Fully self-contained: owns its own play/pause/seek/rate/transcript
- * state and talks to window.speechSynthesis directly, since none of
- * that needs to live in the parent screen. The Web Speech API has no
- * real seek/scrub or "current position" concept, so skip/seek here work
- * by re-speaking from an estimated word offset (elapsed/duration ×
- * word count) — smooth and good enough for a study aid, not
- * frame-accurate the way a real audio file's <audio> element would be. */
+ * Plays a REAL rendered two-host podcast audio file (notes.audioDataUri,
+ * a data:audio/wav URI from the backend's AudioOverviewAgent + Gemini
+ * multi-speaker TTS — see services/audioOverviewService.js) through a
+ * plain <audio> element, so play/pause/seek/rate are all frame-accurate
+ * native browser behavior — no more re-speaking from an estimated word
+ * offset the way the old window.speechSynthesis version had to. */
 function AudioOverviewDock({ notes, loading, error, onClose }) {
   const [isPlaying, setIsPlaying] = useState(false);
-  const [isPaused, setIsPaused] = useState(false);
   const [rate, setRate] = useState(1);
   const [elapsed, setElapsed] = useState(0);
+  const [duration, setDuration] = useState(0);
   const [liked, setLiked] = useState(null); // null | "up" | "down"
   const [showTranscript, setShowTranscript] = useState(false);
 
-  const words = useMemo(() => (notes ? buildAudioScript(notes).split(/\s+/).filter(Boolean) : []), [notes]);
-  const duration = useMemo(() => estimateAudioSeconds(words.length), [words]);
-
-  const timerRef = useRef(null);
-  const skipCancelRef = useRef(false); // true while we intentionally cancel() mid-utterance, so onend ignores it
+  const audioRef = useRef(null);
 
   useEffect(() => {
     // Reset the player whenever a different Audio Overview is opened.
-    window.speechSynthesis?.cancel();
     setIsPlaying(false);
-    setIsPaused(false);
     setElapsed(0);
+    setDuration(notes?.durationSeconds || 0);
     setShowTranscript(false);
-    return () => {
-      window.speechSynthesis?.cancel();
-      clearInterval(timerRef.current);
-    };
   }, [notes]);
 
   useEffect(() => {
-    if (!isPlaying) {
-      clearInterval(timerRef.current);
-      return;
-    }
-    timerRef.current = setInterval(() => {
-      setElapsed((e) => Math.min(duration, e + 0.25 * rate));
-    }, 250);
-    return () => clearInterval(timerRef.current);
-  }, [isPlaying, rate, duration]);
-
-  function speakFromWord(wordIndex, speed) {
-    if (!window.speechSynthesis) return;
-    skipCancelRef.current = true;
-    window.speechSynthesis.cancel();
-    const text = words.slice(wordIndex).join(" ");
-    if (!text) {
-      setIsPlaying(false);
-      setIsPaused(false);
-      return;
-    }
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.rate = speed;
-    utterance.onend = () => {
-      if (skipCancelRef.current) {
-        skipCancelRef.current = false;
-        return;
-      }
-      setIsPlaying(false);
-      setIsPaused(false);
-      setElapsed(duration);
-    };
-    window.speechSynthesis.speak(utterance);
-    setIsPlaying(true);
-    setIsPaused(false);
-  }
+    if (audioRef.current) audioRef.current.playbackRate = rate;
+  }, [rate, notes]);
 
   function handlePlayPause() {
-    if (!notes || !window.speechSynthesis) return;
+    const audio = audioRef.current;
+    if (!audio) return;
     if (isPlaying) {
-      window.speechSynthesis.pause();
-      setIsPlaying(false);
-      setIsPaused(true);
-      return;
+      audio.pause();
+    } else {
+      audio.play().catch(() => {});
     }
-    if (isPaused) {
-      window.speechSynthesis.resume();
-      setIsPlaying(true);
-      setIsPaused(false);
-      return;
-    }
-    speakFromWord(Math.round((elapsed / duration) * words.length) || 0, rate);
   }
 
   function seekTo(newElapsed) {
+    const audio = audioRef.current;
+    if (!audio || !duration) return;
     const clamped = Math.max(0, Math.min(duration, newElapsed));
+    audio.currentTime = clamped;
     setElapsed(clamped);
-    const wordIndex = Math.min(words.length - 1, Math.round((clamped / duration) * words.length));
-    speakFromWord(wordIndex, rate);
   }
 
   function handleSkip(deltaSeconds) {
-    if (!notes) return;
     seekTo(elapsed + deltaSeconds);
   }
 
   function handleRateChange() {
     const idx = AUDIO_RATE_OPTIONS.indexOf(rate);
-    const next = AUDIO_RATE_OPTIONS[(idx + 1) % AUDIO_RATE_OPTIONS.length];
-    setRate(next);
-    if (isPlaying) {
-      const wordIndex = Math.min(words.length - 1, Math.round((elapsed / duration) * words.length));
-      speakFromWord(wordIndex, next);
-    }
+    setRate(AUDIO_RATE_OPTIONS[(idx + 1) % AUDIO_RATE_OPTIONS.length]);
   }
 
-  const sectionCount = notes?.sections?.length || 0;
-  const script = notes ? buildAudioScript(notes) : "";
+  const turnCount = notes?.script?.length || 0;
 
   return (
     <motion.div
@@ -3171,8 +3096,11 @@ function AudioOverviewDock({ notes, loading, error, onClose }) {
         style={{ background: COLORS.white, border: `1px solid ${COLORS.border}`, boxShadow: "0 12px 32px rgba(13,27,61,0.18)" }}
       >
         {loading ? (
-          <div className="flex items-center justify-center py-6">
+          <div className="flex flex-col items-center justify-center gap-2 py-6">
             <Loader2 size={20} className="animate-spin" color={COLORS.purple} />
+            <p className="text-[11px]" style={{ color: COLORS.textLight }}>
+              Writing the script and recording the hosts…
+            </p>
           </div>
         ) : error ? (
           <>
@@ -3190,6 +3118,24 @@ function AudioOverviewDock({ notes, loading, error, onClose }) {
           </>
         ) : notes ? (
           <>
+            {notes.audioDataUri && (
+              <audio
+                ref={audioRef}
+                src={notes.audioDataUri}
+                preload="metadata"
+                onLoadedMetadata={(e) => {
+                  // A real WAV's own duration is always more accurate
+                  // than the pre-generation word-count estimate — prefer
+                  // it the moment the browser has decoded it.
+                  if (Number.isFinite(e.currentTarget.duration)) setDuration(e.currentTarget.duration);
+                }}
+                onTimeUpdate={(e) => setElapsed(e.currentTarget.currentTime)}
+                onPlay={() => setIsPlaying(true)}
+                onPause={() => setIsPlaying(false)}
+                onEnded={() => setIsPlaying(false)}
+              />
+            )}
+
             {/* Top row: title, thumbs, menu, close */}
             <div className="flex items-center gap-2 mb-2.5">
               <p className="text-xs font-semibold truncate flex-1" style={{ color: COLORS.textDark }}>
@@ -3236,9 +3182,9 @@ function AudioOverviewDock({ notes, loading, error, onClose }) {
             <input
               type="range"
               min={0}
-              max={duration}
+              max={duration || 0}
               step={0.1}
-              value={elapsed}
+              value={Math.min(elapsed, duration || 0)}
               onChange={(e) => setElapsed(parseFloat(e.target.value))}
               onMouseUp={(e) => seekTo(parseFloat(e.target.value))}
               onTouchEnd={(e) => seekTo(parseFloat(e.target.value))}
@@ -3250,7 +3196,7 @@ function AudioOverviewDock({ notes, loading, error, onClose }) {
                 {formatTime(elapsed)} / {formatTime(duration)}
               </span>
               <span className="text-[11px]" style={{ color: COLORS.textLight }}>
-                Deep Dive{sectionCount > 0 ? ` · ${sectionCount} section${sectionCount === 1 ? "" : "s"}` : ""}
+                Deep Dive{turnCount > 0 ? ` · 2 hosts` : ""}
               </span>
             </div>
 
@@ -3306,10 +3252,17 @@ function AudioOverviewDock({ notes, loading, error, onClose }) {
 
             {showTranscript && (
               <div
-                className="mt-3 rounded-xl px-3 py-2.5 overflow-y-auto text-xs leading-relaxed"
-                style={{ maxHeight: 160, background: COLORS.lavender, color: COLORS.textMid }}
+                className="mt-3 rounded-xl px-3 py-2.5 overflow-y-auto text-xs leading-relaxed flex flex-col gap-2"
+                style={{ maxHeight: 200, background: COLORS.lavender, color: COLORS.textMid }}
               >
-                {script}
+                {(notes.script || []).map((turn, i) => (
+                  <p key={i}>
+                    <span className="font-bold" style={{ color: COLORS.textDark }}>
+                      {turn.speaker}:{" "}
+                    </span>
+                    {turn.line}
+                  </p>
+                ))}
               </div>
             )}
           </>

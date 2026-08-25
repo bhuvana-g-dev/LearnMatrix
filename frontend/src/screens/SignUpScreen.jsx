@@ -574,4 +574,15 @@ export default function SignUpScreen({ auth, onLogin, onSuccess, onBack }) {
               {successMessage ? "Redirecting..." : loading ? "Creating Account..." : "Continue"}
             </motion.button>
 
-            <p
+            <p className="text-center text-sm mt-4">
+              Already have an account?{" "}
+              <span onClick={onLogin} style={{ color: "#8B5CF6", cursor: "pointer", fontWeight: 700 }}>
+                Login
+              </span>
+            </p>
+          </div>
+        </div>
+      </div>
+    </PageShell>
+  );
+}

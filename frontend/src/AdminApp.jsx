@@ -5,6 +5,7 @@ import AdminLoginScreen from "./screens/admin/AdminLoginScreen";
 import AdminDashboardScreen from "./screens/admin/AdminDashboardScreen";
 import ResourceBankScreen from "./screens/admin/ResourceBankScreen";
 import GeneratedContentScreen from "./screens/admin/GeneratedContentScreen";
+import LessonPlansScreen from "./screens/admin/LessonPlansScreen";
 import StudentRecordsScreen from "./screens/admin/StudentRecordsScreen";
 import LearnerIntelligenceScreen from "./screens/admin/LearnerIntelligenceScreen";
 import Logo from "./components/common/Logo";
@@ -52,6 +53,8 @@ export default function AdminApp() {
     content = <ResourceBankScreen admin={auth.admin} />;
   } else if (activeKey === "generated-content") {
     content = <GeneratedContentScreen />;
+  } else if (activeKey === "lesson-plans") {
+    content = <LessonPlansScreen />;
   } else if (activeKey === "student-records") {
     content = <StudentRecordsScreen />;
   } else if (activeKey === "learner-intelligence") {

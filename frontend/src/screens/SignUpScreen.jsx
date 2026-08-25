@@ -23,6 +23,7 @@ import Logo from "../components/common/Logo";
 import { COLORS, GRADIENTS, GLASS_CARD } from "../constants/theme";
 import { TN_COLLEGES } from "../constants/tnColleges";
 import { saveUserProfileDoc } from "../services/userProfileService";
+import { suggestEmailCorrection } from "../utils/emailTypoCheck";
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 const MOBILE_REGEX = /^[0-9]{10}$/;
@@ -206,6 +207,9 @@ export default function SignUpScreen({ auth, onLogin, onSuccess, onBack }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
+  // Live "did you mean...?" nudge for typo'd domains (gmial.com etc.) —
+  // purely a suggestion, doesn't block submission on its own.
+  const emailSuggestion = suggestEmailCorrection(email);
 
   const inputStyle = {
     width: "100%",
@@ -236,6 +240,11 @@ export default function SignUpScreen({ auth, onLogin, onSuccess, onBack }) {
     if (!email.trim()) return setError("Please enter your email.");
     if (!EMAIL_REGEX.test(email.trim())) {
       return setError("Please enter a valid email address (e.g. name@example.com).");
+    }
+    if (emailSuggestion) {
+      return setError(
+        `That email looks mistyped. Did you mean ${emailSuggestion}?`
+      );
     }
     if (!STRONG_PASSWORD_REGEX.test(password)) {
       return setError(
@@ -363,6 +372,23 @@ export default function SignUpScreen({ auth, onLogin, onSuccess, onBack }) {
                 disabled={loading || !!successMessage}
               />
             </div>
+            {emailSuggestion && (
+              <button
+                type="button"
+                onClick={() => setEmail(emailSuggestion)}
+                className="text-xs font-semibold"
+                style={{
+                  color: "#8B5CF6",
+                  background: "none",
+                  border: "none",
+                  cursor: "pointer",
+                  marginTop: -8,
+                  display: "block",
+                }}
+              >
+                Did you mean {emailSuggestion}? Tap to fix
+              </button>
+            )}
 
             {/* Password / Confirm */}
             <div className="grid grid-cols-2 gap-3">

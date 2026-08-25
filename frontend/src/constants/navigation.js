@@ -2,7 +2,6 @@ import {
   Home as HomeIcon,
   Target,
   Map,
-  Brain,
   Bot,
   Calendar,
   User,
@@ -37,16 +36,6 @@ export const NAV_SECTIONS = [
     title: "My Career Path",
     icon: Target,
     selfNavigable: true,
-  },
-  {
-    key: "assessment",
-    title: "Assessment",
-    icon: Brain,
-    children: [
-      { key: "initial-assessment", label: "Initial Assessment" },
-      { key: "quizzes", label: "Topic Quizzes" },
-      { key: "practice-tests", label: "Practice Tests" },
-    ],
   },
   {
     key: "roadmap",

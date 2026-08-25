@@ -225,6 +225,96 @@ def generate_image(prompt: str, api_key: str | None = None) -> bytes | None:
 
 
 # ---------------------------------------------------------------------
+# Gemini speech generation (services/audio_overview_service.py's
+# generate_podcast_audio) — real two-voice Audio Overview narration,
+# NotebookLM-style, replacing the old browser-only window.speechSynthesis
+# reading a single flat script.
+# ---------------------------------------------------------------------
+def _wrap_pcm_as_wav(pcm_bytes: bytes, sample_rate: int = 24000, channels: int = 1, bits_per_sample: int = 16) -> bytes:
+    """Gemini's TTS models return raw headerless PCM (16-bit signed,
+    little-endian, mono, 24kHz) — this prepends a standard 44-byte WAV
+    header so the bytes are directly playable by a browser <audio>
+    element / data: URI, without needing ffmpeg or any audio library
+    as a dependency."""
+    import struct
+
+    byte_rate = sample_rate * channels * bits_per_sample // 8
+    block_align = channels * bits_per_sample // 8
+    data_size = len(pcm_bytes)
+    header = b"RIFF" + struct.pack("<I", 36 + data_size) + b"WAVE"
+    header += b"fmt " + struct.pack("<IHHIIHH", 16, 1, channels, sample_rate, byte_rate, block_align, bits_per_sample)
+    header += b"data" + struct.pack("<I", data_size)
+    return header + pcm_bytes
+
+
+def generate_speech_audio(
+    script_turns: list[dict],
+    speaker_voice_map: dict[str, str],
+    api_key: str | None = None,
+) -> bytes | None:
+    """Renders a multi-speaker conversation script into ONE real WAV
+    audio file via Gemini's native TTS model (settings.GEMINI_TTS_MODEL).
+
+    script_turns: [{"speaker": "Host A", "line": "..."}, ...] — speaker
+    names here must be the exact keys used in speaker_voice_map (max 2
+    distinct speakers; Gemini's multi-speaker TTS supports up to 2).
+
+    Returns complete WAV file bytes ready to be base64-encoded into a
+    data: URI (same "generate bytes, caller decides how to ship them"
+    contract as generate_image above), or None on ANY failure — missing
+    key, unsupported model, safety block, empty response, more than 2
+    distinct speakers, network hiccup. Callers should treat None as
+    "Audio Overview generation failed" and surface a clear error rather
+    than silently degrading, since (unlike a slide's illustration) the
+    audio IS the deliverable here.
+    """
+    if not (api_key or settings.GEMINI_API_KEY) or not script_turns:
+        return None
+    speakers = list(dict.fromkeys(turn.get("speaker", "") for turn in script_turns if turn.get("speaker")))
+    if not speakers or len(speakers) > 2:
+        return None
+    if any(name not in speaker_voice_map for name in speakers):
+        return None
+
+    transcript = "\n".join(f"{turn['speaker']}: {turn['line']}" for turn in script_turns if turn.get("line"))
+    if not transcript.strip():
+        return None
+
+    try:
+        from google.genai import types
+
+        client = _get_gemini_client(api_key)
+        speaker_configs = [
+            types.SpeakerVoiceConfig(
+                speaker=name,
+                voice_config=types.VoiceConfig(
+                    prebuilt_voice_config=types.PrebuiltVoiceConfig(voice_name=speaker_voice_map[name])
+                ),
+            )
+            for name in speakers
+        ]
+        response = client.models.generate_content(
+            model=settings.GEMINI_TTS_MODEL,
+            contents=transcript,
+            config=types.GenerateContentConfig(
+                response_modalities=["AUDIO"],
+                speech_config=types.SpeechConfig(
+                    multi_speaker_voice_config=types.MultiSpeakerVoiceConfig(speaker_voice_configs=speaker_configs)
+                ),
+            ),
+        )
+        for candidate in getattr(response, "candidates", None) or []:
+            parts = getattr(getattr(candidate, "content", None), "parts", None) or []
+            for part in parts:
+                inline_data = getattr(part, "inline_data", None)
+                if inline_data is not None and getattr(inline_data, "data", None):
+                    return _wrap_pcm_as_wav(inline_data.data)
+        return None
+    except Exception:
+        return None
+
+
+# ---------------------------------------------------------------------
 # Groq (official SDK, OpenAI-compatible chat.completions)
 # ---------------------------------------------------------------------
 def _get_groq_client():

@@ -194,6 +194,7 @@ export default function SignUpScreen({ auth, onLogin, onSuccess, onBack }) {
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
+  const [confirmEmail, setConfirmEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [mobile, setMobile] = useState("");
@@ -245,6 +246,9 @@ export default function SignUpScreen({ auth, onLogin, onSuccess, onBack }) {
       return setError(
         `That email looks mistyped. Did you mean ${emailSuggestion}?`
       );
+    }
+    if (email.trim() !== confirmEmail.trim()) {
+      return setError("Email addresses don't match. Please check and re-enter.");
     }
     if (!STRONG_PASSWORD_REGEX.test(password)) {
       return setError(
@@ -390,6 +394,29 @@ export default function SignUpScreen({ auth, onLogin, onSuccess, onBack }) {
               </button>
             )}
 
+            {/* Confirm Email — catches a typo in the person's own
+                username (e.g. selvameenakshi@gmail.com instead of
+                selvameenakshik@gmail.com) that no domain check can catch,
+                since re-typing it from scratch rarely repeats the exact
+                same slip twice. */}
+            <div style={{ position: "relative" }}>
+              <Mail size={17} style={{ position: "absolute", left: 15, top: "50%", transform: "translateY(-50%)" }} />
+              <input
+                type="email"
+                style={inputStyle}
+                placeholder="Confirm Email *"
+                value={confirmEmail}
+                onChange={(e) => setConfirmEmail(e.target.value)}
+                onPaste={(e) => e.preventDefault()}
+                disabled={loading || !!successMessage}
+              />
+            </div>
+            {confirmEmail && email.trim() !== confirmEmail.trim() && (
+              <p className="text-xs" style={{ color: "#E4568A", marginTop: -8 }}>
+                Emails don't match yet.
+              </p>
+            )}
+
             {/* Password / Confirm */}
             <div className="grid grid-cols-2 gap-3">
               <div style={{ position: "relative" }}>
@@ -422,146 +449,4 @@ export default function SignUpScreen({ auth, onLogin, onSuccess, onBack }) {
 
             {/* Mobile */}
             <div style={{ position: "relative" }}>
-              <Phone size={17} style={{ position: "absolute", left: 15, top: "50%", transform: "translateY(-50%)" }} />
-              <span
-                className="text-sm font-medium"
-                style={{ position: "absolute", left: 40, top: "50%", transform: "translateY(-50%)", color: COLORS.textMid }}
-              >
-                🇮🇳 +91
-              </span>
-              <input
-                type="tel"
-                style={{ ...inputStyle, paddingLeft: 92 }}
-                placeholder="Mobile Number *"
-                value={mobile}
-                onChange={(e) => setMobile(e.target.value.replace(/\D/g, "").slice(0, 10))}
-                disabled={loading || !!successMessage}
-              />
-            </div>
-
-            {/* User type */}
-            <div>
-              <p className="text-xs font-semibold mb-2" style={{ color: COLORS.textMid }}>
-                User Type *
-              </p>
-              <div className="flex flex-wrap gap-2">
-                {USER_TYPES.map((t) => {
-                  const Icon = t.icon;
-                  const isActive = userType === t.key;
-                  return (
-                    <button
-                      key={t.key}
-                      type="button"
-                      onClick={() => setUserType(t.key)}
-                      disabled={loading || !!successMessage}
-                      className="flex items-center gap-1.5 text-xs font-semibold"
-                      style={{
-                        padding: "9px 16px",
-                        borderRadius: 9999,
-                        border: `1.5px solid ${isActive ? "transparent" : COLORS.border}`,
-                        background: isActive ? GRADIENTS.purpleSky : "rgba(255,255,255,0.55)",
-                        color: isActive ? "#fff" : COLORS.textDark,
-                        cursor: "pointer",
-                      }}
-                    >
-                      <Icon size={14} />
-                      {t.label}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* College fields — only for College Student */}
-            {userType === "college" && (
-              <>
-                <CollegeDropdown value={college} onChange={setCollege} disabled={loading || !!successMessage} />
-
-                <div style={{ position: "relative" }}>
-                  <GraduationCap size={17} style={{ position: "absolute", left: 15, top: "50%", transform: "translateY(-50%)" }} />
-                  <input
-                    style={inputStyle}
-                    placeholder="Department (e.g. B.Sc. Computer Science) *"
-                    value={department}
-                    onChange={(e) => setDepartment(e.target.value)}
-                    disabled={loading || !!successMessage}
-                  />
-                </div>
-
-                <div style={{ position: "relative" }}>
-                  <CalendarDays size={17} style={{ position: "absolute", left: 15, top: "50%", transform: "translateY(-50%)" }} />
-                  <input
-                    style={inputStyle}
-                    placeholder="Academic Year (e.g. Final Year (2027)) *"
-                    value={academicYear}
-                    onChange={(e) => setAcademicYear(e.target.value)}
-                    disabled={loading || !!successMessage}
-                  />
-                </div>
-              </>
-            )}
-
-            {/* Terms */}
-            <label className="flex items-start gap-2 text-xs" style={{ color: COLORS.textMid, cursor: "pointer" }}>
-              <input
-                type="checkbox"
-                checked={agreed}
-                onChange={(e) => setAgreed(e.target.checked)}
-                disabled={loading || !!successMessage}
-                style={{ marginTop: 2 }}
-              />
-              <span>
-                All your information is collected, stored, and processed as per our data
-                processing guidelines. By signing up, you agree to our Privacy Policy and
-                Terms of Use.
-              </span>
-            </label>
-
-            {error && (
-              <p className="text-center text-sm" style={{ color: "red" }}>
-                {error}
-              </p>
-            )}
-
-            {successMessage && (
-              <div
-                className="flex items-start gap-2 text-sm p-3"
-                style={{ borderRadius: 14, background: "rgba(34,192,142,0.12)", color: "#22C08E" }}
-              >
-                <CheckCircle2 size={16} className="flex-shrink-0 mt-0.5" />
-                <span>{successMessage}</span>
-              </div>
-            )}
-
-            <motion.button
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-              onClick={handleSignup}
-              disabled={loading || !!successMessage}
-              className="w-full"
-              style={{
-                padding: "14px",
-                borderRadius: 9999,
-                border: "none",
-                background: GRADIENTS.purplePink,
-                color: "#fff",
-                fontWeight: 700,
-                cursor: loading || successMessage ? "default" : "pointer",
-                opacity: loading || successMessage ? 0.8 : 1,
-              }}
-            >
-              {successMessage ? "Redirecting..." : loading ? "Creating Account..." : "Continue"}
-            </motion.button>
-
-            <p className="text-center text-sm mt-4">
-              Already have an account?{" "}
-              <span onClick={onLogin} style={{ color: "#8B5CF6", cursor: "pointer", fontWeight: 700 }}>
-                Login
-              </span>
-            </p>
-          </div>
-        </div>
-      </div>
-    </PageShell>
-  );
-}
+              <Phone size={17} style={{ position:

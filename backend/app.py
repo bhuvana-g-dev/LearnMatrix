@@ -42,6 +42,7 @@ from routes.topic_quiz_routes import topic_quiz_bp
 from routes.lesson_routes import lesson_bp
 from routes.generated_content_routes import generated_content_bp
 from routes.admin_lesson_routes import admin_lesson_bp
+from routes.audio_overview_routes import audio_overview_bp
 
 
 def create_app() -> Flask:
@@ -77,6 +78,7 @@ def create_app() -> Flask:
     app.register_blueprint(lesson_bp, url_prefix="/api")
     app.register_blueprint(generated_content_bp, url_prefix="/api")
     app.register_blueprint(admin_lesson_bp, url_prefix="/api")
+    app.register_blueprint(audio_overview_bp, url_prefix="/api")
 
     return app
 

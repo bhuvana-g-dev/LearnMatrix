@@ -1,4 +1,4 @@
-import { LayoutDashboard, ListChecks, Users, Sparkles } from "lucide-react";
+import { LayoutDashboard, ListChecks, Users, Sparkles, BookOpen } from "lucide-react";
 
 /**
  * Admin sidebar structure. Same shape as constants/navigation.js
@@ -42,6 +42,14 @@ export const ADMIN_NAV_SECTIONS = [
     icon: Sparkles,
     children: [
       { key: "generated-content", label: "Generated Content Management" },
+    ],
+  },
+  {
+    key: "lesson-plans",
+    title: "Lesson Plan Management",
+    icon: BookOpen,
+    children: [
+      { key: "lesson-plans", label: "Lesson Plan Management" },
     ],
   },
 ];

@@ -19,6 +19,16 @@ call this, not the two repositories directly, so there's one place that
 knows "how a topic page is assembled" instead of that logic leaking into
 route handlers.
 
+TOPIC vs RESOURCE_TOPIC: `topic` (positional) drives notes generation/
+caching and may be a lesson-composited key (e.g. "Variables — Lesson 1",
+see frontend lessonService.compositeTopicKey()) — that's fine, AI notes
+are meant to vary per lesson. Admin-managed resources must NEVER be
+matched against that composite key though, since they're verified once
+per plain topic name and shared across every lesson in that topic. So
+resource lookups use the separate `resource_topic` param (defaults to
+`topic` when the caller has no lesson to compose in) — see
+_resolve_resources_by_type() and get_topic_package() below.
+
 RESOURCE PRIORITY ORDER (this revision):
 
     1. Admin-curated VERIFIED Firestore resources for this exact
@@ -64,7 +74,7 @@ de-emphasized behind a single clear recommendation.
 from firebase.firebase_config import get_firestore_client
 from agents.notes_generation_agent import NotesGenerationAgent, NotesGenerationError
 from services.notes_repository import get_cached_notes, save_notes, notes_cache_key
-from services.resource_repository import list_resources
+from services.resource_repository import list_resources, resolve_category
 from services.youtube_service import search_videos, is_configured as youtube_is_configured, YouTubeServiceError
 from utils.generation_lock import run_with_lock
 
@@ -140,10 +150,16 @@ def _select_primary_and_alternates(videos: list[dict], focus_band: str) -> tuple
     return ranked[0], ranked[1:]
 
 
-def _resolve_resources_by_type(db, skill: str, topic: str, focus_band: str) -> dict[str, list[dict]]:
+def _resolve_resources_by_type(db, skill: str, resource_topic: str, focus_band: str) -> dict[str, list[dict]]:
     """
     Implements the priority order documented above:
     admin-curated verified -> YouTube live fallback (video only) -> [].
+
+    `resource_topic` is deliberately a SEPARATE parameter from the
+    `topic` used for notes generation/caching elsewhere in this module
+    (get_topic_package() below) — see the module docstring's "TOPIC vs
+    RESOURCE_TOPIC" note. Admin-managed resources are always matched on
+    the plain topic name, never a lesson-composited key.
 
     Grouped by type up front (not left as one flat list) so the
     frontend can render the categorized sections directly without
@@ -151,7 +167,7 @@ def _resolve_resources_by_type(db, skill: str, topic: str, focus_band: str) -> d
     FULL candidate pool (admin-curated or live-fetched) — get_topic_package()
     below is what narrows it down to one primary recommendation.
     """
-    verified = list_resources(db, skill=skill, topic=topic, status="verified", enabled_only=True)
+    verified = list_resources(db, skill=skill, topic=resource_topic, status="verified", enabled_only=True)
 
     by_type: dict[str, list[dict]] = {t: [] for t in RESOURCE_TYPES}
     for r in verified:
@@ -167,12 +183,12 @@ def _resolve_resources_by_type(db, skill: str, topic: str, focus_band: str) -> d
         # services/resource_review_service.py's generate_youtube_suggestions()).
         query_hint = FOCUS_BAND_QUERY_HINTS.get(focus_band, "tutorial")
         try:
-            live_videos = search_videos(f"{topic} {skill} {query_hint}", max_results=6)
+            live_videos = search_videos(f"{resource_topic} {skill} {query_hint}", max_results=6)
             by_type["video"] = [
                 {
                     "id": f"youtube-live-{v['videoId']}",
                     "skill": skill,
-                    "topic": topic,
+                    "topic": resource_topic,
                     "type": "video",
                     "title": v["title"],
                     "url": v["url"],
@@ -197,8 +213,42 @@ def _resolve_resources_by_type(db, skill: str, topic: str, focus_band: str) -> d
     return by_type
 
 
-def get_topic_package(skill: str, topic: str, focus_band: str) -> dict:
+def _group_by_category(by_type: dict[str, list[dict]]) -> dict[str, list[dict]]:
+    """
+    The learner-facing Practice / Reference & Reading split (video is
+    excluded — it's already surfaced separately as primaryVideo /
+    alternateVideos, never folded into either category). Each
+    resource's category is resolved the same way list_resources()
+    already resolves it (stored value, or config/settings.py's
+    type-based default), so a resource created before `category`
+    existed still lands in the right section here with no data
+    migration needed.
+    """
+    grouped: dict[str, list[dict]] = {"practice": [], "reference": []}
+    for r_type, items in by_type.items():
+        if r_type == "video":
+            continue
+        for r in items:
+            cat = resolve_category(r_type, r.get("category"))
+            if cat in grouped:
+                grouped[cat].append(r)
+    return grouped
+
+
+def get_topic_package(skill: str, topic: str, focus_band: str, resource_topic: str | None = None) -> dict:
+    """
+    `topic` drives AI-generated notes (may be a lesson-composited key,
+    e.g. lessonService.compositeTopicKey() on the frontend — that's
+    fine, notes are meant to be scoped per-lesson). `resource_topic`
+    drives admin-managed resource matching and defaults to `topic` when
+    not given (e.g. the non-lesson learning flow, where there's only
+    ever one plain topic name to begin with). Callers that DO thread a
+    composite key through `topic` (CourseWorkspaceScreen.jsx's lesson
+    view) must pass the plain topic name as `resource_topic` — see
+    routes/learning_routes.py's `?resourceTopic=` query param.
+    """
     db = get_firestore_client()
+    resource_topic = resource_topic or topic
 
     notes = get_cached_notes(db, skill, topic, focus_band)
     was_cached = notes is not None
@@ -227,19 +277,21 @@ def get_topic_package(skill: str, topic: str, focus_band: str) -> dict:
             generate_and_save_fn=_generate_and_save,
         )
 
-    resources_by_type = _resolve_resources_by_type(db, skill, topic, focus_band)
+    resources_by_type = _resolve_resources_by_type(db, skill, resource_topic, focus_band)
     primary_video, alternate_videos = _select_primary_and_alternates(resources_by_type["video"], focus_band)
+    resources_by_category = _group_by_category(resources_by_type)
 
     # Flat list preserved alongside the grouped one — existing behavior,
     # existing field, untouched shape/order (skips empty categories'
     # placeholders since they're just []). Nothing that already reads
-    # pkg.resources breaks; resourcesByType/primaryVideo/alternateVideos
-    # are purely additive.
+    # pkg.resources breaks; resourcesByType/resourcesByCategory/
+    # primaryVideo/alternateVideos are purely additive.
     flat_resources = [r for resources in resources_by_type.values() for r in resources]
 
     return {
         "skill": skill,
         "topic": topic,
+        "resourceTopic": resource_topic,
         "focusBand": focus_band,
         "notes": {
             "title": notes["title"],
@@ -251,6 +303,7 @@ def get_topic_package(skill: str, topic: str, focus_band: str) -> dict:
         "notesFromCache": was_cached,  # useful for debugging/demoing the caching behavior
         "resources": flat_resources,
         "resourcesByType": resources_by_type,
+        "resourcesByCategory": resources_by_category,  # {"practice": [...], "reference": [...]} — video excluded
         "primaryVideo": primary_video,  # the ONE recommended video — always this, never a list, in the primary UI
         "alternateVideos": alternate_videos,  # everything else, for an optional secondary "More Resources" view
     }

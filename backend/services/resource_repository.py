@@ -36,7 +36,10 @@ badge in the Resource Bank — nothing reads it to gate access.
 
     learning_resources/{resourceId}
         skill, topic, type ("video"|"documentation"|"article"|"pdf"|
-        "cheatsheet"|"practice"|"github"), title, url, status, source
+        "cheatsheet"|"practice"|"github"), category ("practice"|
+        "reference"|None — None only for type="video"; see
+        resolve_category() below for the type-based default used when
+        this is unset), title, url, status, source
         ("ai_suggested"|"youtube_api"|"manual"), difficulty
         ("Beginner"|"Intermediate"|"Advanced"|None), description,
         isPinned, enabled, verifiedBy, thumbnail, channelName,
@@ -52,6 +55,23 @@ SERVER_TIMESTAMP = firestore.SERVER_TIMESTAMP
 VALID_STATUSES = settings.VALID_RESOURCE_STATUSES
 VALID_TYPES = settings.VALID_RESOURCE_TYPES
 VALID_DIFFICULTIES = settings.VALID_TOPIC_DIFFICULTIES  # reuses the existing Beginner/Intermediate/Advanced scale
+VALID_CATEGORIES = settings.VALID_RESOURCE_CATEGORIES
+DEFAULT_CATEGORY_BY_TYPE = settings.DEFAULT_CATEGORY_BY_TYPE
+
+
+def resolve_category(resource_type: str, category: str | None = None) -> str | None:
+    """
+    The stored `category` if there is one; otherwise a sensible default
+    derived from `type` (see config/settings.py's DEFAULT_CATEGORY_BY_TYPE)
+    so resources saved before `category` existed keep grouping correctly
+    on both the admin Resource Management tabs and the learner topic
+    page, with no data migration needed. Returns None for "video" (and
+    any other type with no default) — video is its own thing, never
+    part of the Practice / Reference & Reading split.
+    """
+    if category:
+        return category
+    return DEFAULT_CATEGORY_BY_TYPE.get(resource_type)
 
 
 def add_resource(
@@ -60,6 +80,7 @@ def add_resource(
     difficulty: str | None = None, description: str = "", is_pinned: bool = False,
     thumbnail: str = "", channel_name: str = "", duration_seconds: int = 0,
     view_count: int = 0, published_at: str = "", verified_by: str = "",
+    category: str | None = None,
 ) -> dict:
     """
     Default status="verified" because a resource typed in directly by an
@@ -77,6 +98,11 @@ def add_resource(
     field — the Resource Bank shows "Verified by {verifiedBy}" next to
     the badge; nothing reads this to make access decisions.
 
+    category: "practice" | "reference" | None (None only makes sense
+    for resource_type == "video"). Not required — omitted/blank falls
+    back to resolve_category()'s type-based default, same as reading a
+    resource created before this field existed.
+
     The video-metadata params (thumbnail/channel_name/duration_seconds/
     view_count/published_at) are meaningless for non-video types and
     default to empty/zero — callers only pass them when resource_type
@@ -89,12 +115,15 @@ def add_resource(
         raise ValueError(f"type must be one of {VALID_TYPES}, got '{resource_type}'")
     if difficulty is not None and difficulty not in VALID_DIFFICULTIES:
         raise ValueError(f"difficulty must be one of {VALID_DIFFICULTIES} or None, got '{difficulty}'")
+    if category is not None and category not in VALID_CATEGORIES:
+        raise ValueError(f"category must be one of {VALID_CATEGORIES} or None, got '{category}'")
 
     doc_ref = db.collection(settings.LEARNING_RESOURCES_COLLECTION).document()
     payload = {
         "skill": skill,
         "topic": topic,
         "type": resource_type,
+        "category": resolve_category(resource_type, category),
         "title": title,
         "url": url,
         "status": status,
@@ -122,7 +151,7 @@ def add_resource(
 def list_resources(
     db, skill: str | None = None, topic: str | None = None, status: str | None = None,
     resource_type: str | None = None, difficulty: str | None = None,
-    enabled_only: bool = False,
+    enabled_only: bool = False, category: str | None = None,
 ) -> list[dict]:
     """
     Equality-filtered list, same simple-filter pattern as
@@ -142,6 +171,12 @@ def list_resources(
     existed are unaffected. Student-facing calls should pass True;
     admin list views should leave it False so disabled resources still
     show up (with their disabled state visible) for re-enabling.
+
+    Every returned resource's `category` is resolved via
+    resolve_category() before the `category` filter is applied — a
+    resource saved before this field existed (stored category=None)
+    still matches its type-derived default category here, so the
+    filter and the admin/learner grouping never disagree.
     """
     docs = db.collection(settings.LEARNING_RESOURCES_COLLECTION).stream()
 
@@ -149,6 +184,7 @@ def list_resources(
     for doc in docs:
         data = doc.to_dict()
         data["id"] = doc.id
+        data["category"] = resolve_category(data.get("type"), data.get("category"))
         if skill and data.get("skill") != skill:
             continue
         if topic and data.get("topic") != topic:
@@ -158,6 +194,8 @@ def list_resources(
         if resource_type and data.get("type") != resource_type:
             continue
         if difficulty and data.get("difficulty") != difficulty:
+            continue
+        if category and data.get("category") != category:
             continue
         if enabled_only and data.get("enabled") is False:
             continue
@@ -199,13 +237,15 @@ def update_resource(db, resource_id: str, updates: dict) -> dict:
     before it corrupts a document, and where fields like `status` or
     `addedAt` can't be smuggled in through an edit form.
     """
-    editable_fields = {"skill", "topic", "type", "title", "url", "difficulty", "description"}
+    editable_fields = {"skill", "topic", "type", "title", "url", "difficulty", "description", "category"}
     payload = {k: v for k, v in updates.items() if k in editable_fields}
 
     if "type" in payload and payload["type"] not in VALID_TYPES:
         raise ValueError(f"type must be one of {VALID_TYPES}, got '{payload['type']}'")
     if "difficulty" in payload and payload["difficulty"] is not None and payload["difficulty"] not in VALID_DIFFICULTIES:
         raise ValueError(f"difficulty must be one of {VALID_DIFFICULTIES} or None, got '{payload['difficulty']}'")
+    if "category" in payload and payload["category"] is not None and payload["category"] not in VALID_CATEGORIES:
+        raise ValueError(f"category must be one of {VALID_CATEGORIES} or None, got '{payload['category']}'")
     if not payload:
         raise ValueError(f"No editable field(s) in update. Editable fields: {sorted(editable_fields)}")
 

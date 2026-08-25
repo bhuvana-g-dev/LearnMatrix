@@ -77,6 +77,25 @@ def get_lessons(skill: str, topic: str) -> list[dict]:
     )
 
 
+def list_lesson_plans(skill: str | None = None, topic: str | None = None) -> list[dict]:
+    """Admin-facing read of every cached lesson plan — backs the Admin
+    Panel's Lesson Plan Management screen."""
+    db = get_firestore_client()
+    return repo.list_all_lesson_plans(db, skill=skill, topic=topic)
+
+
+def delete_lessons(skill: str, topic: str) -> None:
+    """Admin-facing delete of a topic's cached lesson plan (the ordered
+    title list), separate from and in addition to deleting that
+    topic's/lessons' cached AI notes via generated_content_routes.py.
+    Deleting only the notes leaves this doc in place, which is why the
+    OLD lesson list kept showing on the site after an admin deleted
+    "generated content" — this is the endpoint that actually clears
+    it, so get_lessons() regenerates a fresh list on the next request."""
+    db = get_firestore_client()
+    repo.delete_lesson_plan(db, skill, topic)
+
+
 def get_lesson_content(skill: str, topic: str, lesson_title: str, focus_band: str) -> dict:
     """One lesson's actual page — theory notes + resources, via the
     existing per-topic content pipeline scoped to this lesson's

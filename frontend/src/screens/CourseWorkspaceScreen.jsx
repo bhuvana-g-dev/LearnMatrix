@@ -498,6 +498,7 @@ export default function CourseWorkspaceScreen({ roadmap, compressedSyllabus, ini
               <TopicContentPane
                 skill={active.skill}
                 topic={compositeTopicKey(active.topic, lessons[activeLessonIndex].Title)}
+                resourceTopic={active.topic}
                 focusBand={active.focusBand}
                 topicStatus={active.topicStatus}
                 lessonQuizDone={completedLessons.has(lessons[activeLessonIndex].Order)}

@@ -110,11 +110,16 @@ class Settings:
         "pdf": "reference",
         "cheatsheet": "reference",
     }
-    # Reuses the same three-tier scale as VALID_TOPIC_DIFFICULTIES below
-    # (Beginner/Intermediate/Advanced) rather than inventing a second
-    # difficulty vocabulary for resources — one scale, one meaning,
-    # everywhere in the app.
     VALID_RESOURCE_STATUSES: list[str] = ["pending", "verified", "rejected"]
+    # A resource is tagged with the SAME fundamentals/application/advanced/
+    # polish vocabulary services/focus_band.py already computes per topic
+    # quiz attempt (see determine_content_level()) — not a topic. On the
+    # student side, a resource's `band` is matched against the learner's
+    # CURRENT focus_band for the skill they're studying, the same value
+    # that already picks video ranking/notes depth. This replaces the old
+    # skill+topic resource matching entirely — resources now live at
+    # skill+band, no topic involved.
+    VALID_RESOURCE_BANDS: list[str] = ["fundamentals", "application", "advanced", "polish"]
 
     # --- YouTube Data API v3 (services/youtube_service.py) ---
     # Required only for: (1) the admin's "Search YouTube" suggestion

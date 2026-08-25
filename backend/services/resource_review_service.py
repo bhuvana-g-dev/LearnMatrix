@@ -12,6 +12,11 @@ reads status="verified" only); this file is entirely ADMIN-facing
 status). Mixing the two into one file would make it easy to
 accidentally leak an unverified suggestion into the student path —
 keeping them apart makes that mistake structurally harder to make.
+
+Every function here works at (skill, band) — fundamentals/application/
+advanced/polish, config/settings.py's VALID_RESOURCE_BANDS — not
+(skill, topic). See services/resource_repository.py's module docstring
+for why resources no longer carry a topic.
 """
 
 from firebase.firebase_config import get_firestore_client
@@ -22,12 +27,24 @@ from services.resource_repository import (
 )
 from services.youtube_service import search_videos, YouTubeServiceError
 
+# Biases the YouTube search query toward the right kind of video for a
+# band — same hint vocabulary services/learning_content_service.py uses
+# for the live per-request fallback, reused here for the admin's
+# "Search Only" / bulk-generate video search so both paths ask YouTube
+# for the same kind of thing.
+BAND_QUERY_HINTS = {
+    "fundamentals": "for beginners explained",
+    "application": "tutorial",
+    "advanced": "advanced",
+    "polish": "quick overview",
+}
+
 
 class ResourceReviewError(Exception):
     pass
 
 
-def generate_pending_suggestions(skill: str, topic: str, count: int = 5) -> list[dict]:
+def generate_pending_suggestions(skill: str, band: str, count: int = 5) -> list[dict]:
     """
     Calls the Resource Suggestion Agent (documentation/article/github/
     pdf/cheatsheet/practice only — see agents/resource_suggestion_agent.py's
@@ -38,10 +55,10 @@ def generate_pending_suggestions(skill: str, topic: str, count: int = 5) -> list
     """
     agent = ResourceSuggestionAgent()
     try:
-        suggestions = agent.run(skill=skill, topic=topic, count=count)
+        suggestions = agent.run(skill=skill, band=band, count=count)
     except ResourceSuggestionError as exc:
         raise ResourceReviewError(
-            f"Couldn't generate resource suggestions for '{skill} / {topic}': {exc}"
+            f"Couldn't generate resource suggestions for '{skill}' ({band}): {exc}"
         ) from exc
 
     db = get_firestore_client()
@@ -49,7 +66,7 @@ def generate_pending_suggestions(skill: str, topic: str, count: int = 5) -> list
     for s in suggestions:
         saved.append(
             add_resource(
-                db, skill=skill, topic=topic, resource_type=s["type"],
+                db, skill=skill, band=band, resource_type=s["type"],
                 title=s["title"], url=s["url"],
                 status="pending", source="ai_suggested",
             )
@@ -57,7 +74,7 @@ def generate_pending_suggestions(skill: str, topic: str, count: int = 5) -> list
     return saved
 
 
-def generate_youtube_suggestions(skill: str, topic: str, count: int = 6) -> list[dict]:
+def generate_youtube_suggestions(skill: str, band: str, count: int = 6) -> list[dict]:
     """
     The video counterpart to generate_pending_suggestions() — real
     YouTube Data API v3 results (services/youtube_service.py) rather
@@ -66,18 +83,14 @@ def generate_youtube_suggestions(skill: str, topic: str, count: int = 6) -> list
     review gate as every other suggestion source. Every result here is
     guaranteed to be a real, currently-existing video; nothing about
     "does this URL exist" needs checking, only "is this actually a good
-    video for this topic".
-
-    Query is deliberately topic-first ("{topic} {skill} tutorial"), not
-    just the skill name — the whole point of this feature is per-topic
-    relevance, not generic skill-level results (see
-    services/learning_content_service.py's matching fallback logic).
+    video for this skill at this level".
     """
+    query_hint = BAND_QUERY_HINTS.get(band, "tutorial")
     try:
-        videos = search_videos(f"{topic} {skill} tutorial", max_results=count)
+        videos = search_videos(f"{skill} {query_hint}", max_results=count)
     except YouTubeServiceError as exc:
         raise ResourceReviewError(
-            f"Couldn't search YouTube for '{skill} / {topic}': {exc}"
+            f"Couldn't search YouTube for '{skill}' ({band}): {exc}"
         ) from exc
 
     if not videos:
@@ -88,7 +101,7 @@ def generate_youtube_suggestions(skill: str, topic: str, count: int = 6) -> list
     for v in videos:
         saved.append(
             add_resource(
-                db, skill=skill, topic=topic, resource_type="video",
+                db, skill=skill, band=band, resource_type="video",
                 title=v["title"], url=v["url"],
                 status="pending", source="youtube_api",
                 thumbnail=v["thumbnail"], channel_name=v["channelName"],
@@ -100,36 +113,31 @@ def generate_youtube_suggestions(skill: str, topic: str, count: int = 6) -> list
 
 
 def generate_and_auto_verify(
-    skill: str, topic: str, verified_by: str,
+    skill: str, band: str, verified_by: str,
     article_count: int = 5, video_count: int = 4,
 ) -> dict:
     """
     The bulk-seeding counterpart to generate_pending_suggestions() +
     generate_youtube_suggestions(): generates BOTH non-video resources
     (via the AI agent) and videos (via real YouTube search) for one
-    (skill, topic), but saves every result straight to status="verified"
+    (skill, band), but saves every result straight to status="verified"
     instead of "pending" — skipping the one-by-one manual review queue
     entirely.
 
-    This is a deliberate, explicit trade: for ~150+ topics across a
-    role, requiring a human to click Verify on every single AI
-    suggestion isn't realistic, and video results are already a REAL
-    YouTube API result (not an LLM guessing a URL) with no factual
-    "does this exist" risk — only a taste/relevance risk, same as any
-    of YouTube's own search results. verified_by exists specifically so
-    every resource this creates is still attributable to whoever ran
-    the bulk job (see scripts/bulk_generate_resources.py), and every
-    one still goes through Resource Bank's normal
-    unverify/edit/disable/delete tools afterward — this trades "human
-    reviews before publish" for "human can review after publish",
-    it doesn't remove the ability to review at all.
+    verified_by exists specifically so every resource this creates is
+    still attributable to whoever ran the bulk job (see
+    scripts/bulk_generate_resources.py), and every one still goes
+    through Resource Bank's normal unverify/edit/disable/delete tools
+    afterward — this trades "human reviews before publish" for "human
+    can review after publish", it doesn't remove the ability to review
+    at all.
 
     Used by: scripts/bulk_generate_resources.py (whole-role CLI sweep)
     and POST /api/admin/learning-resources/bulk-generate-and-verify
-    (single skill+topic, triggered from the Resource Bank UI).
+    (single skill+band, triggered from the Resource Bank UI).
     """
     db = get_firestore_client()
-    created = {"skill": skill, "topic": topic, "articles": [], "videos": [], "errors": []}
+    created = {"skill": skill, "band": band, "articles": [], "videos": [], "errors": []}
 
     # VIDEO-ONLY MODE: article_count <= 0 means "skip article/GitHub/
     # cheatsheet generation entirely" (used by the Resource Bank's
@@ -142,11 +150,11 @@ def generate_and_auto_verify(
     try:
         if article_count > 0:
             agent = ResourceSuggestionAgent()
-            suggestions = agent.run(skill=skill, topic=topic, count=article_count)
+            suggestions = agent.run(skill=skill, band=band, count=article_count)
             for s in suggestions:
                 created["articles"].append(
                     add_resource(
-                        db, skill=skill, topic=topic, resource_type=s["type"],
+                        db, skill=skill, band=band, resource_type=s["type"],
                         title=s["title"], url=s["url"],
                         status="verified", source="ai_suggested", verified_by=verified_by,
                     )
@@ -155,11 +163,12 @@ def generate_and_auto_verify(
         created["errors"].append(f"article/github generation: {exc}")
 
     try:
-        videos = search_videos(f"{topic} {skill} tutorial", max_results=video_count)
+        query_hint = BAND_QUERY_HINTS.get(band, "tutorial")
+        videos = search_videos(f"{skill} {query_hint}", max_results=video_count)
         for v in videos:
             created["videos"].append(
                 add_resource(
-                    db, skill=skill, topic=topic, resource_type="video",
+                    db, skill=skill, band=band, resource_type="video",
                     title=v["title"], url=v["url"],
                     status="verified", source="youtube_api", verified_by=verified_by,
                     thumbnail=v["thumbnail"], channel_name=v["channelName"],
@@ -173,10 +182,10 @@ def generate_and_auto_verify(
     return created
 
 
-def get_pending_queue(skill: str | None = None, topic: str | None = None) -> list[dict]:
+def get_pending_queue(skill: str | None = None, band: str | None = None) -> list[dict]:
     """The admin review queue — everything awaiting a human decision."""
     db = get_firestore_client()
-    return list_resources(db, skill=skill, topic=topic, status="pending")
+    return list_resources(db, skill=skill, band=band, status="pending")
 
 
 def verify_resource(resource_id: str, verified_by: str = "") -> dict:
@@ -208,11 +217,8 @@ def reject_resource(resource_id: str) -> dict:
     """
     Admin confirmed this link is bad (broken, wrong, low quality).
     Kept in Firestore with status="rejected" rather than deleted, so a
-    future re-generation of suggestions for the same topic doesn't
-    silently resurrect something already known to be bad — a route
-    could later filter generate_pending_suggestions() against existing
-    rejected URLs to avoid re-suggesting them (not built yet, but the
-    status is preserved specifically so that's possible).
+    future re-generation of suggestions for the same (skill, band)
+    doesn't silently resurrect something already known to be bad.
     """
     db = get_firestore_client()
     return update_resource_status(db, resource_id, "rejected")

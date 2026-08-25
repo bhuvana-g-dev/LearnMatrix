@@ -10,7 +10,7 @@ Every resource has a `status`:
     "verified" — an admin manually checked the link works and is a good
                  fit, and approved it. Shown to students.
     "rejected" — an admin checked it and it was bad (broken link, wrong
-                 topic, low quality). Kept (not deleted) so the same bad
+                 fit, low quality). Kept (not deleted) so the same bad
                  suggestion isn't re-suggested and re-reviewed forever.
 
 This status field is the actual safety mechanism for the "AI suggests,
@@ -34,17 +34,26 @@ scripts/bulk_generate_resources.py). Empty string for "pending"/
 "rejected" resources. Display/audit only, shown next to the Verified
 badge in the Resource Bank — nothing reads it to gate access.
 
+`band` — SKILL-LEVEL, not topic-level. One of config/settings.py's
+VALID_RESOURCE_BANDS (fundamentals/application/advanced/polish), the
+same vocabulary services/focus_band.py already computes per topic quiz
+attempt. A resource is created for (skill, band); a learner sees it
+when their current focus_band for that skill matches. There is
+deliberately no `topic` field anymore — see
+services/learning_content_service.py's module docstring for the
+matching change this replaces.
+
     learning_resources/{resourceId}
-        skill, topic, type ("video"|"documentation"|"article"|"pdf"|
-        "cheatsheet"|"practice"|"github"), category ("practice"|
-        "reference"|None — None only for type="video"; see
-        resolve_category() below for the type-based default used when
-        this is unset), title, url, status, source
-        ("ai_suggested"|"youtube_api"|"manual"), difficulty
-        ("Beginner"|"Intermediate"|"Advanced"|None), description,
-        isPinned, enabled, verifiedBy, thumbnail, channelName,
-        durationSeconds, viewCount, publishedAt (video-only metadata,
-        "" / 0 / None for non-video types), addedAt, reviewedAt, updatedAt
+        skill, band ("fundamentals"|"application"|"advanced"|"polish"),
+        type ("video"|"documentation"|"article"|"pdf"|"cheatsheet"|
+        "practice"|"github"), category ("practice"|"reference"|None —
+        None only for type="video"; see resolve_category() below for
+        the type-based default used when this is unset), title, url,
+        status, source ("ai_suggested"|"youtube_api"|"manual"),
+        description, isPinned, enabled, verifiedBy, thumbnail,
+        channelName, durationSeconds, viewCount, publishedAt
+        (video-only metadata, "" / 0 / None for non-video types),
+        addedAt, reviewedAt, updatedAt
 """
 
 from firebase_admin import firestore
@@ -54,7 +63,7 @@ from config.settings import settings
 SERVER_TIMESTAMP = firestore.SERVER_TIMESTAMP
 VALID_STATUSES = settings.VALID_RESOURCE_STATUSES
 VALID_TYPES = settings.VALID_RESOURCE_TYPES
-VALID_DIFFICULTIES = settings.VALID_TOPIC_DIFFICULTIES  # reuses the existing Beginner/Intermediate/Advanced scale
+VALID_BANDS = settings.VALID_RESOURCE_BANDS
 VALID_CATEGORIES = settings.VALID_RESOURCE_CATEGORIES
 DEFAULT_CATEGORY_BY_TYPE = settings.DEFAULT_CATEGORY_BY_TYPE
 
@@ -64,7 +73,7 @@ def resolve_category(resource_type: str, category: str | None = None) -> str | N
     The stored `category` if there is one; otherwise a sensible default
     derived from `type` (see config/settings.py's DEFAULT_CATEGORY_BY_TYPE)
     so resources saved before `category` existed keep grouping correctly
-    on both the admin Resource Management tabs and the learner topic
+    on both the admin Resource Management tabs and the learner skill
     page, with no data migration needed. Returns None for "video" (and
     any other type with no default) — video is its own thing, never
     part of the Practice / Reference & Reading split.
@@ -75,9 +84,9 @@ def resolve_category(resource_type: str, category: str | None = None) -> str | N
 
 
 def add_resource(
-    db, skill: str, topic: str, resource_type: str, title: str, url: str,
+    db, skill: str, band: str, resource_type: str, title: str, url: str,
     status: str = "verified", source: str = "manual",
-    difficulty: str | None = None, description: str = "", is_pinned: bool = False,
+    description: str = "", is_pinned: bool = False,
     thumbnail: str = "", channel_name: str = "", duration_seconds: int = 0,
     view_count: int = 0, published_at: str = "", verified_by: str = "",
     category: str | None = None,
@@ -113,22 +122,21 @@ def add_resource(
         raise ValueError(f"status must be one of {VALID_STATUSES}, got '{status}'")
     if resource_type not in VALID_TYPES:
         raise ValueError(f"type must be one of {VALID_TYPES}, got '{resource_type}'")
-    if difficulty is not None and difficulty not in VALID_DIFFICULTIES:
-        raise ValueError(f"difficulty must be one of {VALID_DIFFICULTIES} or None, got '{difficulty}'")
+    if band not in VALID_BANDS:
+        raise ValueError(f"band must be one of {VALID_BANDS}, got '{band}'")
     if category is not None and category not in VALID_CATEGORIES:
         raise ValueError(f"category must be one of {VALID_CATEGORIES} or None, got '{category}'")
 
     doc_ref = db.collection(settings.LEARNING_RESOURCES_COLLECTION).document()
     payload = {
         "skill": skill,
-        "topic": topic,
+        "band": band,
         "type": resource_type,
         "category": resolve_category(resource_type, category),
         "title": title,
         "url": url,
         "status": status,
         "source": source,
-        "difficulty": difficulty,
         "description": description,
         "isPinned": is_pinned,
         "enabled": True,
@@ -149,15 +157,15 @@ def add_resource(
 
 
 def list_resources(
-    db, skill: str | None = None, topic: str | None = None, status: str | None = None,
-    resource_type: str | None = None, difficulty: str | None = None,
+    db, skill: str | None = None, band: str | None = None, status: str | None = None,
+    resource_type: str | None = None,
     enabled_only: bool = False, category: str | None = None,
 ) -> list[dict]:
     """
     Equality-filtered list, same simple-filter pattern as
     question_repository.py. All filter params are additive (AND'd
     together) and default to "no filter" — existing call sites that
-    only pass skill/topic/status keep working unchanged.
+    only pass skill/status keep working unchanged.
 
     IMPORTANT: `status` is NOT defaulted to "verified" here — the caller
     decides. Student-facing routes must explicitly pass status="verified"
@@ -187,13 +195,11 @@ def list_resources(
         data["category"] = resolve_category(data.get("type"), data.get("category"))
         if skill and data.get("skill") != skill:
             continue
-        if topic and data.get("topic") != topic:
+        if band and data.get("band") != band:
             continue
         if status and data.get("status") != status:
             continue
         if resource_type and data.get("type") != resource_type:
-            continue
-        if difficulty and data.get("difficulty") != difficulty:
             continue
         if category and data.get("category") != category:
             continue
@@ -225,25 +231,25 @@ def update_resource_status(db, resource_id: str, new_status: str, verified_by: s
 def update_resource(db, resource_id: str, updates: dict) -> dict:
     """
     General field edit for an existing resource — title/url/type/skill/
-    topic/difficulty/description, whatever the admin changed in the
-    edit form. Deliberately separate from update_resource_status() (that
-    one is specifically the pending->verified/rejected review action,
-    kept narrow on purpose) and from set_pinned()/set_enabled() (those
-    are single-purpose toggles, not general edits).
+    band/description, whatever the admin changed in the edit form.
+    Deliberately separate from update_resource_status() (that one is
+    specifically the pending->verified/rejected review action, kept
+    narrow on purpose) and from set_pinned()/set_enabled() (those are
+    single-purpose toggles, not general edits).
 
     `updates` keys are whitelisted here rather than written through
     as-is — this is the one write path an admin's raw form input reaches,
-    so it's also where a bad `type`/`difficulty` value gets caught
-    before it corrupts a document, and where fields like `status` or
-    `addedAt` can't be smuggled in through an edit form.
+    so it's also where a bad `type`/`band` value gets caught before it
+    corrupts a document, and where fields like `status` or `addedAt`
+    can't be smuggled in through an edit form.
     """
-    editable_fields = {"skill", "topic", "type", "title", "url", "difficulty", "description", "category"}
+    editable_fields = {"skill", "band", "type", "title", "url", "description", "category"}
     payload = {k: v for k, v in updates.items() if k in editable_fields}
 
     if "type" in payload and payload["type"] not in VALID_TYPES:
         raise ValueError(f"type must be one of {VALID_TYPES}, got '{payload['type']}'")
-    if "difficulty" in payload and payload["difficulty"] is not None and payload["difficulty"] not in VALID_DIFFICULTIES:
-        raise ValueError(f"difficulty must be one of {VALID_DIFFICULTIES} or None, got '{payload['difficulty']}'")
+    if "band" in payload and payload["band"] not in VALID_BANDS:
+        raise ValueError(f"band must be one of {VALID_BANDS}, got '{payload['band']}'")
     if "category" in payload and payload["category"] is not None and payload["category"] not in VALID_CATEGORIES:
         raise ValueError(f"category must be one of {VALID_CATEGORIES} or None, got '{payload['category']}'")
     if not payload:

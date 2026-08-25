@@ -9,17 +9,16 @@ import { getTopicPackage } from "../../services/learningContentService";
 
 const RESOURCE_ICONS = { documentation: FileText, github: Github };
 
-// The 5 non-video student-facing categories, in display order — video
-// is handled separately below as ONE primary recommendation, not a
-// section in this list (see module docstring). "pdf" and "cheatsheet"
-// (two distinct backend types) are merged into one "PDF / Notes"
-// section, matching the requested categorization exactly.
-const RESOURCE_SECTIONS = [
-  { key: "documentation", label: "📄 Documentation", types: ["documentation"] },
-  { key: "github", label: "💻 GitHub Repository", types: ["github"] },
-  { key: "article", label: "📝 Articles", types: ["article"] },
-  { key: "pdf", label: "📚 PDF / Notes", types: ["pdf", "cheatsheet"] },
-  { key: "practice", label: "🎯 Practice Resources", types: ["practice"] },
+// Learner-facing resource grouping: Practice vs Reference & Reading —
+// video is handled separately below as ONE primary recommendation, not
+// part of either section (see module docstring). The actual split by
+// resource comes from the backend's pkg.resourcesByCategory (see
+// services/learning_content_service.py's _group_by_category()), so a
+// resource's category here always matches what the admin Resource
+// Management screen shows it grouped under.
+const CATEGORY_SECTIONS = [
+  { key: "practice", label: "🎯 Practice" },
+  { key: "reference", label: "📖 Reference & Reading" },
 ];
 
 const DIFFICULTY_COLORS = { Beginner: "#22C55E", Intermediate: "#F59E0B", Advanced: "#E0559C" };
@@ -84,7 +83,7 @@ function formatPublishedDate(iso) {
  * directly. Next/Previous here just move between topics.
  */
 export default function TopicContentPane({
-  skill, topic, focusBand, topicStatus,
+  skill, topic, focusBand, topicStatus, resourceTopic,
   onNext, onPrevious, hasNext = false, hasPrevious = false, onTakeTest,
   onTakeLessonQuiz, lessonQuizDone, lessonQuizScore, lessonQuizFailedScore, // optional — lesson-scoped quiz CTA, only passed from the Lessons flow (CourseWorkspaceScreen)
 }) {
@@ -98,14 +97,17 @@ export default function TopicContentPane({
     setErrorMessage("");
     setShowMoreVideos(false);
     try {
-      const result = await getTopicPackage(skill, topic, focusBand);
+      // resourceTopic (optional) — the plain topic name, used only to
+      // match admin-managed resources when `topic` above is a
+      // lesson-composited key. See learningContentService.js's docstring.
+      const result = await getTopicPackage(skill, topic, focusBand, resourceTopic);
       setPkg(result);
       setState("ready");
     } catch (err) {
       setErrorMessage(err.message || "Something went wrong loading this topic.");
       setState("error");
     }
-  }, [skill, topic, focusBand]);
+  }, [skill, topic, focusBand, resourceTopic]);
 
   useEffect(() => {
     fetchContent();
@@ -158,12 +160,12 @@ export default function TopicContentPane({
     );
   }
 
-  const { notes, resourcesByType, primaryVideo, alternateVideos } = pkg;
-  const otherSections = RESOURCE_SECTIONS.map((section) => ({
+  const { notes, resourcesByCategory, primaryVideo, alternateVideos } = pkg;
+  const categorySections = CATEGORY_SECTIONS.map((section) => ({
     ...section,
-    items: section.types.flatMap((t) => resourcesByType?.[t] || []),
+    items: resourcesByCategory?.[section.key] || [],
   })).filter((s) => s.items.length > 0);
-  const hasAnyResources = !!primaryVideo || otherSections.length > 0;
+  const hasAnyResources = !!primaryVideo || categorySections.length > 0;
 
   return (
     <div className="max-w-2xl mx-auto">
@@ -360,7 +362,7 @@ export default function TopicContentPane({
               </div>
             )}
 
-            {otherSections.map((section) => (
+            {categorySections.map((section) => (
               <div key={section.key}>
                 <p className="text-xs font-bold uppercase tracking-wide mb-2.5" style={{ color: COLORS.textLight }}>
                   {section.label}

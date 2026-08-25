@@ -40,6 +40,7 @@ from routes.slidedeck_routes import slidedeck_bp
 from routes.studio_routes import studio_bp
 from routes.topic_quiz_routes import topic_quiz_bp
 from routes.lesson_routes import lesson_bp
+from routes.generated_content_routes import generated_content_bp
 
 
 def create_app() -> Flask:
@@ -73,6 +74,7 @@ def create_app() -> Flask:
     app.register_blueprint(studio_bp, url_prefix="/api")
     app.register_blueprint(topic_quiz_bp, url_prefix="/api")
     app.register_blueprint(lesson_bp, url_prefix="/api")
+    app.register_blueprint(generated_content_bp, url_prefix="/api")
 
     return app
 

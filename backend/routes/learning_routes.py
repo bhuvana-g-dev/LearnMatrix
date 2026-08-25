@@ -2,17 +2,18 @@
 routes/learning_routes.py
 
 GET  /api/learning/topic/<skill>/<topic>/<focusBand>  -> assembled Topic
-    Package (AI-generated cached notes + resources, priority-ordered:
-    admin-verified Firestore -> live YouTube fallback (video only) ->
-    empty category). Student-facing.
+    Package (AI-generated cached notes + resources). Notes are keyed on
+    (skill, topic, focusBand); resources are keyed on (skill, focusBand)
+    only — see services/resource_repository.py's module docstring for
+    why resources dropped the topic dimension. Student-facing.
 
 Admin CRUD for the Resource Bank (services/resource_repository.py via
 services/resource_review_service.py), same pattern as
 routes/admin_question_routes.py:
 
-    GET    /api/admin/learning-resources                 -> list (filters: skill, topic, type, difficulty, status)
+    GET    /api/admin/learning-resources                 -> list (filters: skill, band, type, status)
     POST   /api/admin/learning-resources                 -> add one (status="verified", source="manual")
-    PATCH  /api/admin/learning-resources/<id>              -> edit fields (title/url/type/skill/topic/difficulty/description)
+    PATCH  /api/admin/learning-resources/<id>              -> edit fields (title/url/type/skill/band/description)
     DELETE /api/admin/learning-resources/<id>              -> remove one
     PATCH  /api/admin/learning-resources/<id>/pin           -> {"pinned": bool}
     PATCH  /api/admin/learning-resources/<id>/enabled        -> {"enabled": bool}
@@ -54,20 +55,14 @@ learning_bp = Blueprint("learning", __name__)
 # resource_suggestion_agent.py) so adding a type is a one-line change,
 # not a 3-file hunt.
 VALID_RESOURCE_TYPES = settings.VALID_RESOURCE_TYPES
-VALID_DIFFICULTIES = settings.VALID_TOPIC_DIFFICULTIES
+VALID_RESOURCE_BANDS = settings.VALID_RESOURCE_BANDS
 VALID_RESOURCE_CATEGORIES = settings.VALID_RESOURCE_CATEGORIES
 
 
 @learning_bp.route("/learning/topic/<skill>/<topic>/<focus_band>", methods=["GET"])
 def get_topic_package_route(skill, topic, focus_band):
     try:
-        # See services/learning_content_service.py's "TOPIC vs
-        # RESOURCE_TOPIC" note — `topic` may be a lesson-composited key;
-        # `resourceTopic`, when present, is the plain topic name used
-        # to match admin-managed resources instead. Omitted -> defaults
-        # to `topic` (non-lesson learning flows only ever have one).
-        resource_topic = request.args.get("resourceTopic") or None
-        package = get_topic_package(skill=skill, topic=topic, focus_band=focus_band, resource_topic=resource_topic)
+        package = get_topic_package(skill=skill, topic=topic, focus_band=focus_band)
         return success_response(data=package, message="Topic package loaded.")
     except LearningContentError as exc:
         return error_response(str(exc), status_code=422)
@@ -78,18 +73,16 @@ def get_topic_package_route(skill, topic, focus_band):
 @learning_bp.route("/admin/learning-resources", methods=["GET"])
 def list_learning_resources_route():
     """List/search for the Resource Bank screen. All filters optional
-    and additive (unchanged behavior when omitted, same as before this
-    revision) — new ?type= and ?difficulty= filters added for the
-    Resource Bank's filter bar."""
+    and additive (unchanged behavior when omitted) — ?band= replaces the
+    old ?topic=/?difficulty= filters."""
     try:
         db = get_firestore_client()
         resources = list_resources(
             db,
             skill=request.args.get("skill") or None,
-            topic=request.args.get("topic") or None,
+            band=request.args.get("band") or None,
             status=request.args.get("status") or None,
             resource_type=request.args.get("type") or None,
-            difficulty=request.args.get("difficulty") or None,
             category=request.args.get("category") or None,
         )
         return success_response(data=resources, message="Resources fetched successfully.")
@@ -104,34 +97,33 @@ def add_learning_resource_route():
         return error_response("Request body must be JSON.", status_code=400)
 
     skill = payload.get("skill")
-    topic = payload.get("topic")
+    band = payload.get("band")
     resource_type = payload.get("type")
     title = payload.get("title")
     url = payload.get("url")
-    difficulty = payload.get("difficulty") or None
     description = payload.get("description", "")
     is_pinned = bool(payload.get("isPinned", False))
     category = payload.get("category") or None  # "practice" | "reference" | None -> type-based default
 
     missing = [
         name for name, val in
-        [("skill", skill), ("topic", topic), ("type", resource_type), ("title", title), ("url", url)]
+        [("skill", skill), ("band", band), ("type", resource_type), ("title", title), ("url", url)]
         if not str(val or "").strip()
     ]
     if missing:
         return error_response(f"Missing required field(s): {missing}", status_code=400)
     if resource_type not in VALID_RESOURCE_TYPES:
         return error_response(f"'type' must be one of {VALID_RESOURCE_TYPES}.", status_code=400)
-    if difficulty is not None and difficulty not in VALID_DIFFICULTIES:
-        return error_response(f"'difficulty' must be one of {VALID_DIFFICULTIES} or omitted.", status_code=400)
+    if band not in VALID_RESOURCE_BANDS:
+        return error_response(f"'band' must be one of {VALID_RESOURCE_BANDS}.", status_code=400)
     if category is not None and category not in VALID_RESOURCE_CATEGORIES:
         return error_response(f"'category' must be one of {VALID_RESOURCE_CATEGORIES} or omitted.", status_code=400)
 
     try:
         db = get_firestore_client()
         resource = add_resource(
-            db, skill, topic, resource_type, title, url,
-            difficulty=difficulty, description=description, is_pinned=is_pinned, category=category,
+            db, skill, band, resource_type, title, url,
+            description=description, is_pinned=is_pinned, category=category,
         )
         return success_response(data=resource, message="Resource added successfully.", status_code=201)
     except ValueError as exc:
@@ -142,9 +134,9 @@ def add_learning_resource_route():
 
 @learning_bp.route("/admin/learning-resources/<resource_id>", methods=["PATCH"])
 def edit_learning_resource_route(resource_id):
-    """General field edit — title/url/type/skill/topic/difficulty/
-    description. Distinct from /verify and /reject below (those are
-    the review-workflow status transition, kept narrow on purpose)."""
+    """General field edit — title/url/type/skill/band/description.
+    Distinct from /verify and /reject below (those are the
+    review-workflow status transition, kept narrow on purpose)."""
     payload = request.get_json(silent=True)
     if not payload:
         return error_response("Request body must be JSON.", status_code=400)
@@ -192,7 +184,7 @@ def suggest_learning_resources_route():
     """
     AI suggests candidate resources (documentation/article/github/pdf/
     cheatsheet/practice — NOT video, see agents/resource_suggestion_agent.py's
-    UPDATE note) for a skill/topic, saved as status="pending" — none
+    UPDATE note) for a skill/band, saved as status="pending" — none
     visible to students until reviewed via the /verify or /reject
     routes below.
     """
@@ -201,14 +193,16 @@ def suggest_learning_resources_route():
         return error_response("Request body must be JSON.", status_code=400)
 
     skill = payload.get("skill")
-    topic = payload.get("topic")
+    band = payload.get("band")
     count = payload.get("count", 5)
 
-    if not skill or not topic:
-        return error_response("Request body must include 'skill' and 'topic'.", status_code=400)
+    if not skill or not band:
+        return error_response("Request body must include 'skill' and 'band'.", status_code=400)
+    if band not in VALID_RESOURCE_BANDS:
+        return error_response(f"'band' must be one of {VALID_RESOURCE_BANDS}.", status_code=400)
 
     try:
-        suggestions = generate_pending_suggestions(skill=skill, topic=topic, count=int(count))
+        suggestions = generate_pending_suggestions(skill=skill, band=band, count=int(count))
         return success_response(
             data=suggestions,
             message=f"Generated {len(suggestions)} suggestion(s) for review.",
@@ -222,7 +216,7 @@ def suggest_learning_resources_route():
 @learning_bp.route("/admin/learning-resources/suggest-youtube", methods=["POST"])
 def suggest_youtube_resources_route():
     """
-    Real YouTube Data API v3 search for a skill/topic
+    Real YouTube Data API v3 search for a skill/band
     (services/youtube_service.py), saved as status="pending" for the
     same admin review gate as every other suggestion source. Returns a
     422 (not 500) when YOUTUBE_API_KEY isn't configured or the API
@@ -234,14 +228,16 @@ def suggest_youtube_resources_route():
         return error_response("Request body must be JSON.", status_code=400)
 
     skill = payload.get("skill")
-    topic = payload.get("topic")
+    band = payload.get("band")
     count = payload.get("count", 6)
 
-    if not skill or not topic:
-        return error_response("Request body must include 'skill' and 'topic'.", status_code=400)
+    if not skill or not band:
+        return error_response("Request body must include 'skill' and 'band'.", status_code=400)
+    if band not in VALID_RESOURCE_BANDS:
+        return error_response(f"'band' must be one of {VALID_RESOURCE_BANDS}.", status_code=400)
 
     try:
-        suggestions = generate_youtube_suggestions(skill=skill, topic=topic, count=int(count))
+        suggestions = generate_youtube_suggestions(skill=skill, band=band, count=int(count))
         return success_response(
             data=suggestions,
             message=f"Found {len(suggestions)} YouTube video(s) for review.",
@@ -255,14 +251,14 @@ def suggest_youtube_resources_route():
 @learning_bp.route("/admin/learning-resources/bulk-generate-and-verify", methods=["POST"])
 def bulk_generate_and_verify_route():
     """
-    One-click 'fill this topic in' for the Resource Bank — generates
-    AND immediately verifies both article/GitHub/practice-type
-    resources and real YouTube videos for one (skill, topic) in a
-    single call, skipping the pending-review queue entirely (see
+    One-click 'fill this in' for the Resource Bank — generates AND
+    immediately verifies both article/GitHub/practice-type resources
+    and real YouTube videos for one (skill, band) in a single call,
+    skipping the pending-review queue entirely (see
     resource_review_service.generate_and_auto_verify()'s docstring for
     why that trade-off is deliberate here).
 
-    Body: {skill, topic, verifiedBy, articleCount?, videoCount?}
+    Body: {skill, band, verifiedBy, articleCount?, videoCount?}
     verifiedBy is whatever identity string the admin panel has for the
     logged-in admin (see hooks/useAdminAuth.js — currently admin.email)
     — required, since an empty verifiedBy would make the audit trail
@@ -270,24 +266,26 @@ def bulk_generate_and_verify_route():
     """
     payload = request.get_json(silent=True) or {}
     skill = payload.get("skill")
-    topic = payload.get("topic")
+    band = payload.get("band")
     verified_by = payload.get("verifiedBy")
     article_count = payload.get("articleCount", 5)
     video_count = payload.get("videoCount", 4)
 
-    missing = [k for k, v in [("skill", skill), ("topic", topic), ("verifiedBy", verified_by)] if not v]
+    missing = [k for k, v in [("skill", skill), ("band", band), ("verifiedBy", verified_by)] if not v]
     if missing:
         return error_response(f"Missing required field(s): {missing}", status_code=400)
+    if band not in VALID_RESOURCE_BANDS:
+        return error_response(f"'band' must be one of {VALID_RESOURCE_BANDS}.", status_code=400)
 
     try:
         result = generate_and_auto_verify(
-            skill=skill, topic=topic, verified_by=verified_by,
+            skill=skill, band=band, verified_by=verified_by,
             article_count=int(article_count), video_count=int(video_count),
         )
         total = len(result["articles"]) + len(result["videos"])
         return success_response(
             data=result,
-            message=f"Generated and verified {total} resource(s) for {skill} / {topic}.",
+            message=f"Generated and verified {total} resource(s) for {skill} ({band}).",
         )
     except Exception as exc:  # noqa: BLE001
         return error_response(str(exc), status_code=500)
@@ -297,7 +295,7 @@ def bulk_generate_and_verify_route():
 def list_pending_resources_route():
     """The admin review queue — everything awaiting a verify/reject decision."""
     try:
-        queue = get_pending_queue(skill=request.args.get("skill"), topic=request.args.get("topic"))
+        queue = get_pending_queue(skill=request.args.get("skill"), band=request.args.get("band"))
         return success_response(data=queue, message=f"{len(queue)} suggestion(s) awaiting review.")
     except Exception as exc:  # noqa: BLE001
         return error_response(str(exc), status_code=500)

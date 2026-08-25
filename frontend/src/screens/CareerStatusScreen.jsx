@@ -1,6 +1,9 @@
 import { useState, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
-import { Loader2, ArrowRight, Compass, TrendingUp, Zap, Flame, BookOpen, Trophy, Sparkles } from "lucide-react";
+import {
+  Loader2, ArrowRight, Compass, TrendingUp, Zap, Flame, BookOpen, Trophy, Sparkles,
+  ClipboardCheck, CalendarDays,
+} from "lucide-react";
 import { COLORS, GRADIENTS, GLASS_CARD } from "../constants/theme";
 import { ROLES } from "../constants/roles";
 import RoleSelectionScreen from "./RoleSelectionScreen";
@@ -49,6 +52,8 @@ export default function CareerStatusScreen({
   const [checkError, setCheckError] = useState(false);
   const [roleTitle, setRoleTitle] = useState("");
   const [overallScore, setOverallScore] = useState(null);
+  const [assessedSkills, setAssessedSkills] = useState([]);
+  const [assessmentDate, setAssessmentDate] = useState(null);
   const [roadmap, setRoadmap] = useState(null);
   const [activeDates, setActiveDates] = useState([]);
 
@@ -69,6 +74,10 @@ export default function CareerStatusScreen({
         setHasAssessment(true);
         setRoleTitle(assessment.role || "Developer");
         setOverallScore(assessment.evaluation?.overall?.scorePercent ?? null);
+        setAssessedSkills(assessment.skills || []);
+        // Firestore serializes this as an ISO string over the API —
+        // guard with `new Date` returning Invalid Date rather than throwing.
+        setAssessmentDate(assessment.submittedAt || null);
         setRoadmap(savedRoadmap);
         setActiveDates(dates);
       } else {
@@ -248,6 +257,74 @@ export default function CareerStatusScreen({
               {roadmap ? "Continue to My Roadmap" : "Continue to My Assessment"} <ArrowRight size={16} />
             </motion.button>
           </div>
+        </motion.div>
+
+        {/* Initial Assessment result — the diagnostic the student took to
+            land on this role. Lives here now instead of its own sidebar
+            section (Assessment was retired from the nav since Topic
+            Quizzes/Practice Tests were never built) — this is the one
+            place students can still see their score, when they took it,
+            and jump back into the full per-question review. */}
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: 0.05 }}
+          className="p-6"
+          style={{ ...GLASS_CARD, borderRadius: 24 }}
+        >
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <ClipboardCheck size={16} style={{ color: COLORS.purple }} />
+              <h3 className="text-sm font-bold" style={{ color: COLORS.textDark }}>
+                Initial Assessment
+              </h3>
+            </div>
+            <button
+              onClick={() => onNavigate("initial-assessment")}
+              className="text-xs font-semibold flex items-center gap-1"
+              style={{ background: "transparent", border: "none", color: COLORS.purple, cursor: "pointer" }}
+            >
+              View Result <ArrowRight size={12} />
+            </button>
+          </div>
+
+          <div className="flex flex-wrap gap-6">
+            {overallScore !== null && (
+              <div>
+                <p className="text-xs mb-0.5" style={{ color: COLORS.textLight }}>Score</p>
+                <p className="text-lg font-extrabold" style={{ color: COLORS.textDark }}>{overallScore}%</p>
+              </div>
+            )}
+            {assessmentDate && !Number.isNaN(new Date(assessmentDate).getTime()) && (
+              <div>
+                <p className="text-xs mb-0.5 flex items-center gap-1" style={{ color: COLORS.textLight }}>
+                  <CalendarDays size={11} /> Completed
+                </p>
+                <p className="text-sm font-bold" style={{ color: COLORS.textDark }}>
+                  {new Date(assessmentDate).toLocaleDateString(undefined, {
+                    year: "numeric", month: "short", day: "numeric",
+                  })}
+                </p>
+              </div>
+            )}
+          </div>
+
+          {assessedSkills.length > 0 && (
+            <div className="mt-4">
+              <p className="text-xs mb-2" style={{ color: COLORS.textLight }}>Skills Assessed</p>
+              <div className="flex flex-wrap gap-2">
+                {assessedSkills.map((skill) => (
+                  <span
+                    key={skill}
+                    className="text-xs font-semibold px-3 py-1.5 rounded-full"
+                    style={{ background: "rgba(124,111,224,0.12)", color: COLORS.purple }}
+                  >
+                    {skill}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
         </motion.div>
 
         {/* Continue Learning + This Week's Activity, side by side on larger screens */}

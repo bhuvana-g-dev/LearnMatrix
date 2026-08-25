@@ -13,20 +13,21 @@ import {
 } from "../../services/adminResourceService";
 import { getRoles } from "../../services/roleService";
 import { getSkillsByRole } from "../../services/skillService";
-import { getTopicsForSkill } from "../../services/skillTopicService";
 
 // Role -> Skill picker uses the static role/skill catalog every other
 // screen in this app already uses (constants/roles.js, constants/skills.js)
 // — covers all 8 roles regardless of whether that role's TOPIC tree has
-// been seeded into Firestore yet. Topic is a free-typed field backed by
-// an HTML5 datalist of that skill's seeded topics (when any exist) —
-// "select or manage the topic" without a second dependent-dropdown
-// paradigm, and it still works for skills with no seeded topic tree.
+// been seeded into Firestore yet (irrelevant here — see next paragraph).
 //
-// Resources are organized Skill -> Topic only, matching exactly what the
-// student page requests (services/learning_content_service.py's
-// get_topic_package(skill, topic, focusBand)) — no lesson-level
-// selection or composite topic keys here anymore.
+// Resources are organized Skill -> Band only — NOT Skill -> Topic. `band`
+// is one of fundamentals/application/advanced/polish (config/settings.py's
+// VALID_RESOURCE_BANDS), the exact same level services/focus_band.py
+// already computes per learner from their topic quiz mastery. A resource
+// created for (skill, band) is shown to every learner studying that skill
+// whose current level matches, regardless of which topic/lesson they're
+// on — see services/resource_repository.py's module docstring. Since the
+// band list is fixed (4 values), there's no Firestore lookup needed here
+// at all — no "topic not seeded yet" failure mode.
 
 // Mirrors backend config/settings.py's DEFAULT_CATEGORY_BY_TYPE exactly
 // — used to derive a resource's effective category when it (or a
@@ -46,7 +47,13 @@ function effectiveCategory(resource) {
   return resource.category || DEFAULT_CATEGORY_BY_TYPE[resource.type] || "reference";
 }
 
-const DIFFICULTIES = ["Beginner", "Intermediate", "Advanced"];
+// Same fundamentals/application/advanced/polish vocabulary as
+// services/focus_band.py's determine_content_level() — a resource is
+// tagged with the band it's a good fit for, matched against the
+// learner's own current band for that skill.
+const BANDS = ["fundamentals", "application", "advanced", "polish"];
+const BAND_LABELS = { fundamentals: "Fundamentals", application: "Application", advanced: "Advanced", polish: "Polish" };
+
 const TYPE_LABELS = {
   video: "📺 Video", documentation: "📄 Documentation", article: "📝 Article",
   pdf: "📚 PDF/Notes", cheatsheet: "📚 Cheat Sheet", practice: "🎯 Practice", github: "💻 GitHub",
@@ -60,15 +67,16 @@ const TABS = [
   { key: "video", label: "Videos" },
 ];
 
-const EMPTY_FORM = { skill: "", topic: "", category: "practice", type: "practice", title: "", url: "", difficulty: "", description: "" };
+const EMPTY_FORM = { skill: "", band: "fundamentals", category: "practice", type: "practice", title: "", url: "", description: "" };
 
 /**
  * ResourceBankScreen — the admin Resource Management section.
  *
- * Organized Skill -> Topic (see module comment above). Resources are
- * grouped for the admin into Practice Resources (GitHub / coding practice)
- * and Reference & Reading (articles / cheat sheets / documentation), with
- * Videos kept as its own tab since it has its own pin/generate workflow.
+ * Organized Skill -> Band (see module comment above), not Skill -> Topic.
+ * Resources are grouped for the admin into Practice Resources (GitHub /
+ * coding practice) and Reference & Reading (articles / cheat sheets /
+ * documentation), with Videos kept as its own tab since it has its own
+ * pin/generate workflow.
  *
  * Two Firestore-backed lists shown here:
  *   - Resource Bank: everything except status="pending" (verified +
@@ -88,18 +96,15 @@ export default function ResourceBankScreen({ admin }) {
   const [error, setError] = useState("");
   const [activeTab, setActiveTab] = useState("practice");
 
-  // Filter bar: Role -> Skill -> Topic, plus Status. Free-text skill/topic
-  // filters and the separate type/difficulty dropdowns from the old
-  // filter bar are gone — type is now the tab above, difficulty stays in
-  // the Add/Edit form only.
+  // Filter bar: Role -> Skill -> Band, plus Status. Band is a fixed
+  // 4-value list, not fetched from anywhere.
   const [roles, setRoles] = useState([]);
   const [rolesLoading, setRolesLoading] = useState(true);
   const [filterRole, setFilterRole] = useState("");
   const [filterSkillsForRole, setFilterSkillsForRole] = useState([]);
   const [filterSkillsLoading, setFilterSkillsLoading] = useState(false);
   const [filterSkill, setFilterSkill] = useState("");
-  const [filterTopic, setFilterTopic] = useState("");
-  const [filterTopicOptions, setFilterTopicOptions] = useState([]);
+  const [filterBand, setFilterBand] = useState("");
   const [filterStatus, setFilterStatus] = useState("");
 
   const [showFormModal, setShowFormModal] = useState(false);
@@ -109,8 +114,7 @@ export default function ResourceBankScreen({ admin }) {
   const [formError, setFormError] = useState("");
 
   const [suggestRole, setSuggestRole] = useState("");
-  // No topic picker anymore — each skill gets its own section below, and
-  // generation for a skill loops over every topic seeded for it.
+  const [bandBySkill, setBandBySkill] = useState({}); // skill -> selected band for that section, defaults to "fundamentals"
   const [suggestingKey, setSuggestingKey] = useState(""); // `${skill}:${action}` while a request is in flight, else ""
   const [skillMessages, setSkillMessages] = useState({}); // skill -> { message, error }
 
@@ -134,13 +138,11 @@ export default function ResourceBankScreen({ admin }) {
     return () => { cancelled = true; };
   }, []);
 
-  // ---- Filter bar: Role -> Skill -> Topic (datalist) ----
+  // ---- Filter bar: Role -> Skill -> Band ----
 
   const handleFilterRoleChange = async (roleId) => {
     setFilterRole(roleId);
     setFilterSkill("");
-    setFilterTopic("");
-    setFilterTopicOptions([]);
     setFilterSkillsForRole([]);
     if (!roleId) return;
     setFilterSkillsLoading(true);
@@ -154,31 +156,7 @@ export default function ResourceBankScreen({ admin }) {
     }
   };
 
-  const handleFilterSkillChange = (skill) => {
-    setFilterSkill(skill);
-    setFilterTopic("");
-  };
-
-  useEffect(() => {
-    if (!filterSkill) {
-      setFilterTopicOptions([]);
-      return;
-    }
-    let cancelled = false;
-    (async () => {
-      try {
-        const topics = await getTopicsForSkill(filterSkill);
-        if (!cancelled) setFilterTopicOptions(topics || []);
-      } catch {
-        if (!cancelled) setFilterTopicOptions([]); // no seeded topics — datalist just stays empty, free typing still works
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [filterSkill]);
-
-  // ---- Generate Suggestions panel: Role -> Skill sections (no topic picker) ----
-  // Each skill under the selected role gets its own section. Generating for
-  // a skill fetches its seeded topics and runs the action across all of them.
+  // ---- Generate Suggestions panel: Role -> Skill sections, each with its own Band picker ----
 
   const handleSuggestRoleChange = async (roleId) => {
     setSuggestRole(roleId);
@@ -204,7 +182,7 @@ export default function ResourceBankScreen({ admin }) {
     try {
       const data = await fetchResources({
         skill: filterSkill || undefined,
-        topic: filterTopic || undefined,
+        band: filterBand || undefined,
         status: filterStatus || undefined,
       });
       // Pending is shown in its own section below — exclude it here so
@@ -215,7 +193,7 @@ export default function ResourceBankScreen({ admin }) {
     } finally {
       setLoading(false);
     }
-  }, [filterSkill, filterTopic, filterStatus]);
+  }, [filterSkill, filterBand, filterStatus]);
 
   const loadPending = useCallback(async () => {
     setPendingLoading(true);
@@ -239,7 +217,7 @@ export default function ResourceBankScreen({ admin }) {
 
   const clearFilters = () => {
     setFilterRole(""); setFilterSkill(""); setFilterSkillsForRole([]);
-    setFilterTopic(""); setFilterTopicOptions([]); setFilterStatus("");
+    setFilterBand(""); setFilterStatus("");
   };
 
   const openAddModal = () => {
@@ -255,10 +233,10 @@ export default function ResourceBankScreen({ admin }) {
     setEditingResource(resource);
     const category = effectiveCategory(resource);
     setForm({
-      skill: resource.skill || "", topic: resource.topic || "",
+      skill: resource.skill || "", band: resource.band || "fundamentals",
       category,
       type: resource.type || (category === "video" ? "video" : CATEGORY_TYPES[category][0]),
-      title: resource.title || "", url: resource.url || "", difficulty: resource.difficulty || "",
+      title: resource.title || "", url: resource.url || "",
       description: resource.description || "",
     });
     setFormError("");
@@ -267,8 +245,8 @@ export default function ResourceBankScreen({ admin }) {
 
   const handleSave = async () => {
     setFormError("");
-    if (!form.skill.trim() || !form.topic.trim() || !form.title.trim() || !form.url.trim()) {
-      setFormError("Skill, Topic, Title, and URL are required.");
+    if (!form.skill.trim() || !form.band || !form.title.trim() || !form.url.trim()) {
+      setFormError("Skill, Band, Title, and URL are required.");
       return;
     }
     setSaving(true);
@@ -277,7 +255,7 @@ export default function ResourceBankScreen({ admin }) {
       // video resources don't carry a category on the backend, same as
       // everywhere else in the app (video is its own thing, never part
       // of Practice/Reference & Reading).
-      const payload = { ...form, difficulty: form.difficulty || null, category: form.category === "video" ? null : form.category };
+      const payload = { ...form, category: form.category === "video" ? null : form.category };
       if (editingResource) {
         await updateResource(editingResource.id, payload);
       } else {
@@ -321,122 +299,77 @@ export default function ResourceBankScreen({ admin }) {
     }
   };
 
-  // Every action below now runs at the SKILL level: it looks up every
-  // topic seeded for that skill and repeats the action once per topic,
-  // aggregating the results into one message for that skill's section.
+  // Every action below runs at (skill, band) directly — the band comes
+  // from that section's own picker, no Firestore lookup involved.
   const setSkillMsg = (skill, patch) =>
     setSkillMessages((m) => ({ ...m, [skill]: { message: "", error: "", ...m[skill], ...patch } }));
 
-  const topicsFor = async (skill) => {
-    try {
-      const topics = await getTopicsForSkill(skill);
-      return (topics || []).map((t) => t.Title).filter(Boolean);
-    } catch {
-      return [];
-    }
-  };
+  const bandFor = (skill) => bandBySkill[skill] || "fundamentals";
 
   const handleSuggest = async (skill, via) => {
+    const band = bandFor(skill);
     setSkillMsg(skill, { message: "", error: "" });
-    const topics = await topicsFor(skill);
-    if (topics.length === 0) {
-      setSkillMsg(skill, { error: "No topics seeded for this skill yet." });
-      return;
-    }
     setSuggestingKey(`${skill}:${via}`);
     try {
-      let found = 0;
-      const errors = [];
-      for (const topic of topics) {
-        try {
-          const results =
-            via === "youtube"
-              ? await suggestResourcesViaYouTube(skill, topic)
-              : await suggestResourcesViaAI(skill, topic);
-          found += results.length;
-        } catch (err) {
-          errors.push(`${topic}: ${err.message || "failed"}`);
-        }
-      }
+      const results =
+        via === "youtube"
+          ? await suggestResourcesViaYouTube(skill, band)
+          : await suggestResourcesViaAI(skill, band);
       setSkillMsg(skill, {
-        message: found > 0 ? `Found ${found} suggestion(s) across ${topics.length} topic(s) — review below before they go live.` : "No results found.",
-        error: errors.join(" · "),
+        message: results.length > 0 ? `Found ${results.length} suggestion(s) for ${BAND_LABELS[band]} — review below before they go live.` : "No results found.",
       });
       await loadPending();
+    } catch (err) {
+      setSkillMsg(skill, { error: err.message || "Request failed." });
     } finally {
       setSuggestingKey("");
     }
   };
 
-  // VIDEO-ONLY, one-click path — publishes one real YouTube video per
-  // topic, immediately verified. articleCount:0 tells the backend to
-  // skip article generation cleanly (see resource_review_service.py's
+  // VIDEO-ONLY, one-click path — publishes one real YouTube video,
+  // immediately verified. articleCount:0 tells the backend to skip
+  // article generation cleanly (see resource_review_service.py's
   // generate_and_auto_verify()).
   const handleGenerateVideo = async (skill) => {
+    const band = bandFor(skill);
     setSkillMsg(skill, { message: "", error: "" });
     if (!admin?.email) {
       setSkillMsg(skill, { error: "No logged-in admin identity found — please log back in." });
       return;
     }
-    const topics = await topicsFor(skill);
-    if (topics.length === 0) {
-      setSkillMsg(skill, { error: "No topics seeded for this skill yet." });
-      return;
-    }
     setSuggestingKey(`${skill}:video`);
     try {
-      let published = 0;
-      const errors = [];
-      for (const topic of topics) {
-        try {
-          const result = await bulkGenerateAndVerify(skill, topic, admin.email, { articleCount: 0, videoCount: 1 });
-          published += result.videos.length;
-          if (result.errors.length > 0) errors.push(...result.errors);
-        } catch (err) {
-          errors.push(`${topic}: ${err.message || "failed"}`);
-        }
-      }
+      const result = await bulkGenerateAndVerify(skill, band, admin.email, { articleCount: 0, videoCount: 1 });
       setSkillMsg(skill, {
-        message: published > 0 ? `Published ${published} video(s) across ${topics.length} topic(s) — verified by ${admin.email}.` : "No videos found for any topic.",
-        error: errors.join(" · "),
+        message: result.videos.length > 0 ? `Published "${result.videos[0].title}" for ${BAND_LABELS[band]} — verified by ${admin.email}.` : "No video found for this skill/band.",
+        error: result.errors.join(" · "),
       });
       await loadResources();
+    } catch (err) {
+      setSkillMsg(skill, { error: err.message || "Video generation failed." });
     } finally {
       setSuggestingKey("");
     }
   };
 
   const handleBulkGenerate = async (skill) => {
+    const band = bandFor(skill);
     setSkillMsg(skill, { message: "", error: "" });
     if (!admin?.email) {
       setSkillMsg(skill, { error: "No logged-in admin identity found — please log back in." });
       return;
     }
-    const topics = await topicsFor(skill);
-    if (topics.length === 0) {
-      setSkillMsg(skill, { error: "No topics seeded for this skill yet." });
-      return;
-    }
     setSuggestingKey(`${skill}:bulk`);
     try {
-      let articles = 0, videos = 0;
-      const errors = [];
-      for (const topic of topics) {
-        try {
-          const result = await bulkGenerateAndVerify(skill, topic, admin.email);
-          articles += result.articles.length;
-          videos += result.videos.length;
-          if (result.errors.length > 0) errors.push(...result.errors);
-        } catch (err) {
-          errors.push(`${topic}: ${err.message || "failed"}`);
-        }
-      }
-      const total = articles + videos;
+      const result = await bulkGenerateAndVerify(skill, band, admin.email);
+      const total = result.articles.length + result.videos.length;
       setSkillMsg(skill, {
-        message: total > 0 ? `Published ${total} resource(s) across ${topics.length} topic(s) (${articles} article/doc/practice + ${videos} video) — verified by ${admin.email}.` : "No resources could be generated.",
-        error: errors.join(" · "),
+        message: total > 0 ? `Published ${total} resource(s) for ${BAND_LABELS[band]} (${result.articles.length} article/doc/practice + ${result.videos.length} video) — verified by ${admin.email}.` : "No resources could be generated.",
+        error: result.errors.join(" · "),
       });
       await loadResources();
+    } catch (err) {
+      setSkillMsg(skill, { error: err.message || "Bulk generation failed." });
     } finally {
       setSuggestingKey("");
     }
@@ -480,7 +413,7 @@ export default function ResourceBankScreen({ admin }) {
         <div>
           <h1 className="text-2xl font-bold" style={{ color: COLORS.textDark }}>Resource Management</h1>
           <p className="text-sm mt-1" style={{ color: COLORS.textMid }}>
-            Manage Practice Resources and Reference &amp; Reading materials, organized by Skill → Topic.
+            Manage Practice Resources and Reference &amp; Reading materials, organized by Skill → Band.
           </p>
         </div>
         <motion.button
@@ -498,9 +431,9 @@ export default function ResourceBankScreen({ admin }) {
       </div>
 
       {/* Generate suggestions: real YouTube search + AI-suggested docs/articles/github/etc.
-          Scoped to Role -> Skill only — no topic picker. Pick a role, then
-          each skill under it gets its own section below; generating for a
-          skill runs across every topic seeded for it automatically. */}
+          Scoped to Role -> Skill, each skill section has its own Band
+          picker (fundamentals/application/advanced/polish) — no topic
+          anywhere, no dependency on a seeded topic tree. */}
       <div className="p-5 mb-6" style={{ ...GLASS_CARD, borderRadius: 20 }}>
         <p className="text-sm font-bold mb-3" style={{ color: COLORS.textDark }}>Generate Suggestions</p>
         {suggestError2 && (
@@ -526,15 +459,28 @@ export default function ResourceBankScreen({ admin }) {
             const busy = suggestingKey.startsWith(`${skill}:`);
             const busyAction = busy ? suggestingKey.split(":")[1] : "";
             const msg = skillMessages[skill] || {};
+            const band = bandFor(skill);
             return (
               <div key={skill} className="p-3.5 rounded-xl" style={{ background: "rgba(255,255,255,0.55)", border: `1px solid ${COLORS.border}` }}>
-                <p className="text-sm font-bold mb-2" style={{ color: COLORS.textDark }}>{skill}</p>
+                <div className="flex flex-wrap items-center gap-2.5 mb-2.5">
+                  <p className="text-sm font-bold" style={{ color: COLORS.textDark }}>{skill}</p>
+                  <select
+                    value={band}
+                    onChange={(e) => setBandBySkill((b) => ({ ...b, [skill]: e.target.value }))}
+                    className="text-xs font-semibold px-2.5 py-1.5 rounded-lg outline-none"
+                    style={{ border: `1px solid ${COLORS.border}`, background: "#fff", color: COLORS.textDark }}
+                  >
+                    {BANDS.map((b) => (
+                      <option key={b} value={b}>{BAND_LABELS[b]}</option>
+                    ))}
+                  </select>
+                </div>
                 <div className="flex flex-wrap items-center gap-2.5">
                   <motion.button
                     onClick={() => handleGenerateVideo(skill)}
                     disabled={!!suggestingKey}
                     whileHover={{ y: -1 }}
-                    title="Publishes one real YouTube video per topic, immediately — no docs/articles/github/cheatsheet, no review queue."
+                    title="Publishes one real YouTube video immediately for this skill/band — no docs/articles/github/cheatsheet, no review queue."
                     className="flex items-center gap-1.5 text-sm font-semibold"
                     style={{
                       padding: "9px 16px", borderRadius: 9999, background: "#FF0000", color: "#fff",
@@ -575,7 +521,7 @@ export default function ResourceBankScreen({ admin }) {
                     onClick={() => handleBulkGenerate(skill)}
                     disabled={!!suggestingKey}
                     whileHover={{ y: -1 }}
-                    title="Generates AI docs/articles/github AND a YouTube video per topic, and publishes them immediately — no review queue."
+                    title="Generates AI docs/articles/github AND a YouTube video, and publishes them immediately — no review queue."
                     className="flex items-center gap-1.5 text-sm font-semibold"
                     style={{
                       padding: "9px 16px", borderRadius: 9999, background: "#22C55E", color: "#fff",
@@ -616,7 +562,7 @@ export default function ResourceBankScreen({ admin }) {
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-semibold truncate" style={{ color: COLORS.textDark }}>{r.title}</p>
                   <p className="text-xs" style={{ color: COLORS.textLight }}>
-                    {TYPE_LABELS[r.type] || r.type} · {r.skill} / {r.topic} · via {r.source === "youtube_api" ? "YouTube API" : "AI"}
+                    {TYPE_LABELS[r.type] || r.type} · {r.skill} / {BAND_LABELS[r.band] || r.band} · via {r.source === "youtube_api" ? "YouTube API" : "AI"}
                   </p>
                 </div>
                 <a
@@ -646,11 +592,9 @@ export default function ResourceBankScreen({ admin }) {
         </div>
       )}
 
-      {/* Search bar: Role -> Skill only, plus Status — no Topic filter field.
-          Once a skill is picked, its seeded topics (if any) show below as
-          selectable chips instead, per the "don't need topic in search"
-          simplification. */}
-      <div className="flex flex-wrap items-center gap-2.5 mb-3">
+      {/* Search bar: Role -> Skill -> Band, plus Status. Band is a fixed
+          4-value dropdown, not fetched from anywhere. */}
+      <div className="flex flex-wrap items-center gap-2.5 mb-4">
         <select
           value={filterRole}
           onChange={(e) => handleFilterRoleChange(e.target.value)}
@@ -665,7 +609,7 @@ export default function ResourceBankScreen({ admin }) {
         </select>
         <select
           value={filterSkill}
-          onChange={(e) => handleFilterSkillChange(e.target.value)}
+          onChange={(e) => setFilterSkill(e.target.value)}
           disabled={!filterRole || filterSkillsLoading}
           className="text-sm px-3 py-2 rounded-lg outline-none"
           style={{ border: `1px solid ${COLORS.border}`, background: "#fff", color: filterSkill ? COLORS.textDark : COLORS.textLight, opacity: filterRole ? 1 : 0.6 }}
@@ -673,6 +617,17 @@ export default function ResourceBankScreen({ admin }) {
           <option value="">{!filterRole ? "Select a role first" : filterSkillsLoading ? "Loading skills…" : "All skills"}</option>
           {filterSkillsForRole.map((skill) => (
             <option key={skill} value={skill}>{skill}</option>
+          ))}
+        </select>
+        <select
+          value={filterBand}
+          onChange={(e) => setFilterBand(e.target.value)}
+          className="text-sm px-3 py-2 rounded-lg outline-none"
+          style={{ border: `1px solid ${COLORS.border}`, background: "#fff", color: filterBand ? COLORS.textDark : COLORS.textLight }}
+        >
+          <option value="">All bands</option>
+          {BANDS.map((b) => (
+            <option key={b} value={b}>{BAND_LABELS[b]}</option>
           ))}
         </select>
         <select
@@ -685,7 +640,7 @@ export default function ResourceBankScreen({ admin }) {
           <option value="verified">Verified only</option>
           <option value="rejected">Rejected only</option>
         </select>
-        {(filterRole || filterSkill || filterTopic || filterStatus) && (
+        {(filterRole || filterSkill || filterBand || filterStatus) && (
           <button
             onClick={clearFilters}
             className="text-xs font-semibold underline"
@@ -695,39 +650,6 @@ export default function ResourceBankScreen({ admin }) {
           </button>
         )}
       </div>
-
-      {/* Topic chips — only once a skill is picked, and only when that
-          skill has a seeded topic tree. "select ... the relevant topic"
-          without a raw text filter field. */}
-      {filterSkill && filterTopicOptions.length > 0 && (
-        <div className="flex flex-wrap items-center gap-2 mb-4">
-          <button
-            onClick={() => setFilterTopic("")}
-            className="text-xs font-semibold px-3 py-1.5 rounded-full"
-            style={{
-              background: !filterTopic ? COLORS.textDark : "#fff",
-              color: !filterTopic ? "#fff" : COLORS.textMid,
-              border: `1px solid ${!filterTopic ? "transparent" : COLORS.border}`, cursor: "pointer",
-            }}
-          >
-            All topics
-          </button>
-          {filterTopicOptions.map((t) => (
-            <button
-              key={t.TopicID || t.Title}
-              onClick={() => setFilterTopic(t.Title)}
-              className="text-xs font-semibold px-3 py-1.5 rounded-full"
-              style={{
-                background: filterTopic === t.Title ? GRADIENTS.purplePink : "#fff",
-                color: filterTopic === t.Title ? "#fff" : COLORS.textMid,
-                border: `1px solid ${filterTopic === t.Title ? "transparent" : COLORS.border}`, cursor: "pointer",
-              }}
-            >
-              {t.Title}
-            </button>
-          ))}
-        </div>
-      )}
 
       {/* Practice / Reference & Reading / Videos tabs */}
       <div className="flex items-center gap-2 mb-4">
@@ -760,13 +682,13 @@ export default function ResourceBankScreen({ admin }) {
           <p className="text-sm p-6" style={{ color: "#DC2626" }}>{error}</p>
         ) : visibleResources.length === 0 ? (
           <p className="text-sm p-6" style={{ color: COLORS.textMid }}>
-            No {TABS.find((t) => t.key === activeTab)?.label.toLowerCase()} yet — add one above, or generate suggestions for a skill/topic.
+            No {TABS.find((t) => t.key === activeTab)?.label.toLowerCase()} yet — add one above, or generate suggestions for a skill/band.
           </p>
         ) : (
           <table className="w-full text-sm">
             <thead>
               <tr style={{ borderBottom: `1px solid ${COLORS.border}` }}>
-                {["", "Title", "Type", "Skill / Topic", "Difficulty", "Status", "Actions"].map((h) => (
+                {["", "Title", "Type", "Skill / Band", "Status", "Actions"].map((h) => (
                   <th key={h} className="text-left px-4 py-3 font-semibold" style={{ color: COLORS.textLight }}>
                     {h}
                   </th>
@@ -791,8 +713,7 @@ export default function ResourceBankScreen({ admin }) {
                     </a>
                   </td>
                   <td className="px-4 py-3" style={{ color: COLORS.textMid }}>{TYPE_LABELS[r.type] || r.type}</td>
-                  <td className="px-4 py-3" style={{ color: COLORS.textMid }}>{r.skill} / {r.topic}</td>
-                  <td className="px-4 py-3" style={{ color: COLORS.textMid }}>{r.difficulty || "—"}</td>
+                  <td className="px-4 py-3" style={{ color: COLORS.textMid }}>{r.skill} / {BAND_LABELS[r.band] || r.band}</td>
                   <td className="px-4 py-3">
                     <span
                       className="px-2 py-0.5 text-[10px] font-bold rounded-full"
@@ -863,13 +784,16 @@ export default function ResourceBankScreen({ admin }) {
                   className="text-sm px-3 py-2 rounded-lg outline-none"
                   style={{ border: `1px solid ${COLORS.border}` }}
                 />
-                <input
-                  value={form.topic}
-                  onChange={(e) => setForm((f) => ({ ...f, topic: e.target.value }))}
-                  placeholder="Topic *"
+                <select
+                  value={form.band}
+                  onChange={(e) => setForm((f) => ({ ...f, band: e.target.value }))}
                   className="text-sm px-3 py-2 rounded-lg outline-none"
                   style={{ border: `1px solid ${COLORS.border}` }}
-                />
+                >
+                  {BANDS.map((b) => (
+                    <option key={b} value={b}>{BAND_LABELS[b]}</option>
+                  ))}
+                </select>
               </div>
               <input
                 value={form.title}
@@ -913,19 +837,6 @@ export default function ResourceBankScreen({ admin }) {
                 >
                   {(form.category === "video" ? ["video"] : CATEGORY_TYPES[form.category]).map((t) => (
                     <option key={t} value={t}>{TYPE_LABELS[t]}</option>
-                  ))}
-                </select>
-              </div>
-              <div className="grid grid-cols-2 gap-2.5">
-                <select
-                  value={form.difficulty}
-                  onChange={(e) => setForm((f) => ({ ...f, difficulty: e.target.value }))}
-                  className="text-sm px-3 py-2 rounded-lg outline-none"
-                  style={{ border: `1px solid ${COLORS.border}` }}
-                >
-                  <option value="">No difficulty</option>
-                  {DIFFICULTIES.map((d) => (
-                    <option key={d} value={d}>{d}</option>
                   ))}
                 </select>
               </div>

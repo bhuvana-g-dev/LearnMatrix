@@ -91,6 +91,25 @@ class Settings:
     VALID_RESOURCE_TYPES: list[str] = [
         "video", "documentation", "article", "pdf", "cheatsheet", "practice", "github",
     ]
+    # Two-category admin/learner grouping (see services/resource_repository.py's
+    # resolve_category() and services/learning_content_service.py's
+    # _group_by_category()). "video" is deliberately outside this
+    # scheme — it's surfaced as its own primary-recommendation slot,
+    # never grouped into Practice/Reference & Reading, on both the
+    # admin Resource Management tabs and the learner topic page.
+    VALID_RESOURCE_CATEGORIES: list[str] = ["practice", "reference"]
+    # Sensible default when a resource has no stored `category` (every
+    # resource created before this field existed, or one an admin
+    # didn't set explicitly) — keeps all existing stored resources
+    # working without a data migration.
+    DEFAULT_CATEGORY_BY_TYPE: dict[str, str] = {
+        "github": "practice",
+        "practice": "practice",
+        "documentation": "reference",
+        "article": "reference",
+        "pdf": "reference",
+        "cheatsheet": "reference",
+    }
     # Reuses the same three-tier scale as VALID_TOPIC_DIFFICULTIES below
     # (Beginner/Intermediate/Advanced) rather than inventing a second
     # difficulty vocabulary for resources — one scale, one meaning,

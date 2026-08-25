@@ -55,12 +55,19 @@ learning_bp = Blueprint("learning", __name__)
 # not a 3-file hunt.
 VALID_RESOURCE_TYPES = settings.VALID_RESOURCE_TYPES
 VALID_DIFFICULTIES = settings.VALID_TOPIC_DIFFICULTIES
+VALID_RESOURCE_CATEGORIES = settings.VALID_RESOURCE_CATEGORIES
 
 
 @learning_bp.route("/learning/topic/<skill>/<topic>/<focus_band>", methods=["GET"])
 def get_topic_package_route(skill, topic, focus_band):
     try:
-        package = get_topic_package(skill=skill, topic=topic, focus_band=focus_band)
+        # See services/learning_content_service.py's "TOPIC vs
+        # RESOURCE_TOPIC" note — `topic` may be a lesson-composited key;
+        # `resourceTopic`, when present, is the plain topic name used
+        # to match admin-managed resources instead. Omitted -> defaults
+        # to `topic` (non-lesson learning flows only ever have one).
+        resource_topic = request.args.get("resourceTopic") or None
+        package = get_topic_package(skill=skill, topic=topic, focus_band=focus_band, resource_topic=resource_topic)
         return success_response(data=package, message="Topic package loaded.")
     except LearningContentError as exc:
         return error_response(str(exc), status_code=422)
@@ -83,6 +90,7 @@ def list_learning_resources_route():
             status=request.args.get("status") or None,
             resource_type=request.args.get("type") or None,
             difficulty=request.args.get("difficulty") or None,
+            category=request.args.get("category") or None,
         )
         return success_response(data=resources, message="Resources fetched successfully.")
     except Exception as exc:  # noqa: BLE001
@@ -103,6 +111,7 @@ def add_learning_resource_route():
     difficulty = payload.get("difficulty") or None
     description = payload.get("description", "")
     is_pinned = bool(payload.get("isPinned", False))
+    category = payload.get("category") or None  # "practice" | "reference" | None -> type-based default
 
     missing = [
         name for name, val in
@@ -115,12 +124,14 @@ def add_learning_resource_route():
         return error_response(f"'type' must be one of {VALID_RESOURCE_TYPES}.", status_code=400)
     if difficulty is not None and difficulty not in VALID_DIFFICULTIES:
         return error_response(f"'difficulty' must be one of {VALID_DIFFICULTIES} or omitted.", status_code=400)
+    if category is not None and category not in VALID_RESOURCE_CATEGORIES:
+        return error_response(f"'category' must be one of {VALID_RESOURCE_CATEGORIES} or omitted.", status_code=400)
 
     try:
         db = get_firestore_client()
         resource = add_resource(
             db, skill, topic, resource_type, title, url,
-            difficulty=difficulty, description=description, is_pinned=is_pinned,
+            difficulty=difficulty, description=description, is_pinned=is_pinned, category=category,
         )
         return success_response(data=resource, message="Resource added successfully.", status_code=201)
     except ValueError as exc:

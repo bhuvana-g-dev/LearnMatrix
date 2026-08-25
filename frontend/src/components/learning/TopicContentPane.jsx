@@ -21,7 +21,7 @@ const CATEGORY_SECTIONS = [
   { key: "reference", label: "📖 Reference & Reading" },
 ];
 
-const DIFFICULTY_COLORS = { Beginner: "#22C55E", Intermediate: "#F59E0B", Advanced: "#E0559C" };
+const BAND_COLORS = { fundamentals: "#22C55E", application: "#F59E0B", advanced: "#E0559C", polish: "#7C3AED" };
 
 const FOCUS_BAND_LABELS = {
   fundamentals: "Fundamentals",
@@ -83,7 +83,7 @@ function formatPublishedDate(iso) {
  * directly. Next/Previous here just move between topics.
  */
 export default function TopicContentPane({
-  skill, topic, focusBand, topicStatus, resourceTopic,
+  skill, topic, focusBand, topicStatus,
   onNext, onPrevious, hasNext = false, hasPrevious = false, onTakeTest,
   onTakeLessonQuiz, lessonQuizDone, lessonQuizScore, lessonQuizFailedScore, // optional — lesson-scoped quiz CTA, only passed from the Lessons flow (CourseWorkspaceScreen)
 }) {
@@ -97,17 +97,18 @@ export default function TopicContentPane({
     setErrorMessage("");
     setShowMoreVideos(false);
     try {
-      // resourceTopic (optional) — the plain topic name, used only to
-      // match admin-managed resources when `topic` above is a
-      // lesson-composited key. See learningContentService.js's docstring.
-      const result = await getTopicPackage(skill, topic, focusBand, resourceTopic);
+      // Admin-managed resources are matched on (skill, focusBand) by
+      // the backend, not on `topic` — see learningContentService.js's
+      // docstring — so nothing extra needs passing here for a
+      // lesson-composited `topic` to still show the right resources.
+      const result = await getTopicPackage(skill, topic, focusBand);
       setPkg(result);
       setState("ready");
     } catch (err) {
       setErrorMessage(err.message || "Something went wrong loading this topic.");
       setState("error");
     }
-  }, [skill, topic, focusBand, resourceTopic]);
+  }, [skill, topic, focusBand]);
 
   useEffect(() => {
     fetchContent();
@@ -294,12 +295,12 @@ export default function TopicContentPane({
                   </div>
                   <div className="p-4 flex flex-col gap-1.5 flex-1">
                     <div className="flex items-center gap-2 flex-wrap">
-                      {primaryVideo.difficulty && (
+                      {primaryVideo.band && (
                         <span
                           className="px-2 py-0.5 text-[10px] font-bold rounded-full"
-                          style={{ background: DIFFICULTY_COLORS[primaryVideo.difficulty] || COLORS.textMid, color: "#fff" }}
+                          style={{ background: BAND_COLORS[primaryVideo.band] || COLORS.textMid, color: "#fff" }}
                         >
-                          {primaryVideo.difficulty}
+                          {FOCUS_BAND_LABELS[primaryVideo.band] || primaryVideo.band}
                         </span>
                       )}
                     </div>
@@ -383,12 +384,12 @@ export default function TopicContentPane({
                         <span className="text-sm font-medium flex-1" style={{ color: COLORS.textDark }}>
                           {r.title}
                         </span>
-                        {r.difficulty && (
+                        {r.band && (
                           <span
                             className="px-2 py-0.5 text-[10px] font-bold rounded-full flex-shrink-0"
-                            style={{ background: DIFFICULTY_COLORS[r.difficulty] || COLORS.textMid, color: "#fff" }}
+                            style={{ background: BAND_COLORS[r.band] || COLORS.textMid, color: "#fff" }}
                           >
-                            {r.difficulty}
+                            {FOCUS_BAND_LABELS[r.band] || r.band}
                           </span>
                         )}
                         <ExternalLink size={14} style={{ color: COLORS.textLight, flexShrink: 0 }} />

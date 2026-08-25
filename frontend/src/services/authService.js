@@ -8,6 +8,7 @@ import {
   updateProfile,
   sendEmailVerification,
   sendPasswordResetEmail,
+  verifyBeforeUpdateEmail,
 } from "firebase/auth";
 
 export async function loginUser(credentials) {
@@ -102,5 +103,24 @@ export async function reloadCurrentUser() {
   return {
     success: true,
     user: auth.currentUser,
+  };
+}
+
+// Used from VerifyEmailScreen when someone typo'd their address at signup
+// (e.g. missed a letter in their own username, like
+// "selvameenakshi@gmail.com" instead of "selvameenakshik@gmail.com"). A
+// typo like this can't be caught by any regex or domain check — the typo'd
+// address is still syntactically valid and may even belong to someone
+// else. verifyBeforeUpdateEmail sends the verification link to the NEW
+// address and only swaps the account's email over once that link is
+// clicked, so the old typo'd address is never trusted on its own.
+export async function updateUserEmail(newEmail) {
+  if (!auth.currentUser) {
+    throw new Error("No user is currently signed in.");
+  }
+  await verifyBeforeUpdateEmail(auth.currentUser, newEmail);
+
+  return {
+    success: true,
   };
 }

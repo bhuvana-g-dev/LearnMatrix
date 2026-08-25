@@ -13,15 +13,24 @@ import {
 } from "../../services/adminResourceService";
 import { getRoles } from "../../services/roleService";
 import { getSkillsByRole } from "../../services/skillService";
-import { getLessons, compositeTopicKey } from "../../services/lessonService";
+import { getTopicsForSkill } from "../../services/skillTopicService";
 
-// Role -> Skill picker below uses the static role/skill catalog every
-// other screen in this app already uses (constants/roles.js,
-// constants/skills.js) — covers all 8 roles regardless of whether that
-// role's TOPIC tree has been seeded into Firestore yet
-// (data/skill_syllabus_seed.py currently only has "frontend"). Topic
-// stays a manual text field on purpose (see form below) since most
-// roles have no topic list to pick from yet.
+// Role -> Skill picker uses the static role/skill catalog every other
+// screen in this app already uses (constants/roles.js, constants/skills.js)
+// — covers all 8 roles regardless of whether that role's TOPIC tree has
+// been seeded into Firestore yet. Topic is a free-typed field backed by
+// an HTML5 datalist of that skill's seeded topics (when any exist) —
+// "select or manage the topic" without a second dependent-dropdown
+// paradigm, and it still works for skills with no seeded topic tree.
+//
+// Resources are organized Skill -> Topic only, matching exactly what the
+// student page requests (services/learning_content_service.py's
+// get_topic_package(skill, topic, focusBand)) — no lesson-level
+// selection or composite topic keys here anymore.
+
+const PRACTICE_TYPES = ["github", "practice"];
+const REFERENCE_TYPES = ["article", "cheatsheet", "documentation", "pdf"];
+const VIDEO_TYPES = ["video"];
 
 const RESOURCE_TYPES = ["video", "documentation", "article", "pdf", "cheatsheet", "practice", "github"];
 const DIFFICULTIES = ["Beginner", "Intermediate", "Advanced"];
@@ -30,23 +39,31 @@ const TYPE_LABELS = {
   pdf: "📚 PDF/Notes", cheatsheet: "📚 Cheat Sheet", practice: "🎯 Practice", github: "💻 GitHub",
 };
 
+const TABS = [
+  { key: "practice", label: "Practice Resources", types: PRACTICE_TYPES },
+  { key: "reference", label: "Reference & Reading", types: REFERENCE_TYPES },
+  { key: "video", label: "Videos", types: VIDEO_TYPES },
+];
+
 const EMPTY_FORM = { skill: "", topic: "", type: "video", title: "", url: "", difficulty: "", description: "" };
 
 /**
- * ResourceBankScreen — the admin Learning Resources Management section.
- * Same visual/CRUD conventions the old Question Bank screen used, but built as
- * one self-contained screen (own fetch/filter/CRUD state) rather than a
- * separate hook+table+modal split — smaller surface for this first
- * version; splitting out is a mechanical refactor later if this screen
- * grows further.
+ * ResourceBankScreen — the admin Resource Management section.
+ *
+ * Organized Skill -> Topic (see module comment above). Resources are
+ * grouped for the admin into Practice Resources (GitHub / coding practice)
+ * and Reference & Reading (articles / cheat sheets / documentation), with
+ * Videos kept as its own tab since it has its own pin/generate workflow.
  *
  * Two Firestore-backed lists shown here:
  *   - Resource Bank: everything except status="pending" (verified +
  *     rejected), full edit/pin/enable/delete control.
  *   - Pending Review: status="pending" only, verify/reject actions —
  *     preserves the exact existing "AI suggests, human verifies"
- *     workflow (services/resource_review_service.py), now fed by BOTH
- *     the Gemini suggestion agent AND real YouTube search results.
+ *     workflow (services/resource_review_service.py).
+ *
+ * Lifecycle: Create -> Pending Review -> Verify -> Available to Learners.
+ * Only verified (and enabled) resources are ever shown to students.
  */
 export default function ResourceBankScreen({ admin }) {
   const [resources, setResources] = useState([]);
@@ -54,8 +71,21 @@ export default function ResourceBankScreen({ admin }) {
   const [loading, setLoading] = useState(true);
   const [pendingLoading, setPendingLoading] = useState(true);
   const [error, setError] = useState("");
+  const [activeTab, setActiveTab] = useState("practice");
 
-  const [filters, setFilters] = useState({ skill: "", topic: "", type: "", difficulty: "", status: "" });
+  // Filter bar: Role -> Skill -> Topic, plus Status. Free-text skill/topic
+  // filters and the separate type/difficulty dropdowns from the old
+  // filter bar are gone — type is now the tab above, difficulty stays in
+  // the Add/Edit form only.
+  const [roles, setRoles] = useState([]);
+  const [rolesLoading, setRolesLoading] = useState(true);
+  const [filterRole, setFilterRole] = useState("");
+  const [filterSkillsForRole, setFilterSkillsForRole] = useState([]);
+  const [filterSkillsLoading, setFilterSkillsLoading] = useState(false);
+  const [filterSkill, setFilterSkill] = useState("");
+  const [filterTopic, setFilterTopic] = useState("");
+  const [filterTopicOptions, setFilterTopicOptions] = useState([]);
+  const [filterStatus, setFilterStatus] = useState("");
 
   const [showFormModal, setShowFormModal] = useState(false);
   const [editingResource, setEditingResource] = useState(null); // null = Add mode
@@ -65,36 +95,15 @@ export default function ResourceBankScreen({ admin }) {
 
   const [suggestRole, setSuggestRole] = useState("");
   const [suggestSkill, setSuggestSkill] = useState("");
-  const [suggestTopic, setSuggestTopic] = useState(""); // manual text — e.g. "Variables"
-  const [suggestLesson, setSuggestLesson] = useState(""); // AI-generated Lesson title, or "" = whole-topic (no lesson)
-  const [suggesting, setSuggesting] = useState(""); // "ai" | "youtube" | ""
+  const [suggestTopic, setSuggestTopic] = useState(""); // free-typed, e.g. "Variables" — backed by a datalist below
+  const [suggestTopicOptions, setSuggestTopicOptions] = useState([]);
+  const [suggesting, setSuggesting] = useState(""); // "ai" | "youtube" | "video" | "bulk" | ""
   const [suggestError, setSuggestError] = useState("");
   const [suggestMessage, setSuggestMessage] = useState("");
 
-  // Role -> Skill dropdown data for the Generate Suggestions panel —
-  // from the same static catalog SkillSelectionScreen uses (all 8
-  // roles), so an admin can only pick a skill that actually exists for
-  // that role instead of free-typing something misspelled. Topic stays
-  // manual text (see form below) — most roles don't have a seeded topic
-  // tree to pick from yet.
-  const [roles, setRoles] = useState([]); // [{id, title, ...}]
-  const [rolesLoading, setRolesLoading] = useState(true);
-  const [skillsForRole, setSkillsForRole] = useState([]); // flat skill-name list for the chosen role
+  const [skillsForRole, setSkillsForRole] = useState([]); // suggest-panel skill list for suggestRole
   const [skillsLoading, setSkillsLoading] = useState(false);
   const [suggestError2, setSuggestError2] = useState(""); // role/skill load error, kept separate from the generate-call error below
-
-  // Topic -> Lesson dropdown data. Lessons are AI-generated per (skill,
-  // topic) by agents/lesson_planner_agent.py and cached in
-  // lesson_plans/{skill}__{topic} — see models/lesson_model.py's
-  // composite_topic_key(). What a student actually sees & the resources
-  // attach to is scoped to "{Topic} — {Lesson Title}", NOT the bare
-  // Topic, whenever the course has been broken into lessons. Loading
-  // this list also means the FIRST time it's fetched for a never-before
-  // -opened topic, it triggers the one-time Gemini lesson-planning call
-  // (same cache-then-generate pattern as everything else here).
-  const [lessons, setLessons] = useState([]); // [{ Order, Title, Summary }]
-  const [lessonsLoading, setLessonsLoading] = useState(false);
-  const [lessonsError, setLessonsError] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -104,8 +113,6 @@ export default function ResourceBankScreen({ admin }) {
         const data = await getRoles();
         if (!cancelled) setRoles(data || []);
       } catch {
-        // Non-fatal — role dropdown just stays empty; admin can still
-        // fall back to typing a skill isn't possible here, so surface it.
         if (!cancelled) setSuggestError2("Couldn't load the role list.");
       } finally {
         if (!cancelled) setRolesLoading(false);
@@ -114,11 +121,55 @@ export default function ResourceBankScreen({ admin }) {
     return () => { cancelled = true; };
   }, []);
 
+  // ---- Filter bar: Role -> Skill -> Topic (datalist) ----
+
+  const handleFilterRoleChange = async (roleId) => {
+    setFilterRole(roleId);
+    setFilterSkill("");
+    setFilterTopic("");
+    setFilterTopicOptions([]);
+    setFilterSkillsForRole([]);
+    if (!roleId) return;
+    setFilterSkillsLoading(true);
+    try {
+      const categories = await getSkillsByRole(roleId);
+      setFilterSkillsForRole(Object.values(categories || {}).flat());
+    } catch {
+      setFilterSkillsForRole([]);
+    } finally {
+      setFilterSkillsLoading(false);
+    }
+  };
+
+  const handleFilterSkillChange = (skill) => {
+    setFilterSkill(skill);
+    setFilterTopic("");
+  };
+
+  useEffect(() => {
+    if (!filterSkill) {
+      setFilterTopicOptions([]);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const topics = await getTopicsForSkill(filterSkill);
+        if (!cancelled) setFilterTopicOptions(topics || []);
+      } catch {
+        if (!cancelled) setFilterTopicOptions([]); // no seeded topics — datalist just stays empty, free typing still works
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [filterSkill]);
+
+  // ---- Generate Suggestions panel: Role -> Skill -> Topic (datalist) ----
+
   const handleSuggestRoleChange = async (roleId) => {
     setSuggestRole(roleId);
     setSuggestSkill("");
     setSuggestTopic("");
-    setSuggestLesson("");
+    setSuggestTopicOptions([]);
     setSkillsForRole([]);
     if (!roleId) return;
     setSkillsLoading(true);
@@ -137,56 +188,33 @@ export default function ResourceBankScreen({ admin }) {
   const handleSuggestSkillChange = (skill) => {
     setSuggestSkill(skill);
     setSuggestTopic(""); // reset topic — previous skill's topic won't be valid for a new skill
-    setSuggestLesson("");
   };
 
   useEffect(() => {
-    if (!suggestSkill || !suggestTopic) {
-      setLessons([]);
+    if (!suggestSkill) {
+      setSuggestTopicOptions([]);
       return;
     }
     let cancelled = false;
     (async () => {
-      setLessonsLoading(true);
-      setLessonsError("");
       try {
-        const data = await getLessons(suggestSkill, suggestTopic);
-        if (!cancelled) setLessons(data || []);
-      } catch (err) {
-        if (!cancelled) {
-          setLessons([]);
-          setLessonsError(err.message || "Couldn't load lessons for this topic.");
-        }
-      } finally {
-        if (!cancelled) setLessonsLoading(false);
+        const topics = await getTopicsForSkill(suggestSkill);
+        if (!cancelled) setSuggestTopicOptions(topics || []);
+      } catch {
+        if (!cancelled) setSuggestTopicOptions([]);
       }
     })();
     return () => { cancelled = true; };
-  }, [suggestSkill, suggestTopic]);
-
-  // The actual (skill, topic) pair to send to every generate/suggest
-  // call below — composite "{Topic} — {Lesson Title}" when a lesson is
-  // picked (matches exactly what get_lesson_content()/getTopicPackage()
-  // use, so generated resources are found by the student page), plain
-  // Topic when "Whole topic" is selected (no lessons for this course /
-  // resource meant for the topic level generally).
-  const effectiveTopic = suggestLesson ? compositeTopicKey(suggestTopic, suggestLesson) : suggestTopic;
-
-  const handleSuggestTopicChange = (topic) => {
-    setSuggestTopic(topic);
-    setSuggestLesson(""); // reset lesson — previous topic's lesson list doesn't apply here
-  };
+  }, [suggestSkill]);
 
   const loadResources = useCallback(async () => {
     setLoading(true);
     setError("");
     try {
       const data = await fetchResources({
-        skill: filters.skill || undefined,
-        topic: filters.topic || undefined,
-        type: filters.type || undefined,
-        difficulty: filters.difficulty || undefined,
-        status: filters.status || undefined,
+        skill: filterSkill || undefined,
+        topic: filterTopic || undefined,
+        status: filterStatus || undefined,
       });
       // Pending is shown in its own section below — exclude it here so
       // a resource doesn't appear twice while awaiting review.
@@ -196,7 +224,7 @@ export default function ResourceBankScreen({ admin }) {
     } finally {
       setLoading(false);
     }
-  }, [filters]);
+  }, [filterSkill, filterTopic, filterStatus]);
 
   const loadPending = useCallback(async () => {
     setPendingLoading(true);
@@ -218,12 +246,14 @@ export default function ResourceBankScreen({ admin }) {
     loadPending();
   }, [loadPending]);
 
-  const updateFilter = (key, value) => setFilters((f) => ({ ...f, [key]: value }));
-  const clearFilters = () => setFilters({ skill: "", topic: "", type: "", difficulty: "", status: "" });
+  const clearFilters = () => {
+    setFilterRole(""); setFilterSkill(""); setFilterSkillsForRole([]);
+    setFilterTopic(""); setFilterTopicOptions([]); setFilterStatus("");
+  };
 
   const openAddModal = () => {
     setEditingResource(null);
-    setForm(EMPTY_FORM);
+    setForm({ ...EMPTY_FORM, type: TABS.find((t) => t.key === activeTab)?.types[0] || "video" });
     setFormError("");
     setShowFormModal(true);
   };
@@ -302,8 +332,8 @@ export default function ResourceBankScreen({ admin }) {
     try {
       const results =
         via === "youtube"
-          ? await suggestResourcesViaYouTube(suggestSkill, effectiveTopic)
-          : await suggestResourcesViaAI(suggestSkill, effectiveTopic);
+          ? await suggestResourcesViaYouTube(suggestSkill, suggestTopic)
+          : await suggestResourcesViaAI(suggestSkill, suggestTopic);
       setSuggestMessage(
         results.length > 0
           ? `Found ${results.length} suggestion(s) — review them below before they go live.`
@@ -317,15 +347,11 @@ export default function ResourceBankScreen({ admin }) {
     }
   };
 
-  // VIDEO-ONLY, one-click path (added for the demo — simpler than the
-  // full "Generate & Publish Now" flow below since it skips AI docs/
-  // articles/github/cheatsheet entirely and just publishes ONE real
-  // YouTube video, immediately verified, for the exact (skill,
-  // effectiveTopic) the live student page will request. articleCount:0
-  // tells the backend to skip article generation cleanly (see
-  // services/resource_review_service.py's generate_and_auto_verify()).
-  // To confirm it actually reflects live: open that skill/topic(/lesson)
-  // as a student and check the video shown matches result.videos[0].
+  // VIDEO-ONLY, one-click path — publishes ONE real YouTube video,
+  // immediately verified, for the exact (skill, topic) the live student
+  // page will request. articleCount:0 tells the backend to skip article
+  // generation cleanly (see services/resource_review_service.py's
+  // generate_and_auto_verify()).
   const handleGenerateVideo = async () => {
     setSuggestError("");
     setSuggestMessage("");
@@ -339,13 +365,13 @@ export default function ResourceBankScreen({ admin }) {
     }
     setSuggesting("video");
     try {
-      const result = await bulkGenerateAndVerify(suggestSkill, effectiveTopic, admin.email, {
+      const result = await bulkGenerateAndVerify(suggestSkill, suggestTopic, admin.email, {
         articleCount: 0,
         videoCount: 1,
       });
       setSuggestMessage(
         result.videos.length > 0
-          ? `Published: "${result.videos[0].title}" for ${suggestSkill} / ${effectiveTopic} — verified by ${admin.email}. Open this topic as a student to confirm it shows.`
+          ? `Published: "${result.videos[0].title}" for ${suggestSkill} / ${suggestTopic} — verified by ${admin.email}. Open this topic as a student to confirm it shows.`
           : "No video found for that skill/topic — try a more specific topic name."
       );
       if (result.errors.length > 0) {
@@ -372,7 +398,7 @@ export default function ResourceBankScreen({ admin }) {
     }
     setSuggesting("bulk");
     try {
-      const result = await bulkGenerateAndVerify(suggestSkill, effectiveTopic, admin.email);
+      const result = await bulkGenerateAndVerify(suggestSkill, suggestTopic, admin.email);
       const total = result.articles.length + result.videos.length;
       setSuggestMessage(
         total > 0
@@ -420,13 +446,15 @@ export default function ResourceBankScreen({ admin }) {
     }
   };
 
+  const visibleResources = resources.filter((r) => TABS.find((t) => t.key === activeTab)?.types.includes(r.type));
+
   return (
     <div className="px-4 sm:px-8 pt-8 pb-12">
       <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
         <div>
-          <h1 className="text-2xl font-bold" style={{ color: COLORS.textDark }}>Resource Bank</h1>
+          <h1 className="text-2xl font-bold" style={{ color: COLORS.textDark }}>Resource Management</h1>
           <p className="text-sm mt-1" style={{ color: COLORS.textMid }}>
-            Manage every learning resource — videos, docs, articles, PDFs, cheat sheets, practice links, and repos.
+            Manage Practice Resources and Reference &amp; Reading materials, organized by Skill → Topic.
           </p>
         </div>
         <motion.button
@@ -443,7 +471,7 @@ export default function ResourceBankScreen({ admin }) {
         </motion.button>
       </div>
 
-      {/* Generate suggestions: real YouTube search + AI-suggested docs/articles/github/etc */}
+      {/* Generate suggestions: real YouTube search + AI-suggested docs/articles/github/etc, scoped to Role -> Skill -> Topic */}
       <div className="p-5 mb-6" style={{ ...GLASS_CARD, borderRadius: 20 }}>
         <p className="text-sm font-bold mb-3" style={{ color: COLORS.textDark }}>Generate Suggestions</p>
         {suggestError2 && (
@@ -476,31 +504,23 @@ export default function ResourceBankScreen({ admin }) {
           </select>
           <input
             value={suggestTopic}
-            onChange={(e) => handleSuggestTopicChange(e.target.value)}
+            onChange={(e) => setSuggestTopic(e.target.value)}
             disabled={!suggestSkill}
             placeholder="Topic (e.g. Variables)"
+            list="suggest-topic-options"
             className="text-sm px-3 py-2 rounded-lg outline-none"
-            style={{ border: `1px solid ${COLORS.border}`, background: "#fff", minWidth: 180, opacity: suggestSkill ? 1 : 0.6 }}
+            style={{ border: `1px solid ${COLORS.border}`, background: "#fff", minWidth: 200, opacity: suggestSkill ? 1 : 0.6 }}
           />
-          <select
-            value={suggestLesson}
-            onChange={(e) => setSuggestLesson(e.target.value)}
-            disabled={!suggestTopic || lessonsLoading}
-            className="text-sm px-3 py-2 rounded-lg outline-none"
-            style={{ border: `1px solid ${COLORS.border}`, background: "#fff", minWidth: 240, color: suggestLesson ? COLORS.textDark : COLORS.textLight, opacity: suggestTopic ? 1 : 0.6 }}
-          >
-            <option value="">
-              {!suggestTopic ? "Enter a topic first" : lessonsLoading ? "Loading lessons…" : "Whole topic (no lesson)"}
-            </option>
-            {lessons.map((l) => (
-              <option key={l.Order} value={l.Title}>{l.Title}</option>
+          <datalist id="suggest-topic-options">
+            {suggestTopicOptions.map((t) => (
+              <option key={t.TopicID || t.Title} value={t.Title} />
             ))}
-          </select>
+          </datalist>
           <motion.button
             onClick={handleGenerateVideo}
             disabled={!!suggesting}
             whileHover={{ y: -1 }}
-            title="Publishes ONE real YouTube video immediately for this exact skill/topic(/lesson) — no docs/articles/github/cheatsheet, no review queue."
+            title="Publishes ONE real YouTube video immediately for this exact skill/topic — no docs/articles/github/cheatsheet, no review queue."
             className="flex items-center gap-1.5 text-sm font-semibold"
             style={{
               padding: "9px 16px", borderRadius: 9999, background: "#FF0000", color: "#fff",
@@ -554,11 +574,9 @@ export default function ResourceBankScreen({ admin }) {
         </div>
         {suggestSkill && suggestTopic && (
           <p className="text-[11px] mt-2.5" style={{ color: COLORS.textLight }}>
-            Will generate for: <strong>{suggestSkill}</strong> / <strong>{effectiveTopic}</strong>
-            {!suggestLesson && lessons.length > 0 && " — this topic has lessons; pick one above if the resource is for a specific lesson page, not the topic overview."}
+            Will generate for: <strong>{suggestSkill}</strong> / <strong>{suggestTopic}</strong>
           </p>
         )}
-        {lessonsError && <p className="text-xs mt-2 font-medium" style={{ color: "#DC2626" }}>{lessonsError}</p>}
         {suggestError && <p className="text-xs mt-2.5 font-medium" style={{ color: "#DC2626" }}>{suggestError}</p>}
         {suggestMessage && <p className="text-xs mt-2.5 font-medium" style={{ color: COLORS.textMid }}>{suggestMessage}</p>}
       </div>
@@ -612,47 +630,49 @@ export default function ResourceBankScreen({ admin }) {
         </div>
       )}
 
-      {/* Filter bar */}
+      {/* Filter bar: Role -> Skill -> Topic, plus Status */}
       <div className="flex flex-wrap items-center gap-2.5 mb-4">
-        <input
-          value={filters.skill}
-          onChange={(e) => updateFilter("skill", e.target.value)}
-          placeholder="Filter by skill"
-          className="text-sm px-3 py-2 rounded-lg outline-none"
-          style={{ border: `1px solid ${COLORS.border}`, background: "#fff" }}
-        />
-        <input
-          value={filters.topic}
-          onChange={(e) => updateFilter("topic", e.target.value)}
-          placeholder="Filter by topic"
-          className="text-sm px-3 py-2 rounded-lg outline-none"
-          style={{ border: `1px solid ${COLORS.border}`, background: "#fff" }}
-        />
         <select
-          value={filters.type}
-          onChange={(e) => updateFilter("type", e.target.value)}
+          value={filterRole}
+          onChange={(e) => handleFilterRoleChange(e.target.value)}
+          disabled={rolesLoading}
           className="text-sm px-3 py-2 rounded-lg outline-none"
-          style={{ border: `1px solid ${COLORS.border}`, background: "#fff" }}
+          style={{ border: `1px solid ${COLORS.border}`, background: "#fff", color: filterRole ? COLORS.textDark : COLORS.textLight }}
         >
-          <option value="">All Types</option>
-          {RESOURCE_TYPES.map((t) => (
-            <option key={t} value={t}>{TYPE_LABELS[t]}</option>
+          <option value="">{rolesLoading ? "Loading roles…" : "All roles"}</option>
+          {roles.map((r) => (
+            <option key={r.id} value={r.id}>{r.title || r.id}</option>
           ))}
         </select>
         <select
-          value={filters.difficulty}
-          onChange={(e) => updateFilter("difficulty", e.target.value)}
+          value={filterSkill}
+          onChange={(e) => handleFilterSkillChange(e.target.value)}
+          disabled={!filterRole || filterSkillsLoading}
           className="text-sm px-3 py-2 rounded-lg outline-none"
-          style={{ border: `1px solid ${COLORS.border}`, background: "#fff" }}
+          style={{ border: `1px solid ${COLORS.border}`, background: "#fff", color: filterSkill ? COLORS.textDark : COLORS.textLight, opacity: filterRole ? 1 : 0.6 }}
         >
-          <option value="">All Difficulties</option>
-          {DIFFICULTIES.map((d) => (
-            <option key={d} value={d}>{d}</option>
+          <option value="">{!filterRole ? "Select a role first" : filterSkillsLoading ? "Loading skills…" : "All skills"}</option>
+          {filterSkillsForRole.map((skill) => (
+            <option key={skill} value={skill}>{skill}</option>
           ))}
         </select>
+        <input
+          value={filterTopic}
+          onChange={(e) => setFilterTopic(e.target.value)}
+          disabled={!filterSkill}
+          placeholder="Topic"
+          list="filter-topic-options"
+          className="text-sm px-3 py-2 rounded-lg outline-none"
+          style={{ border: `1px solid ${COLORS.border}`, background: "#fff", opacity: filterSkill ? 1 : 0.6 }}
+        />
+        <datalist id="filter-topic-options">
+          {filterTopicOptions.map((t) => (
+            <option key={t.TopicID || t.Title} value={t.Title} />
+          ))}
+        </datalist>
         <select
-          value={filters.status}
-          onChange={(e) => updateFilter("status", e.target.value)}
+          value={filterStatus}
+          onChange={(e) => setFilterStatus(e.target.value)}
           className="text-sm px-3 py-2 rounded-lg outline-none"
           style={{ border: `1px solid ${COLORS.border}`, background: "#fff" }}
         >
@@ -660,7 +680,7 @@ export default function ResourceBankScreen({ admin }) {
           <option value="verified">Verified only</option>
           <option value="rejected">Rejected only</option>
         </select>
-        {(filters.skill || filters.topic || filters.type || filters.difficulty || filters.status) && (
+        {(filterRole || filterSkill || filterTopic || filterStatus) && (
           <button
             onClick={clearFilters}
             className="text-xs font-semibold underline"
@@ -671,15 +691,38 @@ export default function ResourceBankScreen({ admin }) {
         )}
       </div>
 
-      {/* Main Resource Bank table */}
+      {/* Practice / Reference & Reading / Videos tabs */}
+      <div className="flex items-center gap-2 mb-4">
+        {TABS.map((tab) => {
+          const isActive = activeTab === tab.key;
+          const count = resources.filter((r) => tab.types.includes(r.type)).length;
+          return (
+            <button
+              key={tab.key}
+              onClick={() => setActiveTab(tab.key)}
+              className="text-sm font-semibold px-4 py-2 rounded-full"
+              style={{
+                background: isActive ? GRADIENTS.purplePink : "#fff",
+                color: isActive ? "#fff" : COLORS.textMid,
+                border: `1px solid ${isActive ? "transparent" : COLORS.border}`,
+                cursor: "pointer",
+              }}
+            >
+              {tab.label} ({count})
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Main Resource table, filtered to the active tab's types */}
       <div style={{ ...GLASS_CARD, borderRadius: 20, overflow: "hidden" }}>
         {loading ? (
           <p className="text-sm p-6" style={{ color: COLORS.textMid }}>Loading resources…</p>
         ) : error ? (
           <p className="text-sm p-6" style={{ color: "#DC2626" }}>{error}</p>
-        ) : resources.length === 0 ? (
+        ) : visibleResources.length === 0 ? (
           <p className="text-sm p-6" style={{ color: COLORS.textMid }}>
-            No resources yet — add one above, or generate suggestions for a skill/topic.
+            No {TABS.find((t) => t.key === activeTab)?.label.toLowerCase()} yet — add one above, or generate suggestions for a skill/topic.
           </p>
         ) : (
           <table className="w-full text-sm">
@@ -693,7 +736,7 @@ export default function ResourceBankScreen({ admin }) {
               </tr>
             </thead>
             <tbody>
-              {resources.map((r) => (
+              {visibleResources.map((r) => (
                 <tr key={r.id} style={{ borderBottom: `1px solid ${COLORS.border}` }}>
                   <td className="px-4 py-3">
                     <button

@@ -16,6 +16,7 @@ export const ENDPOINTS = {
   SKILLS: {
     BY_ROLE: (roleId) => `/roles/${roleId}/skills`,
     SUBMIT: "/skills/selection",
+    TOPICS: (skill) => `/skills/${encodeURIComponent(skill)}/topics`, // GET — backend/routes/skill_topic_routes.py
   },
   ASSESSMENT: {
     // Question Generation Agent (backend/routes/ai_assessment_routes.py).
@@ -142,6 +143,7 @@ export const ENDPOINTS = {
       SUGGEST_AI: "/admin/learning-resources/suggest", // POST {skill, topic, count} — non-video types
       SUGGEST_YOUTUBE: "/admin/learning-resources/suggest-youtube", // POST {skill, topic, count} — real YouTube search
       PENDING: "/admin/learning-resources/pending", // GET, supports ?skill=&topic=
+      BULK_GENERATE_AND_VERIFY: "/admin/learning-resources/bulk-generate-and-verify", // POST {skill, topic, verifiedBy, articleCount?, videoCount?}
       VERIFY: (resourceId) => `/admin/learning-resources/${resourceId}/verify`, // PATCH
       UNVERIFY: (resourceId) => `/admin/learning-resources/${resourceId}/unverify`, // PATCH — verified -> pending, hidden from students
       REJECT: (resourceId) => `/admin/learning-resources/${resourceId}/reject`, // PATCH
@@ -164,6 +166,14 @@ export const ENDPOINTS = {
     // is the server-side admin-role check that happens right after.
     AUTH: {
       SESSION: "/admin/session", // POST { idToken } — server-side admin-role check
+    },
+    // Generated Content Management — backend: routes/generated_content_routes.py
+    // Read + delete only for the shared/reused AI-generated notes cache
+    // (learning_notes collection) — separate concept from RESOURCES above.
+    GENERATED_CONTENT: {
+      LIST: "/admin/generated-content", // GET, supports ?skill=&topic=
+      GET: (id) => `/admin/generated-content/${id}`, // GET — full content
+      DELETE: (id) => `/admin/generated-content/${id}`, // DELETE
     },
   },
 };

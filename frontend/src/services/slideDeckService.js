@@ -56,6 +56,70 @@ export async function generateSlideDeckPreview(
 
 
 /**
+ * Check whether the premium Gamma-powered slide deck path is enabled
+ * on the backend (GAMMA_API_KEY configured) — call once (e.g. when
+ * the Slide Deck "Type" modal opens) to decide whether to show a
+ * "Premium (Gamma)" option at all.
+ *
+ * Returns: boolean
+ */
+export async function getSlideDeckPremiumStatus() {
+  const { data } = await apiClient.get(ENDPOINTS.SLIDEDECK.PREMIUM_STATUS);
+  return Boolean(data?.data?.available);
+}
+
+
+/**
+ * Generate a slide deck via the premium Gamma path and trigger its
+ * download directly — unlike generateSlideDeckPreview() above, Gamma
+ * returns a finished file (no editable {sections: [...]} JSON), so
+ * there's no in-app preview step for this path.
+ *
+ * format: "pptx" | "pdf" (default "pptx")
+ * Returns the Gamma project URL (string, may be "") so the caller can
+ * also offer an "Open in Gamma" link alongside the downloaded file.
+ */
+export async function generateSlideDeckPremium(
+  text,
+  label,
+  format = "pptx"
+) {
+  const response = await apiClient.post(
+    ENDPOINTS.SLIDEDECK.GENERATE_PREMIUM,
+    { text, label, format },
+    {
+      responseType: "blob",
+      timeout: GENERATE_TIMEOUT_MS,
+    }
+  );
+
+  if (response.data.type === "application/json") {
+    const text = await response.data.text();
+    let parsed = {};
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      parsed = {};
+    }
+    throw new Error(
+      parsed.error || parsed.message || "Couldn't generate the premium slide deck."
+    );
+  }
+
+  const blobUrl = URL.createObjectURL(response.data);
+  const link = document.createElement("a");
+  link.href = blobUrl;
+  link.download = `slide_deck_gamma.${format}`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(blobUrl);
+
+  return response.headers["x-gamma-url"] || "";
+}
+
+
+/**
  * Download generated deck as blob.
  */
 async function downloadBlobFromContent(

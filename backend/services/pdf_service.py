@@ -160,18 +160,8 @@ def build_pdf_from_deck_content(notes: dict, subtitle: str) -> BytesIO:
     for i, slide_data in enumerate(deck_sections):
         c.showPage()
         accent = ACCENT_CYCLE[i % len(ACCENT_CYCLE)]
-        kind = slide_data["kind"]
         page_num = i + 2  # agenda page was page 1 of the content pages
-        if kind == "bullets":
-            _draw_bullet_page(c, slide_data["heading"], slide_data["items"], page_num, accent)
-        elif kind == "list":
-            _draw_list_page(c, slide_data["heading"], slide_data["items"], page_num, accent)
-        elif kind == "process":
-            _draw_process_page(c, slide_data["heading"], slide_data["steps"], page_num, accent)
-        elif kind == "comparison":
-            _draw_comparison_page(c, slide_data["heading"], slide_data["left"], slide_data["right"], page_num)
-        else:
-            _draw_text_page(c, slide_data["heading"], slide_data["body"], page_num, accent, slide_data.get("image_url"), slide_data.get("subpoints"))
+        _draw_deck_page(c, slide_data, page_num, accent)
         _draw_footer(c, page_num, total_pages)
 
     c.showPage()
@@ -181,6 +171,89 @@ def build_pdf_from_deck_content(notes: dict, subtitle: str) -> BytesIO:
     c.save()
     buffer.seek(0)
     return buffer
+
+
+def _draw_deck_page(c: canvas.Canvas, slide_data: dict, page_num: int, accent) -> None:
+    """Dispatches on `design_type` the same way
+    ppt_service.py's build_pptx_from_deck_content does, so a PDF
+    download uses the AI Presentation Director's actual design intent
+    (hero/timeline/cycle/architecture/etc.) instead of only the legacy
+    `kind` (text/list/process/comparison) — that mismatch used to mean
+    a PDF export looked drastically plainer than the matching PPTX
+    even though both came from the exact same generated content.
+
+    reportlab's canvas doesn't have a dedicated drawing for every one
+    of PPTX's ~15 design types, so several map onto the closest
+    existing page (e.g. cycle/architecture/timeline all read fine as a
+    numbered process page; hero/big_statement/visual_metaphor/case_study
+    all read fine as a spotlight text page) — same "closest compatible
+    layout" reasoning agents/slide_deck_agent.py already asks the AI to
+    apply for the `layout` field, just applied one level up here for
+    whichever page functions this renderer actually has.
+    """
+    kind = slide_data.get("kind", "text")
+    design_type = slide_data.get("design_type", "concept")
+    heading = slide_data.get("heading", "Section")
+    body = slide_data.get("body", "")
+    image_url = slide_data.get("image_url")
+    subpoints = slide_data.get("subpoints") or []
+    items = slide_data.get("items") or []
+    steps = slide_data.get("steps") or []
+    left = slide_data.get("left") or {}
+    right = slide_data.get("right") or {}
+
+    has_comparison = bool(left.get("items")) and bool(right.get("items"))
+    grid_items = items or subpoints
+    step_items = steps or items
+
+    if design_type in {"hero", "big_statement", "visual_metaphor", "case_study"}:
+        _draw_text_page(c, heading, body, page_num, accent, image_url, subpoints)
+
+    elif design_type == "concept":
+        _draw_text_page(c, heading, body, page_num, accent, image_url, subpoints)
+
+    elif design_type in {"icon_grid", "feature_showcase"} and len(grid_items) >= 2:
+        _draw_list_page(c, heading, grid_items, page_num, accent)
+
+    elif design_type == "before_after":
+        if has_comparison:
+            _draw_comparison_page(c, heading, left, right, page_num)
+        else:
+            _draw_text_page(c, heading, body, page_num, accent, image_url, subpoints)
+
+    elif design_type == "summary":
+        summary_items = items or subpoints
+        if len(summary_items) >= 2:
+            _draw_bullet_page(c, heading, summary_items, page_num, accent)
+        else:
+            _draw_text_page(c, heading, body, page_num, accent, image_url, subpoints)
+
+    elif design_type in {"timeline", "cycle", "architecture", "application_map"} and len(step_items) >= 2:
+        _draw_process_page(c, heading, step_items, page_num, accent)
+
+    elif design_type == "process_flow" and len(step_items) >= 2:
+        _draw_process_page(c, heading, step_items, page_num, accent)
+
+    elif design_type in {"comparison", "problem_solution"} and has_comparison:
+        _draw_comparison_page(c, heading, left, right, page_num)
+
+    elif design_type == "data_story" and len(grid_items) >= 2:
+        _draw_list_page(c, heading, grid_items, page_num, accent)
+
+    elif kind == "bullets":
+        _draw_bullet_page(c, heading, items, page_num, accent)
+
+    elif kind == "list":
+        _draw_list_page(c, heading, items, page_num, accent)
+
+    elif kind == "process" and len(steps) >= 2:
+        _draw_process_page(c, heading, steps, page_num, accent)
+
+    elif kind == "comparison" and has_comparison:
+        _draw_comparison_page(c, heading, left, right, page_num)
+
+    else:
+        _draw_text_page(c, heading, body, page_num, accent, image_url, subpoints)
 
 
 # ---------------------------------------------------------------------------

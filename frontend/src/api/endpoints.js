@@ -87,13 +87,6 @@ export const ENDPOINTS = {
     // backend/routes/mindmap_routes.py — stateless, structures text into a mind map
     GENERATE: "/mindmap/generate", // POST {text, label?, uid?, sessionId?}
   },
-  AUDIO_OVERVIEW: {
-    // backend/routes/audio_overview_routes.py — real two-host podcast
-    // audio (script via AudioOverviewAgent + Gemini multi-speaker TTS),
-    // not the old browser-only window.speechSynthesis version.
-    GENERATE: "/audio-overview/generate", // POST {text, label?, uid?, sessionId?} -> {title, script, audioDataUri, durationSeconds}
-    SYNTHESIZE: "/audio-overview/synthesize", // POST {script} -> {audioDataUri} — re-renders audio for an already-saved script
-  },
   STUDIO: {
     // backend/routes/studio_routes.py — Mind Map / Slide Deck / Flashcards / Audio Overview artifacts saved per chat session
     LIST: (uid, sessionId) => `/studio/${uid}/${sessionId}`, // GET -> [{id, type, title, createdAt}]
@@ -147,10 +140,10 @@ export const ENDPOINTS = {
       DELETE: (resourceId) => `/admin/learning-resources/${resourceId}`, // DELETE
       SET_PINNED: (resourceId) => `/admin/learning-resources/${resourceId}/pin`, // PATCH {pinned}
       SET_ENABLED: (resourceId) => `/admin/learning-resources/${resourceId}/enabled`, // PATCH {enabled}
-      SUGGEST_AI: "/admin/learning-resources/suggest", // POST {skill, topic, count} — non-video types
-      SUGGEST_YOUTUBE: "/admin/learning-resources/suggest-youtube", // POST {skill, topic, count} — real YouTube search
-      PENDING: "/admin/learning-resources/pending", // GET, supports ?skill=&topic=
-      BULK_GENERATE_AND_VERIFY: "/admin/learning-resources/bulk-generate-and-verify", // POST {skill, topic, verifiedBy, articleCount?, videoCount?}
+      SUGGEST_AI: "/admin/learning-resources/suggest", // POST {skill, band, count} — non-video types
+      SUGGEST_YOUTUBE: "/admin/learning-resources/suggest-youtube", // POST {skill, band, count} — real YouTube search
+      PENDING: "/admin/learning-resources/pending", // GET, supports ?skill=&band=
+      BULK_GENERATE_AND_VERIFY: "/admin/learning-resources/bulk-generate-and-verify", // POST {skill, band, verifiedBy, articleCount?, videoCount?}
       VERIFY: (resourceId) => `/admin/learning-resources/${resourceId}/verify`, // PATCH
       UNVERIFY: (resourceId) => `/admin/learning-resources/${resourceId}/unverify`, // PATCH — verified -> pending, hidden from students
       REJECT: (resourceId) => `/admin/learning-resources/${resourceId}/reject`, // PATCH

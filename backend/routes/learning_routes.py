@@ -46,6 +46,7 @@ from services.resource_review_service import (
     ResourceReviewError,
 )
 from firebase.firebase_config import get_firestore_client
+from utils.admin_auth import require_admin
 from utils.response_helper import success_response, error_response
 
 learning_bp = Blueprint("learning", __name__)
@@ -71,6 +72,7 @@ def get_topic_package_route(skill, topic, focus_band):
 
 
 @learning_bp.route("/admin/learning-resources", methods=["GET"])
+@require_admin
 def list_learning_resources_route():
     """List/search for the Resource Bank screen. All filters optional
     and additive (unchanged behavior when omitted) — ?band= replaces the
@@ -91,6 +93,7 @@ def list_learning_resources_route():
 
 
 @learning_bp.route("/admin/learning-resources", methods=["POST"])
+@require_admin
 def add_learning_resource_route():
     payload = request.get_json(silent=True)
     if not payload:
@@ -133,6 +136,7 @@ def add_learning_resource_route():
 
 
 @learning_bp.route("/admin/learning-resources/<resource_id>", methods=["PATCH"])
+@require_admin
 def edit_learning_resource_route(resource_id):
     """General field edit — title/url/type/skill/band/description.
     Distinct from /verify and /reject below (those are the
@@ -150,6 +154,7 @@ def edit_learning_resource_route(resource_id):
 
 
 @learning_bp.route("/admin/learning-resources/<resource_id>", methods=["DELETE"])
+@require_admin
 def delete_learning_resource_route(resource_id):
     try:
         db = get_firestore_client()
@@ -160,6 +165,7 @@ def delete_learning_resource_route(resource_id):
 
 
 @learning_bp.route("/admin/learning-resources/<resource_id>/pin", methods=["PATCH"])
+@require_admin
 def pin_learning_resource_route(resource_id):
     payload = request.get_json(silent=True) or {}
     try:
@@ -170,6 +176,7 @@ def pin_learning_resource_route(resource_id):
 
 
 @learning_bp.route("/admin/learning-resources/<resource_id>/enabled", methods=["PATCH"])
+@require_admin
 def set_learning_resource_enabled_route(resource_id):
     payload = request.get_json(silent=True) or {}
     try:
@@ -180,6 +187,7 @@ def set_learning_resource_enabled_route(resource_id):
 
 
 @learning_bp.route("/admin/learning-resources/suggest", methods=["POST"])
+@require_admin
 def suggest_learning_resources_route():
     """
     AI suggests candidate resources (documentation/article/github/pdf/
@@ -214,6 +222,7 @@ def suggest_learning_resources_route():
 
 
 @learning_bp.route("/admin/learning-resources/suggest-youtube", methods=["POST"])
+@require_admin
 def suggest_youtube_resources_route():
     """
     Real YouTube Data API v3 search for a skill/band
@@ -249,6 +258,7 @@ def suggest_youtube_resources_route():
 
 
 @learning_bp.route("/admin/learning-resources/bulk-generate-and-verify", methods=["POST"])
+@require_admin
 def bulk_generate_and_verify_route():
     """
     One-click 'fill this in' for the Resource Bank — generates AND
@@ -292,6 +302,7 @@ def bulk_generate_and_verify_route():
 
 
 @learning_bp.route("/admin/learning-resources/pending", methods=["GET"])
+@require_admin
 def list_pending_resources_route():
     """The admin review queue — everything awaiting a verify/reject decision."""
     try:
@@ -302,6 +313,7 @@ def list_pending_resources_route():
 
 
 @learning_bp.route("/admin/learning-resources/<resource_id>/verify", methods=["PATCH"])
+@require_admin
 def verify_resource_route(resource_id):
     """Admin confirmed this link is real and good — now visible to students."""
     payload = request.get_json(silent=True) or {}
@@ -313,6 +325,7 @@ def verify_resource_route(resource_id):
 
 
 @learning_bp.route("/admin/learning-resources/<resource_id>/unverify", methods=["PATCH"])
+@require_admin
 def unverify_resource_route(resource_id):
     """
     Pulls a verified resource back out of student view (status ->
@@ -328,6 +341,7 @@ def unverify_resource_route(resource_id):
 
 
 @learning_bp.route("/admin/learning-resources/<resource_id>/reject", methods=["PATCH"])
+@require_admin
 def reject_resource_route(resource_id):
     """Admin confirmed this link is bad — kept, but never shown to students."""
     try:

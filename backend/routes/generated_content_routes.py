@@ -26,12 +26,14 @@ from services.generated_content_service import (
     delete_generated_content,
     GeneratedContentError,
 )
+from utils.admin_auth import require_admin
 from utils.response_helper import success_response, error_response
 
 generated_content_bp = Blueprint("generated_content", __name__)
 
 
 @generated_content_bp.route("/admin/generated-content", methods=["GET"])
+@require_admin
 def list_generated_content_route():
     try:
         items = list_generated_content(
@@ -44,6 +46,7 @@ def list_generated_content_route():
 
 
 @generated_content_bp.route("/admin/generated-content/<doc_id>", methods=["GET"])
+@require_admin
 def get_generated_content_route(doc_id):
     try:
         item = get_generated_content(doc_id)
@@ -55,6 +58,7 @@ def get_generated_content_route(doc_id):
 
 
 @generated_content_bp.route("/admin/generated-content/<doc_id>", methods=["DELETE"])
+@require_admin
 def delete_generated_content_route(doc_id):
     try:
         delete_generated_content(doc_id)

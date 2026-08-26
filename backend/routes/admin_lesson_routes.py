@@ -25,12 +25,14 @@ Generated Content one.
 from flask import Blueprint, request
 
 from services.lesson_service import list_lesson_plans, delete_lessons, LessonServiceError
+from utils.admin_auth import require_admin
 from utils.response_helper import success_response, error_response
 
 admin_lesson_bp = Blueprint("admin_lesson", __name__)
 
 
 @admin_lesson_bp.route("/admin/lesson-plans", methods=["GET"])
+@require_admin
 def list_lesson_plans_route():
     try:
         items = list_lesson_plans(
@@ -43,6 +45,7 @@ def list_lesson_plans_route():
 
 
 @admin_lesson_bp.route("/admin/lesson-plans/<skill>/<topic>", methods=["DELETE"])
+@require_admin
 def delete_lesson_plan_route(skill, topic):
     try:
         delete_lessons(skill=skill, topic=topic)

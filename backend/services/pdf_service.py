@@ -19,6 +19,14 @@ Mirrors ppt_service.py's four entry points and reuses its
 build_deck_sections() so the two file formats are generated from the
 exact same {title, summary, sections, keyTakeaways} shape and never
 drift apart in content — only in the file format they end up in.
+
+GAMMA-STYLE PASS: headings/labels/badges now render in Poppins
+(utils/pdf_fonts.py) instead of plain Helvetica-Bold, every content
+page carries a footer (page number + wordmark) and a faint decorative
+corner accent, an Agenda page lists every section right after the
+title page, and the deck closes on a branded "recap" page — the set
+of things a real Gamma/Canva-generated deck always has that a bare
+title+content+takeaways structure didn't.
 """
 
 from io import BytesIO
@@ -31,15 +39,16 @@ from reportlab.pdfbase.pdfmetrics import stringWidth
 from firebase.firebase_config import get_firestore_client
 from services import chat_repository, embedding_service, notes_repository
 from services.ppt_service import build_deck_sections, PptServiceError, _safe_filename, THEMES, _pick_theme
+from utils.pdf_fonts import ensure_fonts_registered, HEADING_BOLD, HEADING_SEMIBOLD, HEADING_MEDIUM
 
 # --- Gamma-style theme palettes ---
 # Mirrors ppt_service.py's _apply_theme/THEMES exactly (same THEMES list,
 # same per-title pick) so a deck's PDF and PPTX always match — see that
 # module's THEMES for what each of the 6 palettes looks like and why.
-# One real difference: reportlab can only use its 14 built-in PDF-safe
-# font names (Helvetica/Helvetica-Bold) without embedding a TTF file, so
-# unlike the pptx side this does NOT vary the font by theme — colors are
-# themed, typography stays Helvetica everywhere.
+# Headings/labels now render in Poppins (see utils/pdf_fonts.py); body
+# paragraph text stays on reportlab's built-in Helvetica everywhere —
+# see that module's docstring for why that split is deliberate, not a
+# fallback.
 NAVY = NAVY_MID = GOLD = GOLD_LIGHT = CREAM = None  # set by _apply_theme() below
 WHITE = HexColor("#FFFFFF")
 
@@ -134,6 +143,7 @@ def _build_pdf_from_notes(notes: dict, subtitle: str) -> BytesIO:
 def build_pdf_from_deck_content(notes: dict, subtitle: str) -> BytesIO:
     """Public entry point — same "from-content" purpose as
     ppt_service.py's build_pptx_from_deck_content."""
+    ensure_fonts_registered()
     _apply_theme(_pick_theme(notes.get("title") or ""))
 
     buffer = BytesIO()
@@ -142,20 +152,30 @@ def build_pdf_from_deck_content(notes: dict, subtitle: str) -> BytesIO:
     _draw_title_page(c, notes.get("title") or "Study Summary", subtitle)
 
     deck_sections = build_deck_sections(notes)
+    total_pages = len(deck_sections) + 2  # + agenda page + closing page
+
+    c.showPage()
+    _draw_agenda_page(c, [s["heading"] for s in deck_sections], total_pages)
+
     for i, slide_data in enumerate(deck_sections):
         c.showPage()
         accent = ACCENT_CYCLE[i % len(ACCENT_CYCLE)]
         kind = slide_data["kind"]
+        page_num = i + 2  # agenda page was page 1 of the content pages
         if kind == "bullets":
-            _draw_bullet_page(c, slide_data["heading"], slide_data["items"], i + 1, accent)
+            _draw_bullet_page(c, slide_data["heading"], slide_data["items"], page_num, accent)
         elif kind == "list":
-            _draw_list_page(c, slide_data["heading"], slide_data["items"], i + 1, accent)
+            _draw_list_page(c, slide_data["heading"], slide_data["items"], page_num, accent)
         elif kind == "process":
-            _draw_process_page(c, slide_data["heading"], slide_data["steps"], i + 1, accent)
+            _draw_process_page(c, slide_data["heading"], slide_data["steps"], page_num, accent)
         elif kind == "comparison":
-            _draw_comparison_page(c, slide_data["heading"], slide_data["left"], slide_data["right"], i + 1)
+            _draw_comparison_page(c, slide_data["heading"], slide_data["left"], slide_data["right"], page_num)
         else:
-            _draw_text_page(c, slide_data["heading"], slide_data["body"], i + 1, accent, slide_data.get("image_url"), slide_data.get("subpoints"))
+            _draw_text_page(c, slide_data["heading"], slide_data["body"], page_num, accent, slide_data.get("image_url"), slide_data.get("subpoints"))
+        _draw_footer(c, page_num, total_pages)
+
+    c.showPage()
+    _draw_closing_page(c, notes.get("title") or "Study Summary")
 
     c.showPage()
     c.save()
@@ -301,18 +321,41 @@ def _draw_title_page(c: canvas.Canvas, title: str, subtitle: str) -> None:
     c.setFillColor(GOLD_LIGHT)
     c.setFillAlpha(0.55)
     c.circle(PAGE_W - 1.0 * inch, 1.0 * inch, 1.7 * inch, fill=1, stroke=0)
+    # A third, faint ring purely for texture — real Gamma/Canva title
+    # slides rarely rest on just two flat shapes; a thin outline ring
+    # layered over the filled circles reads as an intentional graphic
+    # motif rather than a placeholder.
+    c.setStrokeColor(WHITE)
+    c.setFillAlpha(1)
+    c.setStrokeAlpha(0.25)
+    c.setLineWidth(1.4)
+    c.circle(PAGE_W - 2.8 * inch, PAGE_H - 0.5 * inch, 3.95 * inch, fill=0, stroke=1)
     c.restoreState()
+
+    # Small pill/eyebrow tag above the title — the "STUDY SUMMARY" kicker
+    # every Gamma-generated doc opens with, instead of jumping straight
+    # from the wordmark to the title with nothing between them.
+    c.setFillColor(GOLD)
+    pill_w, pill_h, pill_x, pill_y = 1.9 * inch, 0.34 * inch, 0.7 * inch, PAGE_H - 1.35 * inch
+    c.saveState()
+    c.setFillColor(GOLD)
+    c.setFillAlpha(0.16)
+    c.roundRect(pill_x, pill_y, pill_w, pill_h, pill_h / 2, fill=1, stroke=0)
+    c.restoreState()
+    c.setFillColor(GOLD_LIGHT)
+    c.setFont(HEADING_SEMIBOLD, 10.5)
+    c.drawString(pill_x + 0.22 * inch, pill_y + 0.11 * inch, "STUDY SUMMARY")
 
     c.setFillColor(GOLD)
     c.rect(0.7 * inch, PAGE_H - 2.3 * inch, 1.1 * inch, 4, fill=1, stroke=0)
 
     c.setFillColor(GOLD_LIGHT)
-    c.setFont("Helvetica-Bold", 15)
+    c.setFont(HEADING_BOLD, 15)
     c.drawString(0.7 * inch, PAGE_H - 1.85 * inch, "LEARNMATRIX")
 
     c.setFillColor(WHITE)
-    c.setFont("Helvetica-Bold", 34)
-    title_lines = _wrap_text(title, "Helvetica-Bold", 34, 9.2 * inch)
+    c.setFont(HEADING_BOLD, 34)
+    title_lines = _wrap_text(title, HEADING_BOLD, 34, 9.2 * inch)
     y = PAGE_H - 2.85 * inch
     for line in title_lines[:3]:
         c.drawString(0.65 * inch, y, line)
@@ -327,6 +370,16 @@ def _draw_chrome(c: canvas.Canvas, heading: str, index: int, accent) -> None:
     c.setFillColor(WHITE)
     c.rect(0, 0, PAGE_W, PAGE_H, fill=1, stroke=0)
 
+    # Faint decorative corner circle, bottom-right — the same "designed,
+    # not just functional" texture the title page already has, but at
+    # low enough alpha (4%) to sit behind body text/cards without ever
+    # competing with them for attention.
+    c.saveState()
+    c.setFillColor(accent)
+    c.setFillAlpha(0.05)
+    c.circle(PAGE_W - 0.3 * inch, 0.2 * inch, 2.4 * inch, fill=1, stroke=0)
+    c.restoreState()
+
     c.setFillColor(accent)
     c.rect(0, 0, 0.35 * inch, PAGE_H, fill=1, stroke=0)
 
@@ -334,15 +387,144 @@ def _draw_chrome(c: canvas.Canvas, heading: str, index: int, accent) -> None:
     c.setFillColor(accent)
     c.circle(badge_cx, badge_cy, 0.28 * inch, fill=1, stroke=0)
     c.setFillColor(WHITE if accent != GOLD_LIGHT else NAVY)
-    c.setFont("Helvetica-Bold", 14)
+    c.setFont(HEADING_BOLD, 14)
     c.drawCentredString(badge_cx, badge_cy - 5, str(index))
 
     c.setFillColor(NAVY)
-    c.setFont("Helvetica-Bold", 22)
+    c.setFont(HEADING_BOLD, 22)
     c.drawString(1.55 * inch, PAGE_H - 0.95 * inch, heading)
 
     c.setFillColor(accent)
     c.rect(1.55 * inch, PAGE_H - 1.35 * inch, 1.4 * inch, 3, fill=1, stroke=0)
+
+
+def _draw_footer(c: canvas.Canvas, page_num: int, total_pages: int) -> None:
+    """Bottom-of-page wordmark + page counter — drawn on every content
+    page (see build_pdf_from_deck_content's loop) so the deck reads as
+    one consistently-branded document instead of the title page being
+    the only page that looks finished. Small and low-contrast on
+    purpose: a footer should be findable, not competing with the
+    content above it."""
+    c.saveState()
+    c.setFillColor(NAVY_MID)
+    c.setFillAlpha(0.55)
+    c.setFont(HEADING_MEDIUM, 8.5)
+    c.drawString(0.55 * inch, 0.3 * inch, "LEARNMATRIX")
+    c.drawRightString(PAGE_W - 0.55 * inch, 0.3 * inch, f"{page_num} / {total_pages}")
+    c.restoreState()
+
+
+def _draw_agenda_page(c: canvas.Canvas, headings: list[str], total_pages: int) -> None:
+    """"What we'll cover" — the agenda/table-of-contents page every
+    real Gamma/Canva-generated deck opens its body with, right after
+    the title page. Numbered pills down the left, heading text beside
+    each — same visual language as the numbered section badges every
+    content page already uses (_draw_chrome), just laid out as a list
+    instead of one-per-page."""
+    c.setFillColor(CREAM)
+    c.rect(0, 0, PAGE_W, PAGE_H, fill=1, stroke=0)
+
+    c.saveState()
+    c.setFillColor(GOLD)
+    c.setFillAlpha(0.10)
+    c.circle(PAGE_W + 0.4 * inch, PAGE_H + 0.2 * inch, 3.2 * inch, fill=1, stroke=0)
+    c.restoreState()
+
+    c.setFillColor(GOLD)
+    c.rect(0.7 * inch, PAGE_H - 1.3 * inch, 1.1 * inch, 4, fill=1, stroke=0)
+    c.setFillColor(NAVY)
+    c.setFont(HEADING_BOLD, 26)
+    c.drawString(0.65 * inch, PAGE_H - 1.85 * inch, "What We'll Cover")
+
+    n = len(headings)
+    # Distance-from-TOP idiom (same as every other page's content_top_in
+    # style, e.g. _draw_process_page) — content_top_in must clear the
+    # "What We'll Cover" heading drawn at PAGE_H - 1.85in above, plus its
+    # descenders, or the first row collides with the title text.
+    content_top_in, content_bottom_in = 2.3, 6.9
+    avail_h_in = content_bottom_in - content_top_in
+
+    # NOT _distribute_fill here on purpose: that helper's min_item floor
+    # (needed so a 2-3 item content CARD never shrinks unreadably small)
+    # actively overflows the page once a deck has ~7+ sections, since
+    # `max(min_item, ideal)` ignores how little space is actually left
+    # and pushes rows straight into the footer. An agenda row only holds
+    # a number badge + a heading (no body copy to protect the readability
+    # of), so both the row height AND the gap between rows are allowed to
+    # keep shrinking — down to a much smaller floor than a content card —
+    # as section count grows, with the heading font itself stepping down
+    # a size once rows get tight so the text still reads as one clean line
+    # instead of wrapping into a row too short to hold it.
+    gap_in = 0.14 if n <= 9 else 0.08
+    ideal_in = (avail_h_in - gap_in * (n - 1)) / n if n > 0 else avail_h_in
+    row_h_in = max(0.22, min(ideal_in, 0.85))
+    content_h_in = row_h_in * n + gap_in * (n - 1)
+    offset_in = max(0.0, (avail_h_in - content_h_in) / 2)
+    y = PAGE_H - (content_top_in + offset_in) * inch
+    row_h = row_h_in * inch
+
+    heading_font_size = 16 if row_h_in >= 0.55 else 13
+    max_heading_lines = 2 if row_h_in >= 0.4 else 1
+
+    for i, heading in enumerate(headings):
+        accent = ACCENT_CYCLE[i % len(ACCENT_CYCLE)]
+        text_color = WHITE if accent != GOLD_LIGHT else NAVY
+
+        badge_r = min(0.22, row_h_in * 0.42) * inch
+        c.setFillColor(accent)
+        c.circle(1.05 * inch, y - row_h / 2, badge_r, fill=1, stroke=0)
+        c.setFillColor(text_color)
+        c.setFont(HEADING_BOLD, min(12, heading_font_size))
+        c.drawCentredString(1.05 * inch, y - row_h / 2 - 4, str(i + 1))
+
+        c.setFillColor(NAVY)
+        c.setFont(HEADING_SEMIBOLD, heading_font_size)
+        lines = _wrap_text(heading, HEADING_SEMIBOLD, heading_font_size, 10.8 * inch)[:max_heading_lines]
+        line_h_in = 0.22 if heading_font_size >= 16 else 0.18
+        ty = y - row_h / 2 + (len(lines) - 1) * line_h_in * inch / 2
+        for line in lines:
+            c.drawString(1.55 * inch, ty, line)
+            ty -= line_h_in * inch
+
+        if i < n - 1:
+            c.setStrokeColor(accent)
+            c.setStrokeAlpha(0.25)
+            c.setLineWidth(0.75)
+            c.line(1.55 * inch, y - row_h - gap_in * inch / 2, PAGE_W - 0.7 * inch, y - row_h - gap_in * inch / 2)
+
+        y -= row_h + gap_in * inch
+
+    _draw_footer(c, 1, total_pages)
+
+
+def _draw_closing_page(c: canvas.Canvas, title: str) -> None:
+    """Branded sign-off page — mirrors the title page's palette/shapes
+    so the deck feels like it has a deliberate beginning AND end,
+    instead of stopping mid-content right after the last Key Takeaways
+    card."""
+    c.setFillColor(NAVY)
+    c.rect(0, 0, PAGE_W, PAGE_H, fill=1, stroke=0)
+
+    c.saveState()
+    c.setFillColor(GOLD)
+    c.setFillAlpha(0.65)
+    c.circle(PAGE_W / 2, PAGE_H + 1.2 * inch, 3.0 * inch, fill=1, stroke=0)
+    c.setFillColor(GOLD_LIGHT)
+    c.setFillAlpha(0.4)
+    c.circle(PAGE_W / 2, -0.8 * inch, 2.2 * inch, fill=1, stroke=0)
+    c.restoreState()
+
+    c.setFillColor(WHITE)
+    c.setFont(HEADING_BOLD, 30)
+    c.drawCentredString(PAGE_W / 2, PAGE_H / 2 + 0.35 * inch, "Keep Learning")
+
+    c.setFillColor(CREAM)
+    c.setFont("Helvetica", 15)
+    c.drawCentredString(PAGE_W / 2, PAGE_H / 2 - 0.15 * inch, f"You've completed the summary on {title}.")
+
+    c.setFillColor(GOLD_LIGHT)
+    c.setFont(HEADING_SEMIBOLD, 13)
+    c.drawCentredString(PAGE_W / 2, 0.75 * inch, "LEARNMATRIX")
 
 
 def _draw_text_page(c: canvas.Canvas, heading: str, body: str, index: int, accent, image_url: str | None = None, subpoints: list | None = None) -> None:
@@ -375,7 +557,22 @@ def _draw_text_page(c: canvas.Canvas, heading: str, body: str, index: int, accen
             from reportlab.lib.utils import ImageReader
             c.setFillColor(accent)
             c.roundRect(img_left - 0.12 * inch, img_top - img_h - 0.12 * inch, img_w + 0.24 * inch, img_h + 0.24 * inch, 10, fill=1, stroke=0)
+
+            # Clip the photo itself to rounded corners (not just framed
+            # by a rounded border behind a square photo) and lay a very
+            # faint theme-color wash over it — the two things that make
+            # a stock photo look like it was chosen FOR this deck's
+            # palette instead of dropped in as-is.
+            c.saveState()
+            clip_path = c.beginPath()
+            clip_path.roundRect(img_left, img_top - img_h, img_w, img_h, 8)
+            c.clipPath(clip_path, stroke=0, fill=0)
             c.drawImage(ImageReader(BytesIO(image_bytes)), img_left, img_top - img_h, width=img_w, height=img_h, preserveAspectRatio=True, mask="auto")
+            c.setFillColor(accent)
+            c.setFillAlpha(0.10)
+            c.rect(img_left, img_top - img_h, img_w, img_h, fill=1, stroke=0)
+            c.restoreState()
+
             sidebar_top = img_top - img_h - 0.4 * inch
         except Exception:
             image_bytes = None  # corrupt/unsupported download — fall through to full-width text below
@@ -449,7 +646,7 @@ def _draw_key_points_panel(c: canvas.Canvas, subpoints: list, x: float, top: flo
     agents/slide_deck_agent.py's "subpoints") stacked below the image
     in the text page's sidebar."""
     c.setFillColor(accent)
-    c.setFont("Helvetica-Bold", 12)
+    c.setFont(HEADING_BOLD, 12)
     c.drawString(x, top, "KEY POINTS")
 
     y = top - 0.3 * inch
@@ -504,8 +701,8 @@ def _draw_bullet_page(c: canvas.Canvas, heading: str, bullets: list, index: int,
         _draw_icon(c, icon, 1.95 * inch, y - card_h / 2, icon_r, accent, text_color)
 
         c.setFillColor(NAVY)
-        c.setFont("Helvetica-Bold", font_size)
-        lines = _wrap_text(text, "Helvetica-Bold", font_size, 10.9 * inch - 1.2 * inch)
+        c.setFont(HEADING_BOLD, font_size)
+        lines = _wrap_text(text, HEADING_BOLD, font_size, 10.9 * inch - 1.2 * inch)
         line_h = 0.2 * inch
         ty = y - card_h / 2 + (len(lines) - 1) * line_h / 2
         for line in lines[:3]:
@@ -556,8 +753,8 @@ def _draw_list_page(c: canvas.Canvas, heading: str, items: list, index: int, acc
         _draw_icon(c, icon, x + 0.36 * inch, icon_cy, 0.18 * inch, accent, text_color)
 
         c.setFillColor(NAVY)
-        c.setFont("Helvetica-Bold", 12)
-        text_lines = _wrap_text(text, "Helvetica-Bold", 12, card_w - 0.85 * inch)[:3]
+        c.setFont(HEADING_BOLD, 12)
+        text_lines = _wrap_text(text, HEADING_BOLD, 12, card_w - 0.85 * inch)[:3]
         ty = (y_top - 0.42 * inch) if card_h_in <= 1.1 else (y_top - card_h / 2 + (len(text_lines) - 1) * 0.1 * inch)
         for line in text_lines:
             c.drawString(x + 0.65 * inch, ty, line)
@@ -591,7 +788,7 @@ def _draw_process_page(c: canvas.Canvas, heading: str, steps: list, index: int, 
     font_size = 12
     max_lines = 1
     for candidate in (12, 10.5, 9):
-        per_step_lines = [len(_wrap_text(t, "Helvetica-Bold", candidate, chip_w - 0.3 * inch)) for t in texts]
+        per_step_lines = [len(_wrap_text(t, HEADING_BOLD, candidate, chip_w - 0.3 * inch)) for t in texts]
         m = max(per_step_lines) if per_step_lines else 1
         if m <= 4 or candidate == 9:
             font_size, max_lines = candidate, m
@@ -620,12 +817,12 @@ def _draw_process_page(c: canvas.Canvas, heading: str, steps: list, index: int, 
         c.circle(num_cx, num_cy, 0.22 * inch, fill=1, stroke=1)
         c.setStrokeColor(NAVY)
         c.setFillColor(NAVY)
-        c.setFont("Helvetica-Bold", 13)
+        c.setFont(HEADING_BOLD, 13)
         c.drawCentredString(num_cx, num_cy - 4, str(i + 1))
 
         c.setFillColor(text_color)
-        c.setFont("Helvetica-Bold", font_size)
-        lines = _wrap_text(text, "Helvetica-Bold", font_size, chip_w - 0.3 * inch)
+        c.setFont(HEADING_BOLD, font_size)
+        lines = _wrap_text(text, HEADING_BOLD, font_size, chip_w - 0.3 * inch)
         ty = area_top - chip_h / 2 + (len(lines) - 1) * line_h_in * inch / 2
         for line in lines:
             c.drawCentredString(x + chip_w / 2, ty, line)
@@ -661,7 +858,7 @@ def _draw_comparison_page(c: canvas.Canvas, heading: str, left: dict, right: dic
         c.roundRect(x, col_top - col_h, col_w, col_h, 10, fill=1, stroke=0)
 
         c.setFillColor(text_color)
-        c.setFont("Helvetica-Bold", 16)
+        c.setFont(HEADING_BOLD, 16)
         c.drawCentredString(x + col_w / 2, col_top - 0.42 * inch, panel.get("label", ""))
 
         # Item spacing scales to spread the list across the FULL column

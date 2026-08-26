@@ -3,9 +3,11 @@ import { ENDPOINTS } from "../api/endpoints";
 
 // LLM script-writing + TTS rendering, back-to-back — give it real room
 // (same reasoning as MINDMAP_TIMEOUT_MS, extended since this is two AI
-// calls chained rather than one).
-const AUDIO_OVERVIEW_TIMEOUT_MS = 90000;
-const AUDIO_SYNTHESIZE_TIMEOUT_MS = 60000;
+// calls chained rather than one). Kept comfortably above the backend's
+// own TTS timeout (utils/gemini_client.py's _gemini_tts_http_options,
+// 100s) so a slow-but-succeeding render isn't cut off client-side first.
+const AUDIO_OVERVIEW_TIMEOUT_MS = 150000;
+const AUDIO_SYNTHESIZE_TIMEOUT_MS = 120000;
 
 /**
  * generateAudioOverview — the real (server-rendered) NotebookLM-style

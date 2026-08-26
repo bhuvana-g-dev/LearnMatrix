@@ -87,6 +87,11 @@ export const ENDPOINTS = {
     // backend/routes/mindmap_routes.py — stateless, structures text into a mind map
     GENERATE: "/mindmap/generate", // POST {text, label?, uid?, sessionId?}
   },
+  AUDIO_OVERVIEW: {
+    // backend/routes/audio_overview_routes.py — two-host podcast script + TTS audio
+    GENERATE: "/audio-overview/generate", // POST {text, label?, uid?, sessionId?} -> {title, script, audioDataUri, durationSeconds}
+    SYNTHESIZE: "/audio-overview/synthesize", // POST {script} -> {audioDataUri}
+  },
   STUDIO: {
     // backend/routes/studio_routes.py — Mind Map / Slide Deck / Flashcards / Audio Overview artifacts saved per chat session
     LIST: (uid, sessionId) => `/studio/${uid}/${sessionId}`, // GET -> [{id, type, title, createdAt}]

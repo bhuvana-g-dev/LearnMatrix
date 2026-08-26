@@ -195,22 +195,42 @@ export default function AssessmentScreen({ selectedRole, selectedSkills, uid, on
 
   const handleSubmit = async () => {
     setEvaluating(true);
+    let evalResult;
     try {
       // Passing uid/role/skills also SAVES the full result to Firestore
       // (backend/services/assessment_repository.py) — this is the write
       // side of the "don't regenerate on refresh" fix.
-      const result = await evaluateDiagnosticAssessment(
+      evalResult = await evaluateDiagnosticAssessment(
         questions, answers, uid, roleTitle, skillsForAssessment
       );
-      setEvaluation(result);
+      setEvaluation(evalResult);
       setSubmitted(true);
     } catch (err) {
       setErrorMessage(
         err?.response?.data?.error || err.message || "Something went wrong scoring your assessment."
       );
       setFetchState("error");
-    } finally {
       setEvaluating(false);
+      return;
+    }
+    setEvaluating(false);
+
+    // Auto-generate the roadmap right after evaluation succeeds, so this
+    // no longer depends on the "View My Learning Roadmap" button/UI at all.
+    // Use evalResult directly (not the `evaluation` state var, which won't
+    // have committed yet inside this same function).
+    setLoadingRoadmap(true);
+    setRoadmapError("");
+    try {
+      // selectedRole is already the role ID (e.g. "frontend" — see
+      // constants/roles.js), so no title->id lookup needed here, unlike
+      // RoadmapScreen.jsx which only has the saved role TITLE to work with.
+      const roadmapResult = await generateRoadmap(evalResult, uid, roleTitle, selectedRole);
+      setRoadmap(roadmapResult);
+    } catch (err) {
+      setRoadmapError(err.message || "Couldn't generate your roadmap.");
+    } finally {
+      setLoadingRoadmap(false);
     }
   };
 

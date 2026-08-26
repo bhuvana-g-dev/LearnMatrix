@@ -34,10 +34,13 @@ share one small HTTP helper instead of pulling in another SDK each.
 """
 
 import json
+import logging
 
 import requests
 
 from config.settings import settings
+
+logger = logging.getLogger(__name__)
 
 _gemini_client = None
 _groq_client = None
@@ -309,8 +312,10 @@ def generate_speech_audio(
                 inline_data = getattr(part, "inline_data", None)
                 if inline_data is not None and getattr(inline_data, "data", None):
                     return _wrap_pcm_as_wav(inline_data.data)
+        logger.warning("generate_speech_audio: no inline audio data in Gemini TTS response (%r)", response)
         return None
     except Exception:
+        logger.exception("generate_speech_audio: Gemini TTS call failed")
         return None
 
 

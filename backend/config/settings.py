@@ -388,5 +388,24 @@ class Settings:
     LESSON_MIN_COUNT: int = int(os.getenv("LESSON_MIN_COUNT", 2))
     LESSON_MAX_COUNT: int = int(os.getenv("LESSON_MAX_COUNT", 5))
 
+    # --- Gamma API (services/gamma_service.py) ---
+    # Optional PREMIUM slide deck path: instead of our own SlideDeckAgent
+    # + python-pptx renderer (services/slide_deck_service.py,
+    # services/ppt_service.py), send the text straight to Gamma's
+    # Generate API and let Gamma design + render the whole deck.
+    # Entirely opt-in — GAMMA_API_KEY unset means the feature is simply
+    # not offered (routes/slidedeck_routes.py falls back to the existing
+    # own-renderer pipeline), so nothing about the free/default path
+    # changes for anyone who hasn't set this up.
+    GAMMA_API_KEY: str = os.getenv("GAMMA_API_KEY", "")
+    GAMMA_API_BASE_URL: str = "https://public-api.gamma.app/v1.0"
+    # Gamma generation is asynchronous (create job -> poll -> get
+    # exportUrl) — these bound how long/how often we poll before giving
+    # up and telling the student to try again.
+    GAMMA_POLL_INTERVAL_SECONDS: float = float(os.getenv("GAMMA_POLL_INTERVAL_SECONDS", 4.0))
+    GAMMA_POLL_TIMEOUT_SECONDS: float = float(os.getenv("GAMMA_POLL_TIMEOUT_SECONDS", 120.0))
+    GAMMA_DEFAULT_NUM_CARDS: int = int(os.getenv("GAMMA_DEFAULT_NUM_CARDS", 10))
+    GAMMA_THEME_ID: str = os.getenv("GAMMA_THEME_ID", "")  # optional — from GET /themes
+
 
 settings = Settings()

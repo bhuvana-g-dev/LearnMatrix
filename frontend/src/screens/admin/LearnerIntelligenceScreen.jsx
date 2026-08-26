@@ -60,7 +60,7 @@ export default function LearnerIntelligenceScreen() {
   const [error, setError] = useState("");
   const [searched, setSearched] = useState(false);
 
-  const [expandedEmail, setExpandedEmail] = useState(null);
+  const [expandedRowKey, setExpandedRowKey] = useState(null);
   const [profile, setProfile] = useState(null);
   const [profileLoading, setProfileLoading] = useState(false);
   const [profileError, setProfileError] = useState("");
@@ -68,7 +68,7 @@ export default function LearnerIntelligenceScreen() {
   const runSearch = useCallback(async (activeFilters) => {
     setLoading(true);
     setError("");
-    setExpandedEmail(null);
+    setExpandedRowKey(null);
     setProfile(null);
     try {
       const data = await fetchLearners(activeFilters);
@@ -94,12 +94,12 @@ export default function LearnerIntelligenceScreen() {
     setError("");
   };
 
-  const toggleRow = async (row) => {
-    if (expandedEmail === row.email) {
-      setExpandedEmail(null);
+  const toggleRow = async (row, rowKey) => {
+    if (expandedRowKey === rowKey) {
+      setExpandedRowKey(null);
       return;
     }
-    setExpandedEmail(row.email);
+    setExpandedRowKey(rowKey);
     setProfile(null);
     setProfileError("");
     setProfileLoading(true);
@@ -230,11 +230,11 @@ export default function LearnerIntelligenceScreen() {
               <tbody>
                 {rows.map((r) => {
                   const key = `${r.uid}__${r.skill}__${r.topic}`;
-                  const isExpanded = expandedEmail === r.email;
+                  const isExpanded = expandedRowKey === key;
                   return (
                     <Fragment key={key}>
                       <tr
-                        onClick={() => toggleRow(r)}
+                        onClick={() => toggleRow(r, key)}
                         style={{ borderBottom: `1px solid ${COLORS.border}`, cursor: "pointer" }}
                       >
                         <td className="px-4 py-3 font-semibold whitespace-nowrap" style={{ color: COLORS.textDark }}>

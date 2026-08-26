@@ -3,7 +3,7 @@ import { motion } from "framer-motion";
 import { Eye, Trash2, X, RefreshCw } from "lucide-react";
 import { COLORS, GRADIENTS, GLASS_CARD } from "../../constants/theme";
 import {
-  fetchGeneratedContent, deleteGeneratedContent,
+  fetchGeneratedContent, fetchGeneratedContentItem, deleteGeneratedContent,
 } from "../../services/adminGeneratedContentService";
 import { getRoles } from "../../services/roleService";
 import { getSkillsByRole } from "../../services/skillService";
@@ -36,7 +36,23 @@ export default function GeneratedContentScreen() {
   const [filterTopic, setFilterTopic] = useState("");
 
   const [viewing, setViewing] = useState(null); // full item shown in the View modal
+  const [viewLoading, setViewLoading] = useState(false);
+  const [viewError, setViewError] = useState("");
   const [deletingId, setDeletingId] = useState("");
+
+  const openViewModal = async (item) => {
+    setViewing(item); // show what we already have immediately
+    setViewError("");
+    setViewLoading(true);
+    try {
+      const full = await fetchGeneratedContentItem(item.id);
+      setViewing(full);
+    } catch (err) {
+      setViewError(err.message || "Couldn't load the full content for this item.");
+    } finally {
+      setViewLoading(false);
+    }
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -202,7 +218,7 @@ export default function GeneratedContentScreen() {
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
-                      <button onClick={() => setViewing(item)} title="View" style={{ background: "none", border: "none", cursor: "pointer", color: COLORS.textLight }}>
+                      <button onClick={() => openViewModal(item)} title="View" style={{ background: "none", border: "none", cursor: "pointer", color: COLORS.textLight }}>
                         <Eye size={15} />
                       </button>
                       <button
@@ -245,6 +261,8 @@ export default function GeneratedContentScreen() {
                 <X size={18} />
               </button>
             </div>
+            {viewError && <p className="text-xs font-medium mb-3" style={{ color: "#DC2626" }}>{viewError}</p>}
+            {viewLoading && <p className="text-xs mb-3" style={{ color: COLORS.textLight }}>Loading full content…</p>}
             <p className="text-sm mb-4" style={{ color: COLORS.textMid }}>{viewing.summary}</p>
             <div className="flex flex-col gap-3">
               {(viewing.sections || []).map((section, i) => (

@@ -109,6 +109,45 @@ def _get_gemini_client(api_key: str | None = None):
     return _gemini_client
 
 
+# Multi-speaker TTS rendering (generate_speech_audio below) is a
+# fundamentally longer call than a text/JSON generation call — it has
+# to render actual audio for an entire 8-26 line podcast script, not
+# just return a short block of text. Sharing the 20s "fail fast" JSON
+# timeout above was causing genuine in-progress TTS calls to be killed
+# with httpx.ReadTimeout before Gemini could finish. This client is
+# kept separate (own longer timeout, own cache) so JSON generation
+# elsewhere keeps failing fast while TTS gets the room it actually
+# needs.
+_GEMINI_TTS_HTTP_OPTIONS = None
+_gemini_tts_client = None
+
+
+def _gemini_tts_http_options():
+    global _GEMINI_TTS_HTTP_OPTIONS
+    if _GEMINI_TTS_HTTP_OPTIONS is None:
+        from google.genai import types
+        _GEMINI_TTS_HTTP_OPTIONS = types.HttpOptions(
+            timeout=100_000,  # ms — audio rendering genuinely takes longer than a JSON call;
+            # kept under the frontend's AUDIO_OVERVIEW_TIMEOUT_MS / AUDIO_SYNTHESIZE_TIMEOUT_MS
+            # (see frontend/src/services/audioOverviewService.js) so a slow-but-succeeding
+            # TTS call isn't cut off client-side before this server-side timeout would even fire.
+            retry_options=types.HttpRetryOptions(attempts=1),
+        )
+    return _GEMINI_TTS_HTTP_OPTIONS
+
+
+def _get_gemini_tts_client(api_key: str | None = None):
+    if api_key:
+        from google import genai
+        return genai.Client(api_key=api_key, http_options=_gemini_tts_http_options())
+    global _gemini_tts_client
+    if _gemini_tts_client is not None:
+        return _gemini_tts_client
+    from google import genai
+    _gemini_tts_client = genai.Client(api_key=settings.GEMINI_API_KEY, http_options=_gemini_tts_http_options())
+    return _gemini_tts_client
+
+
 def _generate_json_gemini(prompt: str, temperature: float, api_key: str | None = None) -> dict | list:
     from google.genai import types
 
@@ -286,7 +325,7 @@ def generate_speech_audio(
     try:
         from google.genai import types
 
-        client = _get_gemini_client(api_key)
+        client = _get_gemini_tts_client(api_key)
         speaker_configs = [
             types.SpeakerVoiceConfig(
                 speaker=name,

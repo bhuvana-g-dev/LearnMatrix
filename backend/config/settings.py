@@ -155,21 +155,6 @@ class Settings:
     STATUS_ACTIVE: str = "Active"
     STATUS_INACTIVE: str = "Inactive"
 
-    # --- Admin Question Form (routes/admin_question_routes.py) ---
-    # Fields required on every create/update coming from the Admin Panel.
-    ADMIN_REQUIRED_QUESTION_FIELDS: list[str] = [
-        "QuestionID",
-        "Skill",
-        "Difficulty",
-        "QuestionType",
-        "Question",
-        "OptionA",
-        "OptionB",
-        "OptionC",
-        "OptionD",
-        "CorrectAnswer",
-    ]
-
     # --- AI Agents (agents/) ---
     # Never hardcode the key/model anywhere else — same rule as every other
     # setting in this file. GEMINI_API_KEY is required only once an agent
@@ -184,22 +169,6 @@ class Settings:
     # Pexels (PEXELS_API_KEY above) automatically whenever this call
     # fails for any reason — missing key, safety block, quota, etc.
     GEMINI_IMAGE_MODEL: str = os.getenv("GEMINI_IMAGE_MODEL", "gemini-2.5-flash-image")
-
-    # Speech-capable Gemini model (services/audio_overview_service.py's
-    # generate_podcast_audio / utils/gemini_client.py's
-    # generate_speech_audio) — Gemini's native multi-speaker
-    # text-to-speech model, used to turn a two-host podcast script
-    # (agents/audio_overview_agent.py) into ONE real rendered audio
-    # file (NotebookLM-style Audio Overview), instead of the browser's
-    # single-voice window.speechSynthesis this feature used to rely on.
-    GEMINI_TTS_MODEL: str = os.getenv("GEMINI_TTS_MODEL", "gemini-2.5-flash-preview-tts")
-
-    # Prebuilt Gemini TTS voice names for the two Audio Overview hosts.
-    # Picked for a natural, distinct-sounding pair (one lower/steadier,
-    # one brighter/more energetic) — see Gemini's speech-generation docs
-    # for the full prebuilt-voice list if a different pairing is wanted.
-    AUDIO_OVERVIEW_HOST_A_VOICE: str = os.getenv("AUDIO_OVERVIEW_HOST_A_VOICE", "Charon")
-    AUDIO_OVERVIEW_HOST_B_VOICE: str = os.getenv("AUDIO_OVERVIEW_HOST_B_VOICE", "Kore")
 
     # Optional SEPARATE key for Assessment question generation only
     # (agents/question_generation_agent.py) — diagnostic assessments

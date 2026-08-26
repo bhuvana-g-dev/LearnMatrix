@@ -99,18 +99,83 @@ def generate_deck_content(
         Stock Photo Fallback
              ↓
         Return Presentation Data
+
+    If the AI Presentation Director itself fails (every provider in
+    AI_PROVIDER_CHAIN exhausted/rate-limited, or the model's JSON
+    fails validation across all retries — see agents/slide_deck_agent.py),
+    this degrades to a plain deck instead of raising.
+
+    This matches the behavior every OTHER way to get a slide deck
+    already has: services/ppt_service.py's Chat/Sources/Topic exports
+    call this exact same function via _enrich_notes_for_deck() and
+    silently fall back to a plain, un-enriched deck on the identical
+    failure. Only this function's direct caller — the Studio "Type a
+    topic" preview (routes/slidedeck_routes.py) — had no such
+    fallback, which is why typing a topic surfaced a 422 for the same
+    transient AI hiccup that Chat/Sources exports absorb invisibly.
     """
 
     agent = SlideDeckAgent()
 
-    notes = agent.run(
-        text=text,
-        label=label,
-    )
+    try:
+        notes = agent.run(
+            text=text,
+            label=label,
+        )
+    except SlideDeckAgentError:
+        notes = _fallback_deck(text, label)
 
     _attach_section_visuals(notes)
 
     return notes
+
+
+def _fallback_deck(text: str, label: str) -> dict:
+    """A plain but always-valid deck built with no LLM call, from a
+    naive paragraph split of the raw text — no AI-chosen layouts,
+    design types, or generated images, just something downloadable.
+    Used only when SlideDeckAgent itself couldn't produce a valid
+    result (see generate_deck_content above)."""
+
+    paragraphs = [
+        p.strip()
+        for p in text.replace("\r\n", "\n").split("\n\n")
+        if p.strip()
+    ] or [text.strip()]
+
+    sections = []
+
+    for i, para in enumerate(paragraphs[:8]):
+        heading = para.split(".")[0].strip()[:60] or f"Point {i + 1}"
+        sections.append({
+            "heading": heading,
+            "content": para[:400],
+            "layout": "text",
+            "design_type": "concept",
+            "visual_priority": "low",
+            "text_density": "medium",
+            "emphasis": heading,
+            "image_query": heading,
+        })
+
+    if len(sections) < 2:
+        sections.append({
+            "heading": "Summary",
+            "content": (text.strip()[:400] or "No additional content."),
+            "layout": "text",
+            "design_type": "concept",
+            "visual_priority": "low",
+            "text_density": "medium",
+            "emphasis": "Summary",
+            "image_query": label,
+        })
+
+    return {
+        "title": (label or "Your Slide Deck").strip().title()[:80] or "Your Slide Deck",
+        "summary": "",
+        "sections": sections,
+        "keyTakeaways": [],
+    }
 
 
 def _attach_section_visuals(

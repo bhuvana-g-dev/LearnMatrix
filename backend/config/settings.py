@@ -170,6 +170,21 @@ class Settings:
     # fails for any reason — missing key, safety block, quota, etc.
     GEMINI_IMAGE_MODEL: str = os.getenv("GEMINI_IMAGE_MODEL", "gemini-2.5-flash-image")
 
+    # Speech-capable Gemini model (utils/gemini_client.py's
+    # generate_speech_audio) — used by the Audio Overview feature to
+    # render a two-host podcast script into one real multi-speaker WAV
+    # file. Gemini's native TTS model, distinct from GEMINI_MODEL /
+    # GEMINI_IMAGE_MODEL above.
+    GEMINI_TTS_MODEL: str = os.getenv("GEMINI_TTS_MODEL", "gemini-2.5-flash-preview-tts")
+
+    # Prebuilt voice names for the two Audio Overview hosts (see
+    # services/audio_overview_service.py's _speaker_voice_map and
+    # agents/audio_overview_agent.py's HOST_A/HOST_B). Any of Gemini's
+    # prebuilt TTS voice names works here — these two are picked to
+    # sound clearly distinct from each other in a two-person dialogue.
+    AUDIO_OVERVIEW_HOST_A_VOICE: str = os.getenv("AUDIO_OVERVIEW_HOST_A_VOICE", "Puck")
+    AUDIO_OVERVIEW_HOST_B_VOICE: str = os.getenv("AUDIO_OVERVIEW_HOST_B_VOICE", "Kore")
+
     # Optional SEPARATE key for Assessment question generation only
     # (agents/question_generation_agent.py) — diagnostic assessments
     # fire several generate_json() calls back-to-back (one per skill),

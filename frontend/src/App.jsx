@@ -362,7 +362,7 @@ export default function App() {
           onNavigate={setActiveKey}
           onSelectSkill={(entry) => {
             const topic = entry.currentTopic || entry.skill;
-            setLearningSession({ skill: entry.skill, topic, focusBand: entry.focusBand || "application" });
+            setLearningSession({ skill: entry.skill, topic, focusBand: entry.focusBand || "application", skillLevel: entry.currentLevel });
             setActiveKey("learning-session");
           }}
         />
@@ -429,7 +429,7 @@ export default function App() {
           // skill (role/skill not topic-seeded yet) — same "one learning
           // session per roadmap week" behavior as before in that case.
          const topic = entry.currentTopic || entry.skill;
-setLearningSession({ skill: entry.skill, topic, focusBand: entry.focusBand || "application" });
+setLearningSession({ skill: entry.skill, topic, focusBand: entry.focusBand || "application", skillLevel: entry.currentLevel });
           setActiveKey("learning-session");
         }}
         onStartJourney={(context) => {
@@ -480,6 +480,7 @@ setLearningSession({ skill: entry.skill, topic, focusBand: entry.focusBand || "a
         skill={learningSession.skill}
         topic={learningSession.topic}
         focusBand={learningSession.focusBand}
+        skillLevel={learningSession.skillLevel}
         onBack={() => setActiveKey("roadmap")}
       />
     );

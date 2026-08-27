@@ -120,6 +120,11 @@ export function buildFlatTopicList(roadmap, compressedSyllabus, topicProgress = 
           module: group.name,
           skill: entry.skill,
           skillStatus: entry.status,
+          // "Strong" | "Intermediate" | "Weak" | "Not Attempted" | "Not Assessed"
+          // from the skill's diagnostic — see backend/services/roadmap_service.py's
+          // RoadmapEntry.current_level. Display-only, e.g. TopicContentPane's
+          // small W/S/I label so a learner can see their level while studying.
+          skillLevel: entry.currentLevel,
           topic: t.title,
           topicStatus, // "Verified" | "Current" | "Locked" — display-only, never gates access
           focusBand,

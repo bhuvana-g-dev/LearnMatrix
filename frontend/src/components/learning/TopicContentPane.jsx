@@ -6,6 +6,13 @@ import {
 } from "lucide-react";
 import { COLORS, GRADIENTS, GLASS_CARD } from "../../constants/theme";
 import { getTopicPackage } from "../../services/learningContentService";
+import { LEVEL_COLORS } from "../roadmap/RoadmapDisplay";
+
+// Short label for the skill's diagnostic level badge — Strong/Intermediate/
+// Weak collapse to one letter so it stays compact next to the skill/topic
+// chips. "Not Attempted" / "Not Assessed" render nothing (see skillLevel
+// prop below) since there's no diagnostic level to show yet.
+const SKILL_LEVEL_SHORT = { Strong: "S", Intermediate: "I", Weak: "W" };
 
 const RESOURCE_ICONS = { documentation: FileText, github: Github };
 
@@ -83,7 +90,7 @@ function formatPublishedDate(iso) {
  * directly. Next/Previous here just move between topics.
  */
 export default function TopicContentPane({
-  skill, topic, focusBand, topicStatus,
+  skill, topic, focusBand, topicStatus, skillLevel, // skillLevel: optional — "Strong" | "Intermediate" | "Weak" | "Not Attempted" | "Not Assessed" from the skill's diagnostic (see buildCourseNavigator.js). Only Strong/Intermediate/Weak render a badge.
   onNext, onPrevious, hasNext = false, hasPrevious = false, onTakeTest,
   onTakeLessonQuiz, lessonQuizDone, lessonQuizScore, lessonQuizFailedScore, // optional — lesson-scoped quiz CTA, only passed from the Lessons flow (CourseWorkspaceScreen)
 }) {
@@ -184,6 +191,18 @@ export default function TopicContentPane({
         >
           {FOCUS_BAND_LABELS[focusBand] || focusBand}
         </span>
+        {SKILL_LEVEL_SHORT[skillLevel] && (
+          <span
+            title={`${skillLevel} on your diagnostic`}
+            className="flex items-center justify-center text-[11px] font-bold rounded-full"
+            style={{
+              width: 22, height: 22, color: "#fff",
+              background: LEVEL_COLORS[skillLevel] || COLORS.textMid,
+            }}
+          >
+            {SKILL_LEVEL_SHORT[skillLevel]}
+          </span>
+        )}
         {topicStatus === "Verified" && (
           <span
             className="flex items-center gap-1 px-3 py-1 text-[11px] font-bold rounded-full"

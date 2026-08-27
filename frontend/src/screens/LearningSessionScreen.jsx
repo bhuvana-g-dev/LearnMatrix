@@ -9,11 +9,11 @@ import TopicContentPane from "../components/learning/TopicContentPane";
  * exact same TopicContentPane so the actual content never differs
  * between the two entry points.
  */
-export default function LearningSessionScreen({ skill, topic, focusBand, onBack }) {
+export default function LearningSessionScreen({ skill, topic, focusBand, skillLevel, onBack }) {
   return (
     <div className="px-4 sm:px-8 pt-10 pb-20">
       <BackButton onClick={onBack} label="Back to Roadmap" />
-      <TopicContentPane skill={skill} topic={topic} focusBand={focusBand} />
+      <TopicContentPane skill={skill} topic={topic} focusBand={focusBand} skillLevel={skillLevel} />
     </div>
   );
 }

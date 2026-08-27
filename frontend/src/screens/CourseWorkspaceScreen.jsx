@@ -500,6 +500,7 @@ export default function CourseWorkspaceScreen({ roadmap, compressedSyllabus, ini
                 topic={compositeTopicKey(active.topic, lessons[activeLessonIndex].Title)}
                 focusBand={active.focusBand}
                 topicStatus={active.topicStatus}
+                skillLevel={active.skillLevel}
                 lessonQuizDone={completedLessons.has(lessons[activeLessonIndex].Order)}
                 lessonQuizScore={lessonScores[lessons[activeLessonIndex].Order]}
                 lessonQuizFailedScore={failedAttempts[lessons[activeLessonIndex].Order]}

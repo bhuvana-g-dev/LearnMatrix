@@ -130,6 +130,32 @@ def generate_deck_content(
     return notes
 
 
+def _truncate_at_sentence(text: str, limit: int) -> str:
+    """Trim text to at most `limit` chars without cutting a sentence
+    (or, failing that, a word) in half. A hard text[:limit] slice can
+    land mid-sentence, which is exactly what made fallback-deck slides
+    read as half-finished. We back up to the last sentence-ending
+    punctuation within the limit; if there isn't one, back up to the
+    last whitespace instead, so a slide never ends on a broken word."""
+    stripped = text.strip()
+
+    if len(stripped) <= limit:
+        return stripped
+
+    window = stripped[:limit]
+
+    for punct in (".", "!", "?"):
+        cut = window.rfind(punct)
+        if cut != -1:
+            return window[: cut + 1].strip()
+
+    cut = window.rfind(" ")
+    if cut != -1:
+        return window[:cut].strip() + "…"
+
+    return window.strip() + "…"
+
+
 def _fallback_deck(text: str, label: str) -> dict:
     """A plain but always-valid deck built with no LLM call, from a
     naive paragraph split of the raw text — no AI-chosen layouts,
@@ -149,7 +175,7 @@ def _fallback_deck(text: str, label: str) -> dict:
         heading = para.split(".")[0].strip()[:60] or f"Point {i + 1}"
         sections.append({
             "heading": heading,
-            "content": para[:400],
+            "content": _truncate_at_sentence(para, 400),
             "layout": "text",
             "design_type": "concept",
             "visual_priority": "low",
@@ -161,7 +187,7 @@ def _fallback_deck(text: str, label: str) -> dict:
     if len(sections) < 2:
         sections.append({
             "heading": "Summary",
-            "content": (text.strip()[:400] or "No additional content."),
+            "content": (_truncate_at_sentence(text.strip(), 400) or "No additional content."),
             "layout": "text",
             "design_type": "concept",
             "visual_priority": "low",

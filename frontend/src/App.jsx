@@ -25,7 +25,7 @@ import { useCareerPath } from "./hooks/useCareerPath";
 import { useProfileCompletion } from "./hooks/useProfileCompletion";
 import { pingActivity } from "./services/activityService";
 import { saveUserProfileDoc } from "./services/userProfileService";
-import { loadSavedRoadmap } from "./services/aiAssessmentService";
+import { getCachedRoadmap } from "./services/userProgressCache";
 import { ROLE_TITLES } from "./constants/roles";
 import { NAV_SECTIONS } from "./constants/navigation";
 import { COLORS } from "./constants/theme";
@@ -124,7 +124,7 @@ export default function App() {
       setSkillsPageCheck({ checking: false, locked: false, error: false });
       return;
     }
-    loadSavedRoadmap(auth.user.uid)
+    getCachedRoadmap(auth.user.uid)
       .then((roadmap) => {
         if (active) setSkillsPageCheck({ checking: false, locked: !!roadmap, error: false });
       })
@@ -185,7 +185,7 @@ export default function App() {
       return;
     }
     let active = true;
-    loadSavedRoadmap(auth.user.uid)
+    getCachedRoadmap(auth.user.uid)
       .then((roadmap) => {
         if (!active) return;
         if (!roadmap) {

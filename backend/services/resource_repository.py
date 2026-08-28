@@ -157,7 +157,8 @@ def add_resource(
 
 
 def list_resources(
-    db, skill: str | None = None, band: str | None = None, status: str | None = None,
+    db, skill: str | None = None, band: str | None = None,
+    status: str | list[str] | tuple[str, ...] | None = None,
     resource_type: str | None = None,
     enabled_only: bool = False, category: str | None = None,
 ) -> list[dict]:
@@ -173,6 +174,17 @@ def list_resources(
     (see services/learning_content_service.py); admin review routes pass
     status="pending". This is deliberate rather than a safe default,
     so it's obvious at each call site which audience is being served.
+
+    `status` also accepts a list/tuple (e.g. `["verified", "rejected"]`),
+    compiled to a single Firestore `.where("status", "in", [...])` clause.
+    This exists specifically so the admin Resource Bank table (which
+    shows "verified + rejected, never pending") can ask for exactly
+    those two statuses in ONE query, instead of either (a) fetching
+    every status and throwing pending away client-side — which still
+    reads every pending document, wastefully, since pending is also
+    fetched separately for the Pending Review queue — or (b) making two
+    separate queries. See routes/learning_routes.py's
+    list_learning_resources_route() for where this list comes from.
 
     `skill`/`band`/`status`/`type` are pushed down as Firestore `.where()`
     clauses — these fields are always set by add_resource() (never
@@ -208,7 +220,10 @@ def list_resources(
     if band:
         query = query.where("band", "==", band)
     if status:
-        query = query.where("status", "==", status)
+        if isinstance(status, (list, tuple, set)):
+            query = query.where("status", "in", list(status))
+        else:
+            query = query.where("status", "==", status)
     if resource_type:
         query = query.where("type", "==", resource_type)
     if category:

@@ -9,6 +9,10 @@ import {
   RotateCcw,
   Sparkles,
   Map,
+  ClipboardCheck,
+  CalendarDays,
+  ShieldCheck,
+  AlertTriangle,
 } from "lucide-react";
 import BackButton from "../components/common/BackButton";
 import RoadmapDisplay from "../components/roadmap/RoadmapDisplay";
@@ -20,6 +24,12 @@ import {
   generateRoadmap,
   loadSavedAssessmentResult,
 } from "../services/aiAssessmentService";
+import { pingActivity } from "../services/activityService";
+import {
+  loadAssessmentDraft,
+  saveAssessmentDraft,
+  clearAssessmentDraft,
+} from "../utils/assessmentDraft";
 
 const LEVEL_COLORS = {
   Strong: "#22C55E",
@@ -27,6 +37,41 @@ const LEVEL_COLORS = {
   Weak: "#E0559C",
   "Not Attempted": "#9CA3AF",
 };
+
+// Overall level badge on the results hero — same thresholds the backend's
+// skill-wise classification is built around, just applied to the total
+// score for one headline label.
+function overallLevel(scorePercent) {
+  if (scorePercent >= 75) return "Strong";
+  if (scorePercent >= 45) return "Intermediate";
+  return "Weak";
+}
+
+// Compact SVG ring gauge for the results hero's overall score.
+function ScoreRing({ percent, size = 132, stroke = 11 }) {
+  const radius = (size - stroke) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const offset = circumference * (1 - Math.min(Math.max(percent, 0), 100) / 100);
+  const color = LEVEL_COLORS[overallLevel(percent)];
+  return (
+    <div className="relative flex items-center justify-center" style={{ width: size, height: size }}>
+      <svg width={size} height={size} style={{ transform: "rotate(-90deg)" }}>
+        <circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke="rgba(13,27,61,0.08)" strokeWidth={stroke} />
+        <motion.circle
+          cx={size / 2} cy={size / 2} r={radius} fill="none" stroke={color} strokeWidth={stroke}
+          strokeLinecap="round" strokeDasharray={circumference}
+          initial={{ strokeDashoffset: circumference }}
+          animate={{ strokeDashoffset: offset }}
+          transition={{ duration: 0.9, ease: "easeOut" }}
+        />
+      </svg>
+      <div className="absolute flex flex-col items-center">
+        <span className="text-2xl font-extrabold" style={{ color: COLORS.textDark }}>{percent}%</span>
+        <span className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: COLORS.textLight }}>Score</span>
+      </div>
+    </div>
+  );
+}
 
 /**
  * TypedAnswerInput — the text-entry counterpart to the 4 MCQ option
@@ -125,12 +170,14 @@ export default function AssessmentScreen({ selectedRole, selectedSkills, uid, on
   const fetchQuestions = useCallback(async () => {
     setFetchState("loading");
     setErrorMessage("");
+    if (uid) clearAssessmentDraft(uid); // explicit regeneration invalidates any stale local draft
     try {
       const result = await generateDiagnosticAssessment({
         skills: skillsForAssessment,
         role: roleTitle,
       });
       setQuestions(result.questions);
+      setCurrentIndex(0);
       setFetchState("ready");
     } catch (err) {
       setErrorMessage(
@@ -148,7 +195,7 @@ export default function AssessmentScreen({ selectedRole, selectedSkills, uid, on
     if (!selectedRole) return;
 
     // No uid (not logged in / auth not ready yet) -> can't check for a
-    // saved result, just go straight to generating one.
+    // saved result or a local draft, just go straight to generating one.
     if (!uid) {
       fetchQuestions();
       return;
@@ -164,9 +211,24 @@ export default function AssessmentScreen({ selectedRole, selectedSkills, uid, on
           setEvaluation(saved.evaluation);
           setSubmitted(true);
           setFetchState("ready");
-        } else {
-          fetchQuestions();
+          return;
         }
+
+        // No completed result — but there may be an in-progress local
+        // draft from earlier in this same attempt (e.g. the tab reloaded,
+        // or this screen unmounted/remounted while the student was still
+        // answering). Restore it instead of burning a fresh AI call and
+        // discarding their answers so far.
+        const draft = loadAssessmentDraft(uid, roleTitle, skillsForAssessment);
+        if (draft) {
+          setQuestions(draft.questions);
+          setAnswers(draft.answers || {});
+          setCurrentIndex(draft.currentIndex || 0);
+          setFetchState("ready");
+          return;
+        }
+
+        fetchQuestions();
       } catch {
         // Couldn't check (e.g. transient network issue) — fail open to
         // the normal generation flow rather than blocking the student.
@@ -175,6 +237,28 @@ export default function AssessmentScreen({ selectedRole, selectedSkills, uid, on
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Persist the in-progress attempt locally as the student answers, so a
+  // reload or an unmount before submission restores instead of resetting
+  // (see utils/assessmentDraft.js for why this matters on a cold-starting
+  // free-tier backend).
+  useEffect(() => {
+    if (fetchState !== "ready" || submitted || questions.length === 0) return;
+    saveAssessmentDraft(uid, roleTitle, skillsForAssessment, { questions, answers, currentIndex });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fetchState, submitted, questions, answers, currentIndex, uid, roleTitle]);
+
+  // Keep-alive: while the student is reading/thinking through questions,
+  // no request hits the backend at all — long enough on Render's free
+  // tier for it to idle out and cold-start (15-50s) right when the final
+  // "Submit" is pressed, on top of the grading calls themselves. A quiet
+  // low-frequency ping in the background keeps the backend warm for the
+  // whole time this screen is open, so submission doesn't eat that delay.
+  useEffect(() => {
+    if (fetchState !== "ready" || submitted || !uid) return;
+    const interval = setInterval(() => pingActivity(uid), 4 * 60 * 1000); // every 4 min — under most free-tier idle-timeout windows
+    return () => clearInterval(interval);
+  }, [fetchState, submitted, uid]);
 
   const currentQuestion = questions[currentIndex];
   const selectedOption = currentQuestion ? answers[currentQuestion.TempID] : undefined;
@@ -205,6 +289,7 @@ export default function AssessmentScreen({ selectedRole, selectedSkills, uid, on
       );
       setEvaluation(evalResult);
       setSubmitted(true);
+      if (uid) clearAssessmentDraft(uid); // server now holds the real saved result — local draft no longer needed
     } catch (err) {
       setErrorMessage(
         err?.response?.data?.error || err.message || "Something went wrong scoring your assessment."
@@ -241,6 +326,7 @@ export default function AssessmentScreen({ selectedRole, selectedSkills, uid, on
     setEvaluation(null);
     setRoadmap(null);
     setRoadmapError("");
+    if (uid) clearAssessmentDraft(uid);
     fetchQuestions(); // explicit retake -> generate a genuinely new assessment
   };
 
@@ -343,26 +429,48 @@ export default function AssessmentScreen({ selectedRole, selectedSkills, uid, on
   }
 
   if (submitted && evaluation) {
+    const level = overallLevel(evaluation.overall.scorePercent);
     return (
       <div className="px-4 sm:px-8 pt-10 pb-20">
         <BackButton onClick={onBack} label="Back" />
 
-        <div
-          className="max-w-3xl mx-auto text-center py-10 px-8 mb-8"
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4 }}
+          className="max-w-3xl mx-auto mb-8 p-8 sm:p-10"
           style={{ ...GLASS_CARD, borderRadius: 28 }}
         >
-          <p className="text-sm font-semibold mb-1" style={{ color: COLORS.textMid }}>
-            Overall Score
-          </p>
-          <p className="text-5xl font-extrabold mb-2" style={{ color: COLORS.textDark }}>
-            {evaluation.overall.correct}/{evaluation.overall.total}
-          </p>
-          <p className="text-sm" style={{ color: COLORS.textMid }}>
-            {evaluation.overall.scorePercent}% correct across {evaluation.skills.length} skill(s)
-          </p>
-        </div>
+          <div className="flex flex-col sm:flex-row items-center gap-8">
+            <ScoreRing percent={evaluation.overall.scorePercent} />
+            <div className="flex-1 text-center sm:text-left">
+              <div className="flex items-center justify-center sm:justify-start gap-2 mb-2">
+                <ShieldCheck size={16} style={{ color: COLORS.purple }} />
+                <span className="text-xs font-bold uppercase tracking-wide" style={{ color: COLORS.textLight }}>
+                  Diagnostic Assessment Result
+                </span>
+              </div>
+              <h2 className="text-2xl font-extrabold mb-2" style={{ color: COLORS.textDark }}>
+                {roleTitle || "Your"} Assessment Complete
+              </h2>
+              <p className="text-sm mb-4" style={{ color: COLORS.textMid }}>
+                {evaluation.overall.correct}/{evaluation.overall.total} correct across{" "}
+                {evaluation.skills.length} skill{evaluation.skills.length === 1 ? "" : "s"}
+              </p>
+              <span
+                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold rounded-full"
+                style={{ color: "#fff", background: LEVEL_COLORS[level] }}
+              >
+                Overall: {level}
+              </span>
+            </div>
+          </div>
+        </motion.div>
 
-        <div
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, delay: 0.05 }}
           className="max-w-3xl mx-auto mb-8 overflow-hidden"
           style={{ ...GLASS_CARD, borderRadius: 24 }}
         >
@@ -422,7 +530,7 @@ export default function AssessmentScreen({ selectedRole, selectedSkills, uid, on
               </tbody>
             </table>
           </div>
-        </div>
+        </motion.div>
 
         {/* Learning Roadmap — Roadmap Agent, generated on demand from the evaluation above */}
         <div className="max-w-3xl mx-auto mb-8">

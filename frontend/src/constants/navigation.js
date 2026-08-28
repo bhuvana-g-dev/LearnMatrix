@@ -1,6 +1,7 @@
 import {
   Home as HomeIcon,
   Target,
+  ClipboardCheck,
   Map,
   Bot,
   Calendar,
@@ -35,6 +36,18 @@ export const NAV_SECTIONS = [
     key: "role",
     title: "My Career Path",
     icon: Target,
+    selfNavigable: true,
+  },
+  {
+    // Own sidebar entry, separate from "My Career Path" — takes the
+    // learner straight to AssessmentScreen (App.jsx already routes
+    // activeKey === "initial-assessment" there). The result itself
+    // (score, skill breakdown, per-question review) lives ONLY on this
+    // page now — CareerStatusScreen no longer duplicates it, it just
+    // links here.
+    key: "initial-assessment",
+    title: "Assessment",
+    icon: ClipboardCheck,
     selfNavigable: true,
   },
   {

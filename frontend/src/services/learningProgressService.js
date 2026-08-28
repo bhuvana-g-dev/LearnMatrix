@@ -1,6 +1,6 @@
 import { LEARNING_PROGRESS } from "../constants/learningProgress";
 import { auth } from "../firebase";
-import { loadSavedRoadmap, loadSavedAssessmentResult } from "./aiAssessmentService";
+import { getCachedRoadmap, getCachedAssessmentResult } from "./userProgressCache";
 
 /**
  * getLearningProgress — real roadmap data for a signed-in user; a
@@ -17,8 +17,8 @@ export async function getLearningProgress() {
   if (!uid) return emptyProgress();
 
   const [roadmap, saved] = await Promise.all([
-    loadSavedRoadmap(uid).catch(() => null),
-    loadSavedAssessmentResult(uid).catch(() => null),
+    getCachedRoadmap(uid).catch(() => null),
+    getCachedAssessmentResult(uid).catch(() => null),
   ]);
   if (!roadmap) return emptyProgress();
 

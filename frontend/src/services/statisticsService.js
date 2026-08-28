@@ -1,6 +1,6 @@
 import { LEARNING_STATISTICS } from "../constants/learningStatistics";
 import { auth } from "../firebase";
-import { loadSavedRoadmap, loadSavedAssessmentResult } from "./aiAssessmentService";
+import { getCachedRoadmap, getCachedAssessmentResult } from "./userProgressCache";
 import { getActivity } from "./activityService";
 import { computeCurrentStreak } from "../utils/streak";
 
@@ -25,8 +25,8 @@ export async function getLearningStatistics() {
   }
 
   const [roadmap, saved, dates] = await Promise.all([
-    loadSavedRoadmap(uid).catch(() => null),
-    loadSavedAssessmentResult(uid).catch(() => null),
+    getCachedRoadmap(uid).catch(() => null),
+    getCachedAssessmentResult(uid).catch(() => null),
     getActivity(uid).catch(() => []),
   ]);
 

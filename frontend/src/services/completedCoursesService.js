@@ -1,5 +1,5 @@
 import { auth } from "../firebase";
-import { loadSavedRoadmap } from "./aiAssessmentService";
+import { getCachedRoadmap } from "./userProgressCache";
 import { getCertificate } from "./certificateService";
 
 /**
@@ -20,7 +20,7 @@ export async function getCompletedCourses() {
   if (!uid) return [];
 
   const [roadmap, certificate] = await Promise.all([
-    loadSavedRoadmap(uid).catch(() => null),
+    getCachedRoadmap(uid).catch(() => null),
     getCertificate(uid).catch(() => null),
   ]);
   if (!roadmap) return [];

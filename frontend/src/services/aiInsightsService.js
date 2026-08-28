@@ -1,6 +1,6 @@
 import { AI_INSIGHTS } from "../constants/aiInsights";
 import { auth } from "../firebase";
-import { loadSavedAssessmentResult } from "./aiAssessmentService";
+import { getCachedAssessmentResult } from "./userProgressCache";
 
 /**
  * Fields below are genuinely computed from the student's real, saved
@@ -94,7 +94,7 @@ export async function getAIInsights() {
 
   let saved = null;
   try {
-    saved = await loadSavedAssessmentResult(uid);
+    saved = await getCachedAssessmentResult(uid);
   } catch {
     return { started: false };
   }

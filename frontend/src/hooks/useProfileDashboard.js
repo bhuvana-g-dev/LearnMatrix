@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { auth } from "../firebase";
 import { getUserProfile } from "../services/profileService";
 import { getAIInsights } from "../services/aiInsightsService";
-import { loadSavedRoadmap } from "../services/aiAssessmentService";
+import { getCachedRoadmap } from "../services/userProgressCache";
 import { getActivity } from "../services/activityService";
 import { getRevisionSchedule } from "../services/revisionService";
 import { getCertificate } from "../services/certificateService";
@@ -43,7 +43,7 @@ export function useProfileDashboard() {
     const [p, ai, rm, dates, rev, cert] = await Promise.all([
       getUserProfile(),
       getAIInsights(),
-      uid ? loadSavedRoadmap(uid).catch(() => null) : Promise.resolve(null),
+      uid ? getCachedRoadmap(uid).catch(() => null) : Promise.resolve(null),
       uid ? getActivity(uid).catch(() => []) : Promise.resolve([]),
       uid ? getRevisionSchedule(uid).catch(() => ({ due: [], upcoming: [] })) : Promise.resolve({ due: [], upcoming: [] }),
       uid ? getCertificate(uid).catch(() => null) : Promise.resolve(null),

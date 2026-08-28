@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { getRoles } from "../services/roleService";
 import { getSkillsByRole, submitSelectedSkills } from "../services/skillService";
-import { loadSavedAssessmentResult } from "../services/aiAssessmentService";
+import { getCachedAssessmentResult } from "../services/userProgressCache";
 import { ROLES } from "../constants/roles";
 
 /**
@@ -73,7 +73,7 @@ export function useCareerPath(uid) {
 
     let active = true;
     setSkillsLoading(true);
-    loadSavedAssessmentResult(uid)
+    getCachedAssessmentResult(uid)
       .then((assessment) => {
         if (!active) return;
         const roleEntry = assessment ? ROLES.find((r) => r.title === assessment.role) : null;

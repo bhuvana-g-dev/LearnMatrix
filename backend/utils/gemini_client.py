@@ -158,6 +158,11 @@ def _generate_json_gemini(prompt: str, temperature: float, api_key: str | None =
         config=types.GenerateContentConfig(
             temperature=temperature,
             response_mime_type="application/json",
+            # Without an explicit cap, long structured responses (e.g. a
+            # 10-section slide deck) can get cut off mid-JSON by the
+            # model's own default output limit, which then fails
+            # json.loads() below and looks like a provider failure.
+            max_output_tokens=8192,
         ),
     )
     raw_text = (response.text or "").strip()
@@ -379,6 +384,9 @@ def _generate_json_groq(prompt: str, temperature: float) -> dict | list:
     response = client.chat.completions.create(
         model=settings.GROQ_MODEL,
         temperature=temperature,
+        # See the matching comment in _generate_json_gemini — same
+        # mid-JSON truncation risk without an explicit cap.
+        max_tokens=8192,
         messages=[
             {"role": "system", "content": "You always respond with valid JSON only — no prose, no markdown code fences."},
             {"role": "user", "content": prompt},
@@ -405,6 +413,10 @@ def _generate_json_openai_compatible(
         json={
             "model": model,
             "temperature": temperature,
+            # See the matching comment in _generate_json_gemini — same
+            # mid-JSON truncation risk without an explicit cap. Shared
+            # by both Cerebras and OpenRouter, which both call this helper.
+            "max_tokens": 8192,
             "messages": [
                 {"role": "system", "content": "You always respond with valid JSON only — no prose, no markdown code fences."},
                 {"role": "user", "content": prompt},

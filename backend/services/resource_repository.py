@@ -162,10 +162,11 @@ def list_resources(
     enabled_only: bool = False, category: str | None = None,
 ) -> list[dict]:
     """
-    Equality-filtered list, same simple-filter pattern as
+    Firestore-filtered list, same `.where()`-chaining pattern as
     question_repository.py. All filter params are additive (AND'd
     together) and default to "no filter" — existing call sites that
-    only pass skill/status keep working unchanged.
+    only pass skill/status keep working unchanged, and the return
+    shape/ordering is identical to before.
 
     IMPORTANT: `status` is NOT defaulted to "verified" here — the caller
     decides. Student-facing routes must explicitly pass status="verified"
@@ -173,36 +174,51 @@ def list_resources(
     status="pending". This is deliberate rather than a safe default,
     so it's obvious at each call site which audience is being served.
 
+    `skill`/`band`/`status`/`type` are pushed down as Firestore `.where()`
+    clauses — these fields are always set by add_resource() (never
+    missing on any document, old or new), so filtering at the query
+    level instead of in Python is a pure performance change: only
+    matching documents are read/counted against quota, nothing about
+    which resources match is different.
+
+    `category` is ALSO pushed down as a `.where()` clause. This is only
+    safe because scripts/backfill_resource_categories.py has been run
+    (see that script) so every existing document has a real `category`
+    value (or explicit None for videos) instead of a missing field —
+    Firestore's `.where("category", "==", ...)` does not match documents
+    where the field is absent, unlike the old Python-side
+    resolve_category() fallback. Do not add new resource fields that
+    rely on a similar Python-side default-if-missing pattern and then
+    push them into `.where()` without the same kind of backfill first.
+
     `enabled_only=True` additionally excludes resources explicitly
     disabled by an admin (enabled is False) — missing/None `enabled` is
     treated as enabled (True), so resources created before this field
     existed are unaffected. Student-facing calls should pass True;
     admin list views should leave it False so disabled resources still
-    show up (with their disabled state visible) for re-enabling.
-
-    Every returned resource's `category` is resolved via
-    resolve_category() before the `category` filter is applied — a
-    resource saved before this field existed (stored category=None)
-    still matches its type-derived default category here, so the
-    filter and the admin/learner grouping never disagree.
+    show up (with their disabled state visible) for re-enabling. This
+    stays a Python-side check (not a `.where()`) precisely because
+    "missing == True" can't be expressed as a single equality filter —
+    it only runs over the already-narrowed result set above, not the
+    full collection, so it doesn't reintroduce the original problem.
     """
-    docs = db.collection(settings.LEARNING_RESOURCES_COLLECTION).stream()
+    query = db.collection(settings.LEARNING_RESOURCES_COLLECTION)
+    if skill:
+        query = query.where("skill", "==", skill)
+    if band:
+        query = query.where("band", "==", band)
+    if status:
+        query = query.where("status", "==", status)
+    if resource_type:
+        query = query.where("type", "==", resource_type)
+    if category:
+        query = query.where("category", "==", category)
 
     results = []
-    for doc in docs:
+    for doc in query.stream():
         data = doc.to_dict()
         data["id"] = doc.id
         data["category"] = resolve_category(data.get("type"), data.get("category"))
-        if skill and data.get("skill") != skill:
-            continue
-        if band and data.get("band") != band:
-            continue
-        if status and data.get("status") != status:
-            continue
-        if resource_type and data.get("type") != resource_type:
-            continue
-        if category and data.get("category") != category:
-            continue
         if enabled_only and data.get("enabled") is False:
             continue
         results.append(data)

@@ -76,14 +76,22 @@ def get_topic_package_route(skill, topic, focus_band):
 def list_learning_resources_route():
     """List/search for the Resource Bank screen. All filters optional
     and additive (unchanged behavior when omitted) — ?band= replaces the
-    old ?topic=/?difficulty= filters."""
+    old ?topic=/?difficulty= filters.
+
+    ?status= accepts either one value ("verified") or a comma-separated
+    list ("verified,rejected") — the latter is how the Resource Bank's
+    main table asks for "verified + rejected, never pending" in a
+    single Firestore query instead of over-fetching (see
+    services/resource_repository.py's list_resources() docstring)."""
     try:
         db = get_firestore_client()
+        status_param = request.args.get("status") or None
+        status_filter = status_param.split(",") if status_param and "," in status_param else status_param
         resources = list_resources(
             db,
             skill=request.args.get("skill") or None,
             band=request.args.get("band") or None,
-            status=request.args.get("status") or None,
+            status=status_filter,
             resource_type=request.args.get("type") or None,
             category=request.args.get("category") or None,
         )

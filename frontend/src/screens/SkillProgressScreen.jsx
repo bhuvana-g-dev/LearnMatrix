@@ -3,7 +3,7 @@ import { motion } from "framer-motion";
 import { Loader2, XCircle, ArrowRight, Trophy, Sparkles, Compass, Zap, PartyPopper } from "lucide-react";
 import BackButton from "../components/common/BackButton";
 import { COLORS, GRADIENTS, GLASS_CARD } from "../constants/theme";
-import { loadSavedRoadmap } from "../services/aiAssessmentService";
+import { getCachedRoadmap } from "../services/userProgressCache";
 
 const PACE_STYLES = {
   "Fast-Track": { icon: Zap, color: "#D4A017", bg: "rgba(212,160,23,0.14)" },
@@ -66,7 +66,7 @@ export default function SkillProgressScreen({ uid, onNavigate, onSelectSkill }) 
     }
     setState("loading");
     try {
-      const result = await loadSavedRoadmap(uid);
+      const result = await getCachedRoadmap(uid);
       if (result === null) {
         setState("empty");
       } else {

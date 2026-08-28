@@ -22,8 +22,8 @@ import {
   generateDiagnosticAssessment,
   evaluateDiagnosticAssessment,
   generateRoadmap,
-  loadSavedAssessmentResult,
 } from "../services/aiAssessmentService";
+import { getCachedAssessmentResult, invalidateUserProgress } from "../services/userProgressCache";
 import { pingActivity } from "../services/activityService";
 import {
   loadAssessmentDraft,
@@ -202,7 +202,7 @@ export default function AssessmentScreen({ selectedRole, selectedSkills, uid, on
     }
     (async () => {
       try {
-        const saved = await loadSavedAssessmentResult(uid);
+        const saved = await getCachedAssessmentResult(uid);
         if (saved) {
           // Found a previously completed attempt — show IT, don't
           // generate a new one. Loads straight into the results view.
@@ -290,6 +290,12 @@ export default function AssessmentScreen({ selectedRole, selectedSkills, uid, on
       setEvaluation(evalResult);
       setSubmitted(true);
       if (uid) clearAssessmentDraft(uid); // server now holds the real saved result — local draft no longer needed
+      // The saved assessment result just changed server-side for this
+      // uid — drop the shared cache (services/userProgressCache.js) so
+      // every other screen (Career Status, Profile Dashboard, etc.)
+      // picks up the new result instead of serving a stale/empty one
+      // for up to the cache's 30s TTL.
+      invalidateUserProgress(uid);
     } catch (err) {
       setErrorMessage(
         err?.response?.data?.error || err.message || "Something went wrong scoring your assessment."
@@ -312,6 +318,7 @@ export default function AssessmentScreen({ selectedRole, selectedSkills, uid, on
       // RoadmapScreen.jsx which only has the saved role TITLE to work with.
       const roadmapResult = await generateRoadmap(evalResult, uid, roleTitle, selectedRole);
       setRoadmap(roadmapResult);
+      invalidateUserProgress(uid); // roadmap just changed server-side too — same reasoning as above
     } catch (err) {
       setRoadmapError(err.message || "Couldn't generate your roadmap.");
     } finally {
@@ -339,6 +346,7 @@ export default function AssessmentScreen({ selectedRole, selectedSkills, uid, on
       // RoadmapScreen.jsx which only has the saved role TITLE to work with.
       const result = await generateRoadmap(evaluation, uid, roleTitle, selectedRole);
       setRoadmap(result);
+      invalidateUserProgress(uid); // roadmap just changed server-side — see handleSubmit's comment above
     } catch (err) {
       setRoadmapError(err.message || "Couldn't generate your roadmap.");
     } finally {

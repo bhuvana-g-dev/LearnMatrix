@@ -5,7 +5,8 @@ import { COLORS, GRADIENTS, GLASS_CARD } from "../constants/theme";
 import { ROLES } from "../constants/roles";
 import RoadmapDisplay from "../components/roadmap/RoadmapDisplay";
 import QuitRoleModal from "../components/roadmap/QuitRoleModal";
-import { loadSavedRoadmap, loadSavedAssessmentResult, quitRole } from "../services/aiAssessmentService";
+import { quitRole } from "../services/aiAssessmentService";
+import { getCachedRoadmap, getCachedAssessmentResult, invalidateUserProgress } from "../services/userProgressCache";
 import { getCompressedRoleSyllabus } from "../services/syllabusService";
 
 /**
@@ -53,7 +54,7 @@ export default function RoadmapScreen({
     }
     if (!silent) setState("loading");
     try {
-      const result = await loadSavedRoadmap(uid);
+      const result = await getCachedRoadmap(uid);
       if (result === null) {
         setState("empty");
       } else {
@@ -99,7 +100,7 @@ export default function RoadmapScreen({
     let cancelled = false;
     (async () => {
       try {
-        const savedAssessment = await loadSavedAssessmentResult(uid);
+        const savedAssessment = await getCachedAssessmentResult(uid);
         if (!savedAssessment || !savedAssessment.evaluation) return;
 
         // savedAssessment.role is stored as the role TITLE (e.g.
@@ -130,6 +131,11 @@ export default function RoadmapScreen({
     // careerPath state (App.jsx), then sends the student back to
     // Role Selection — the ONLY path there once a role is chosen.
     await quitRole(uid);
+    // Drop the shared roadmap/assessment cache (services/userProgressCache.js)
+    // for this uid too — otherwise every OTHER screen (Profile Dashboard,
+    // Career Status, Skill Progress, etc.) would keep serving the
+    // just-quit role's cached data until the TTL expires.
+    invalidateUserProgress(uid);
     setShowQuitModal(false);
     // Clear the lifted cache too — otherwise the NEXT role's fresh
     // RoadmapScreen mount would see a stale cachedRoadmap from the role

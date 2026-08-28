@@ -7,7 +7,7 @@ import {
 import { COLORS, GRADIENTS, GLASS_CARD } from "../constants/theme";
 import { ROLES } from "../constants/roles";
 import RoleSelectionScreen from "./RoleSelectionScreen";
-import { loadSavedAssessmentResult, loadSavedRoadmap } from "../services/aiAssessmentService";
+import { getCachedAssessmentResult, getCachedRoadmap } from "../services/userProgressCache";
 import { getActivity } from "../services/activityService";
 
 const PACE_STYLES = {
@@ -63,8 +63,8 @@ export default function CareerStatusScreen({
     setCheckError(false);
     try {
       const [assessment, savedRoadmap, dates] = await Promise.all([
-        loadSavedAssessmentResult(uid),
-        loadSavedRoadmap(uid),
+        getCachedAssessmentResult(uid),
+        getCachedRoadmap(uid),
         getActivity(uid).catch(() => []), // streak is a nice-to-have, never block the page on it
       ]);
       if (assessment) {

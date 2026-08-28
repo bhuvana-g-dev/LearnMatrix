@@ -183,10 +183,17 @@ export default function ResourceBankScreen({ admin }) {
       const data = await fetchResources({
         skill: filterSkill || undefined,
         band: filterBand || undefined,
-        status: filterStatus || undefined,
+        // Explicitly "verified + rejected" (matching the Status
+        // dropdown's default label below), never left unset. Leaving
+        // this unset used to mean "every status, including pending" —
+        // which read every pending document here on TOP of the
+        // separate loadPending() call reading them again right below.
+        // Being explicit means pending is never fetched by this call
+        // at all, so it's only ever read once per page load.
+        status: filterStatus || "verified,rejected",
       });
-      // Pending is shown in its own section below — exclude it here so
-      // a resource doesn't appear twice while awaiting review.
+      // Backend now guarantees no "pending" in this response (see
+      // above) — kept as a cheap defensive filter, not load-bearing.
       setResources((data || []).filter((r) => r.status !== "pending"));
     } catch (err) {
       setError(err.message || "Couldn't load resources.");

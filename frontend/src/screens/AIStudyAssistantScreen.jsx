@@ -74,7 +74,7 @@ import {
 } from "../services/pptService";
 import { generateMindMap } from "../services/mindmapService";
 import { generateAudioOverview, synthesizeAudioForScript } from "../services/audioOverviewService";
-import { generateSlideDeckPreview, downloadDeckContentPptx, downloadDeckContentPdf, getSlideDeckPremiumStatus, generateSlideDeckPremium } from "../services/slideDeckService";
+import { generateSlideDeckPreview, downloadDeckContentPptx, downloadDeckContentPdf } from "../services/slideDeckService";
 import { listStudioArtifacts, getStudioArtifact, saveStudioArtifact } from "../services/studioService";
 import { getUserProfile } from "../services/profileService";
 import { COLORS, GRADIENTS } from "../constants/theme";
@@ -164,21 +164,6 @@ export default function AIStudyAssistantScreen({ uid }) {
   // custom-input modal is generating for
   const [customTarget, setCustomTarget] = useState(null);
   const [customText, setCustomText] = useState("");
-  // Whether to use the premium Gamma-powered path for Slide Deck's
-  // "Type" mode (see services/gamma_service.py) instead of our own
-  // SlideDeckAgent + renderer. usePremiumDeck only ever matters when
-  // premiumDeckAvailable is true, which itself only becomes true if
-  // the backend has GAMMA_API_KEY configured — otherwise the option
-  // is never shown and generation always uses the free path.
-  const [premiumDeckAvailable, setPremiumDeckAvailable] = useState(false);
-  const [usePremiumDeck, setUsePremiumDeck] = useState(false);
-
-  useEffect(() => {
-    getSlideDeckPremiumStatus()
-      .then(setPremiumDeckAvailable)
-      .catch(() => setPremiumDeckAvailable(false));
-  }, []);
-
 
   async function refreshSessions() {
     try {
@@ -639,22 +624,6 @@ export default function AIStudyAssistantScreen({ uid }) {
         setStudioLoading(false);
       }
     } else if (customTarget === "slidedeck") {
-      // Premium (Gamma) is a one-shot file download — it has no
-      // in-app preview step (see routes/slidedeck_routes.py's
-      // /generate-premium docstring), unlike the free path below.
-      if (usePremiumDeck && premiumDeckAvailable) {
-        setStudioLoading(true);
-        setStudioError("");
-        try {
-          await generateSlideDeckPremium(text, "this topic", pptFormat === "pdf" ? "pdf" : "pptx");
-          closeStudioModal();
-        } catch (err) {
-          setStudioError(err.message || "Couldn't generate the premium slide deck.");
-        } finally {
-          setStudioLoading(false);
-        }
-        return;
-      }
       setStudioLoading(true);
       setStudioModal("slidedeck-preview");
       try {
@@ -1163,9 +1132,6 @@ export default function AIStudyAssistantScreen({ uid }) {
                 loading={customTarget === "slidedeck" ? pptLoading : studioLoading}
                 pptFormat={pptFormat}
                 onPptFormatChange={setPptFormat}
-                premiumDeckAvailable={premiumDeckAvailable}
-                usePremiumDeck={usePremiumDeck}
-                onUsePremiumDeckChange={setUsePremiumDeck}
               />
             ) : studioLoading ? (
               <div className="flex items-center justify-center py-16">
@@ -1668,7 +1634,7 @@ function StudioModal({ children, onClose, wide, fullScreen }) {
   );
 }
 
-function CustomInputBody({ target, text, onChange, onGenerate, error, loading, pptFormat, onPptFormatChange, premiumDeckAvailable, usePremiumDeck, onUsePremiumDeckChange }) {
+function CustomInputBody({ target, text, onChange, onGenerate, error, loading, pptFormat, onPptFormatChange }) {
   const titles = {
     mindmap: "Type a topic for your Mind Map",
     audio: "Type a topic for your Audio Overview",
@@ -1684,21 +1650,6 @@ function CustomInputBody({ target, text, onChange, onGenerate, error, loading, p
         Paste notes, or just describe what you want covered.
       </p>
       {target === "slidedeck" && <FormatToggle value={pptFormat} onChange={onPptFormatChange} />}
-      {/* Only ever shown when the backend actually has GAMMA_API_KEY
-       * configured (see useEffect -> getSlideDeckPremiumStatus in the
-       * parent) — an unconfigured deployment never sees this at all,
-       * so nothing changes for a plain checkout of this project. */}
-      {target === "slidedeck" && premiumDeckAvailable && (
-        <label className="flex items-center gap-2 text-xs mb-4 select-none" style={{ color: COLORS.textDark }}>
-          <input
-            type="checkbox"
-            checked={usePremiumDeck}
-            onChange={(e) => onUsePremiumDeckChange(e.target.checked)}
-          />
-          <span className="font-semibold">Premium (Gamma)</span>
-          <span style={{ color: COLORS.textLight }}>— richer AI-designed deck, no in-app preview, downloads directly</span>
-        </label>
-      )}
       <textarea
         value={text}
         onChange={(e) => onChange(e.target.value)}

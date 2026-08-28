@@ -82,11 +82,6 @@ export const ENDPOINTS = {
   SLIDEDECK: {
     // backend/routes/slidedeck_routes.py — AI-expands a typed prompt into full deck content
     GENERATE: "/slidedeck/generate", // POST {text, label?, uid?, sessionId?} -> {title, summary, sections, keyTakeaways}
-    // Optional premium path — Gamma designs + renders the deck server-side.
-    // /premium-status tells the frontend whether GAMMA_API_KEY is configured
-    // at all before offering the option; unconfigured servers just skip it.
-    PREMIUM_STATUS: "/slidedeck/premium-status", // GET -> {available}
-    GENERATE_PREMIUM: "/slidedeck/generate-premium", // POST {text, label?, format?} -> binary pptx/pdf (Gamma-generated)
   },
   MINDMAP: {
     // backend/routes/mindmap_routes.py — stateless, structures text into a mind map

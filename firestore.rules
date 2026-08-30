@@ -1,0 +1,38 @@
+rules_version = '2';
+
+// This project didn't have a committed rules file at all, which for a
+// brand-new Firestore database usually means either the wide-open
+// "allow read, write: if true" test-mode default, or (if that grace
+// period already expired) everything locked closed — neither is
+// intentional. This file makes the real policy explicit and
+// deployable (`firebase deploy --only firestore:rules`).
+//
+// Everything in this backend is READ/WRITTEN SERVER-SIDE via the
+// Firebase Admin SDK (backend/firebase/firebase_config.py) — the
+// Admin SDK always bypasses these rules entirely, so none of the
+// collections the Flask API touches (roadmaps, assessment_results,
+// ai_chat_history, chat_sources, flashcard_sets, topic_quiz_*,
+// learning_activity, certificates, questions, learning_resources,
+// learning_notes, skill_topics, role_skill_mapping,
+// ai_generated_questions, lesson_plans, ...) need a rule here for the
+// app to keep working. These rules only govern the ONE thing the
+// client touches directly: frontend/src/services/userProfileService.js
+// reading/writing users/{uid} straight from the browser via the
+// Firebase client SDK.
+//
+// Default-deny everything else, so any future direct-from-client
+// Firestore usage fails closed (and shows up loudly in testing) until
+// someone deliberately adds a rule for it here, instead of silently
+// inheriting test-mode's "allow everyone" default.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    match /users/{uid} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

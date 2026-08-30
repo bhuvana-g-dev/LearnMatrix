@@ -96,16 +96,19 @@ export default function ResourceBankScreen({ admin }) {
   const [error, setError] = useState("");
   const [activeTab, setActiveTab] = useState("practice");
 
-  // Filter bar: Role -> Skill -> Band, plus Status. Band is a fixed
-  // 4-value list, not fetched from anywhere.
+  // Search constraints are deliberately just Role + Classification
+  // (Band = fundamentals/application/advanced/polish) — the two fixed,
+  // enumerable dimensions that matter for finding resources. Skill and
+  // Status aren't exposed as search fields; Role is resolved to its
+  // skill set (roleSkillSet) and applied client-side since the backend
+  // filters by skill, not role. Status is always "verified,rejected"
+  // (never pending — that's the separate Pending Review queue above).
   const [roles, setRoles] = useState([]);
   const [rolesLoading, setRolesLoading] = useState(true);
   const [filterRole, setFilterRole] = useState("");
-  const [filterSkillsForRole, setFilterSkillsForRole] = useState([]);
-  const [filterSkillsLoading, setFilterSkillsLoading] = useState(false);
-  const [filterSkill, setFilterSkill] = useState("");
+  const [roleSkillSet, setRoleSkillSet] = useState(null); // null = no role filter active
+  const [roleSkillsLoading, setRoleSkillsLoading] = useState(false);
   const [filterBand, setFilterBand] = useState("");
-  const [filterStatus, setFilterStatus] = useState("");
 
   const [showFormModal, setShowFormModal] = useState(false);
   const [editingResource, setEditingResource] = useState(null); // null = Add mode
@@ -144,21 +147,22 @@ export default function ResourceBankScreen({ admin }) {
     return () => { cancelled = true; };
   }, []);
 
-  // ---- Filter bar: Role -> Skill -> Band ----
+  // ---- Filter bar: Role -> (resolved to its skill set) + Band ----
 
   const handleFilterRoleChange = async (roleId) => {
     setFilterRole(roleId);
-    setFilterSkill("");
-    setFilterSkillsForRole([]);
-    if (!roleId) return;
-    setFilterSkillsLoading(true);
+    if (!roleId) {
+      setRoleSkillSet(null);
+      return;
+    }
+    setRoleSkillsLoading(true);
     try {
       const categories = await getSkillsByRole(roleId);
-      setFilterSkillsForRole(Object.values(categories || {}).flat());
+      setRoleSkillSet(Object.values(categories || {}).flat());
     } catch {
-      setFilterSkillsForRole([]);
+      setRoleSkillSet([]);
     } finally {
-      setFilterSkillsLoading(false);
+      setRoleSkillsLoading(false);
     }
   };
 
@@ -187,26 +191,18 @@ export default function ResourceBankScreen({ admin }) {
     setError("");
     try {
       const data = await fetchResources({
-        skill: filterSkill || undefined,
         band: filterBand || undefined,
-        // Explicitly "verified + rejected" (matching the Status
-        // dropdown's default label below), never left unset. Leaving
-        // this unset used to mean "every status, including pending" —
-        // which read every pending document here on TOP of the
-        // separate loadPending() call reading them again right below.
-        // Being explicit means pending is never fetched by this call
-        // at all, so it's only ever read once per page load.
-        status: filterStatus || "verified,rejected",
+        // Always "verified + rejected" — pending is read separately by
+        // loadPending() below and never belongs in this table.
+        status: "verified,rejected",
       });
-      // Backend now guarantees no "pending" in this response (see
-      // above) — kept as a cheap defensive filter, not load-bearing.
       setResources((data || []).filter((r) => r.status !== "pending"));
     } catch (err) {
       setError(err.message || "Couldn't load resources.");
     } finally {
       setLoading(false);
     }
-  }, [filterSkill, filterBand, filterStatus]);
+  }, [filterBand]);
 
   const loadPending = useCallback(async () => {
     setPendingLoading(true);
@@ -229,8 +225,7 @@ export default function ResourceBankScreen({ admin }) {
   }, [loadPending]);
 
   const clearFilters = () => {
-    setFilterRole(""); setFilterSkill(""); setFilterSkillsForRole([]);
-    setFilterBand(""); setFilterStatus("");
+    setFilterRole(""); setRoleSkillSet(null); setFilterBand("");
   };
 
   const openAddModal = () => {
@@ -423,7 +418,9 @@ export default function ResourceBankScreen({ admin }) {
     }
   };
 
-  const visibleResources = resources.filter((r) => effectiveCategory(r) === activeTab);
+  const visibleResources = resources
+    .filter((r) => effectiveCategory(r) === activeTab)
+    .filter((r) => !roleSkillSet || roleSkillSet.includes(r.skill));
 
   return (
     <div className="px-4 sm:px-8 pt-8 pb-12">
@@ -678,9 +675,9 @@ export default function ResourceBankScreen({ admin }) {
         })}
       </div>
 
-      {/* Filter bar: Role -> Skill -> Band, plus Status. Grouped into a
-          single labeled card so each control's purpose is clear at a
-          glance, with one always-visible Clear action. */}
+      {/* Search constraints: Role + Classification (Band) only — the
+          two fixed, enumerable fields, per the request to drop Skill
+          text-matching and Status from what's searchable here. */}
       <div className="flex flex-wrap items-end gap-3 mb-4" style={{ ...GLASS_CARD, borderRadius: 16, padding: 14 }}>
         <div className="flex items-center gap-1.5 mr-1" style={{ color: COLORS.textLight }}>
           <Filter size={13} />
@@ -693,66 +690,38 @@ export default function ResourceBankScreen({ admin }) {
             onChange={(e) => handleFilterRoleChange(e.target.value)}
             disabled={rolesLoading}
             className="text-sm px-3 py-2 rounded-lg outline-none"
-            style={{ border: `1px solid ${COLORS.border}`, background: "#fff", color: filterRole ? COLORS.textDark : COLORS.textLight, minWidth: 160 }}
+            style={{ border: `1px solid ${COLORS.border}`, background: "#fff", color: filterRole ? COLORS.textDark : COLORS.textLight, minWidth: 200 }}
           >
-            <option value="">{rolesLoading ? "Loading roles…" : "All roles"}</option>
+            <option value="">{rolesLoading ? "Loading roles…" : roleSkillsLoading ? "Loading…" : "All roles"}</option>
             {roles.map((r) => (
               <option key={r.id} value={r.id}>{r.title || r.id}</option>
             ))}
           </select>
         </div>
         <div className="flex flex-col gap-1">
-          <label className="text-[11px] font-semibold" style={{ color: COLORS.textLight }}>Skill</label>
-          <select
-            value={filterSkill}
-            onChange={(e) => setFilterSkill(e.target.value)}
-            disabled={!filterRole || filterSkillsLoading}
-            className="text-sm px-3 py-2 rounded-lg outline-none"
-            style={{ border: `1px solid ${COLORS.border}`, background: "#fff", color: filterSkill ? COLORS.textDark : COLORS.textLight, opacity: filterRole ? 1 : 0.6, minWidth: 160 }}
-          >
-            <option value="">{!filterRole ? "Select a role first" : filterSkillsLoading ? "Loading skills…" : "All skills"}</option>
-            {filterSkillsForRole.map((skill) => (
-              <option key={skill} value={skill}>{skill}</option>
-            ))}
-          </select>
-        </div>
-        <div className="flex flex-col gap-1">
-          <label className="text-[11px] font-semibold" style={{ color: COLORS.textLight }}>Band</label>
+          <label className="text-[11px] font-semibold" style={{ color: COLORS.textLight }}>Classification</label>
           <select
             value={filterBand}
             onChange={(e) => setFilterBand(e.target.value)}
             className="text-sm px-3 py-2 rounded-lg outline-none"
-            style={{ border: `1px solid ${COLORS.border}`, background: "#fff", color: filterBand ? COLORS.textDark : COLORS.textLight, minWidth: 140 }}
+            style={{ border: `1px solid ${COLORS.border}`, background: "#fff", color: filterBand ? COLORS.textDark : COLORS.textLight, minWidth: 160 }}
           >
-            <option value="">All bands</option>
+            <option value="">All classifications</option>
             {BANDS.map((b) => (
               <option key={b} value={b}>{BAND_LABELS[b]}</option>
             ))}
           </select>
         </div>
-        <div className="flex flex-col gap-1">
-          <label className="text-[11px] font-semibold" style={{ color: COLORS.textLight }}>Status</label>
-          <select
-            value={filterStatus}
-            onChange={(e) => setFilterStatus(e.target.value)}
-            className="text-sm px-3 py-2 rounded-lg outline-none"
-            style={{ border: `1px solid ${COLORS.border}`, background: "#fff", minWidth: 160 }}
-          >
-            <option value="">Verified + Rejected</option>
-            <option value="verified">Verified only</option>
-            <option value="rejected">Rejected only</option>
-          </select>
-        </div>
         <button
           onClick={clearFilters}
-          disabled={!(filterRole || filterSkill || filterBand || filterStatus)}
+          disabled={!(filterRole || filterBand)}
           className="flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg"
           style={{
-            color: (filterRole || filterSkill || filterBand || filterStatus) ? "#DC2626" : COLORS.textLight,
+            color: (filterRole || filterBand) ? "#DC2626" : COLORS.textLight,
             background: "none",
-            border: `1px solid ${(filterRole || filterSkill || filterBand || filterStatus) ? "#DC2626" : COLORS.border}`,
-            cursor: (filterRole || filterSkill || filterBand || filterStatus) ? "pointer" : "default",
-            opacity: (filterRole || filterSkill || filterBand || filterStatus) ? 1 : 0.5,
+            border: `1px solid ${(filterRole || filterBand) ? "#DC2626" : COLORS.border}`,
+            cursor: (filterRole || filterBand) ? "pointer" : "default",
+            opacity: (filterRole || filterBand) ? 1 : 0.5,
           }}
         >
           <X size={13} /> Clear filters

@@ -1,16 +1,23 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Menu } from "lucide-react";
-import PageShell from "../layout/PageShell";
 import AdminSidebar from "./AdminSidebar";
 import Logo from "../common/Logo";
-import { COLORS, GLASS_CARD } from "../../constants/theme";
+import { COLORS, GLASS_CARD, GRADIENTS } from "../../constants/theme";
 
+// Deliberately NOT using PageShell/FloatingOrbs here. FloatingOrbs
+// renders 5 blurred divs animating with framer-motion's `repeat:
+// Infinity` — continuous GPU/CPU work for as long as the tab stays
+// open. That's fine for a short-lived marketing page, but the admin
+// panel is a long-running, data-dense session (tables, filters,
+// modals) — it's exactly the kind of tab Chrome flags as "using extra
+// resources" when a decorative background never stops animating. A
+// static gradient gives the same visual base with none of the cost.
 export default function AdminDashboardLayout({ activeKey, onNavigate, onLogout, children }) {
   const [mobileOpen, setMobileOpen] = useState(false);
 
   return (
-    <PageShell>
+    <div style={{ minHeight: "100vh", width: "100%", background: GRADIENTS.pageBg }}>
       <div className="flex" style={{ minHeight: "100vh" }}>
         {/* Desktop sidebar */}
         <aside
@@ -79,6 +86,6 @@ export default function AdminDashboardLayout({ activeKey, onNavigate, onLogout, 
           {children}
         </div>
       </div>
-    </PageShell>
+    </div>
   );
 }

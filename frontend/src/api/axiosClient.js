@@ -1,4 +1,5 @@
 import axios from "axios";
+import { auth } from "../firebase";
 
 /**
  * Centralized Axios instance.
@@ -22,11 +23,25 @@ const apiClient = axios.create({
   },
 });
 
-// Attach a Firebase/Flask auth token automatically once real auth is wired in.
-apiClient.interceptors.request.use((config) => {
-  const token = localStorage.getItem("lm_auth_token");
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
+// Attach a fresh Firebase ID token to every request. Backend routes
+// that take a <uid> (chat, roadmap, flashcards, activity, ...) now
+// verify this token server-side and reject it if it doesn't belong to
+// the uid being requested (utils/user_auth.py) — so this interceptor
+// reading `auth.currentUser` live (instead of a possibly-stale cached
+// string) is what makes those checks actually pass for real users.
+// Async interceptors are supported by axios — it awaits this before
+// sending the request.
+apiClient.interceptors.request.use(async (config) => {
+  const currentUser = auth.currentUser;
+  if (currentUser) {
+    try {
+      const token = await currentUser.getIdToken();
+      config.headers.Authorization = `Bearer ${token}`;
+    } catch {
+      // Non-fatal — request still goes out without a token, and any
+      // route that requires one will reject it with a clear 401
+      // instead of this silently retrying forever.
+    }
   }
   return config;
 });

@@ -20,6 +20,12 @@ class Settings:
     FLASK_ENV: str = os.getenv("FLASK_ENV", "development")
     DEBUG: bool = os.getenv("FLASK_DEBUG", "True") == "True"
     PORT: int = int(os.getenv("PORT", 5000))
+    # Hard cap on every incoming request body (Flask rejects anything
+    # bigger with a 413 before it's read into memory at all) — was
+    # unset before, so nothing stopped an oversized upload/JSON body
+    # from being read fully into memory first. 20MB gives a little
+    # headroom above CHAT_SOURCE_MAX_FILE_MB (15) for multipart overhead.
+    MAX_CONTENT_LENGTH_MB: int = int(os.getenv("MAX_CONTENT_LENGTH_MB", 20))
 
     # --- CORS ---
     # Comma-separated list of allowed frontend origins. localhost for
@@ -327,6 +333,15 @@ class Settings:
     CHAT_CHUNK_SIZE_WORDS: int = int(os.getenv("CHAT_CHUNK_SIZE_WORDS", 250))
     CHAT_CHUNK_OVERLAP_WORDS: int = int(os.getenv("CHAT_CHUNK_OVERLAP_WORDS", 40))
     CHAT_RETRIEVAL_TOP_K: int = int(os.getenv("CHAT_RETRIEVAL_TOP_K", 4))
+    # NOTE: this was defined but never actually enforced anywhere — no
+    # route checked it, and Flask had no MAX_CONTENT_LENGTH set either,
+    # so a client could upload an arbitrarily large file straight into
+    # memory before extract_text() ever ran. Now enforced two ways: (1)
+    # MAX_CONTENT_LENGTH_MB below is a hard Flask-level cap on every
+    # request body, so an oversized upload gets rejected before it's
+    # even fully read into memory; (2) upload_chat_source_route also
+    # checks this exact per-source limit for a specific, friendly error
+    # message rather than the generic 413 (1) produces.
     CHAT_SOURCE_MAX_FILE_MB: int = int(os.getenv("CHAT_SOURCE_MAX_FILE_MB", 15))
 
     # --- Flashcards (agents/flashcard_agent.py) ---

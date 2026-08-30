@@ -13,15 +13,21 @@ that's safe to do on every read instead of needing a separate
 "complete" endpoint.
 """
 
-from flask import Blueprint
+import logging
+
+from flask import Blueprint, request
 
 from services.certificate_service import get_certificate_with_live_status
 from utils.response_helper import success_response, error_response
+from utils.user_auth import require_owner
+
+logger = logging.getLogger(__name__)
 
 certificate_bp = Blueprint("certificate", __name__)
 
 
 @certificate_bp.route("/certificates/<uid>", methods=["GET"])
+@require_owner()
 def get_certificate_route(uid):
     try:
         certificate = get_certificate_with_live_status(uid)
@@ -32,4 +38,5 @@ def get_certificate_route(uid):
             )
         return success_response(data=certificate, message="Certificate loaded.")
     except Exception as exc:  # noqa: BLE001
+        logger.exception("Unhandled error in %s", request.path)
         return error_response(str(exc), status_code=500)

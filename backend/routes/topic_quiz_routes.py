@@ -34,6 +34,8 @@ POST /api/revisions/<uid>/<skill>/<topic>/snooze -> pushes that topic's
      NextReviewDate forward by one day, without requiring a quiz retake.
 """
 
+import logging
+
 from flask import Blueprint, request
 
 from services.topic_quiz_service import (
@@ -41,6 +43,9 @@ from services.topic_quiz_service import (
     get_topic_progress, get_topic_quiz_attempt, TopicQuizError,
 )
 from utils.response_helper import success_response, error_response
+from utils.user_auth import require_owner, require_owner_body
+
+logger = logging.getLogger(__name__)
 
 topic_quiz_bp = Blueprint("topic_quiz", __name__)
 
@@ -56,10 +61,12 @@ def get_topic_quiz_route(skill, topic):
     except TopicQuizError as exc:
         return error_response(str(exc), status_code=422)
     except Exception as exc:  # noqa: BLE001
+        logger.exception("Unhandled error in %s", request.path)
         return error_response(str(exc), status_code=500)
 
 
 @topic_quiz_bp.route("/topic-quiz/<skill>/<topic>/attempt", methods=["GET"])
+@require_owner(source="query")
 def get_topic_quiz_attempt_route(skill, topic):
     """Review data for the learner's most recent attempt at this topic's
     quiz — data: null (success: true) means no attempt yet, so the
@@ -74,10 +81,12 @@ def get_topic_quiz_attempt_route(skill, topic):
         message = "Prior attempt found." if attempt else "No prior attempt for this topic."
         return success_response(data=attempt, message=message)
     except Exception as exc:  # noqa: BLE001
+        logger.exception("Unhandled error in %s", request.path)
         return error_response(str(exc), status_code=500)
 
 
 @topic_quiz_bp.route("/topic-quiz/<skill>/<topic>/submit", methods=["POST"])
+@require_owner_body()
 def submit_topic_quiz_route(skill, topic):
     payload = request.get_json(silent=True) or {}
     uid = payload.get("uid")
@@ -102,29 +111,35 @@ def submit_topic_quiz_route(skill, topic):
     except TopicQuizError as exc:
         return error_response(str(exc), status_code=422)
     except Exception as exc:  # noqa: BLE001
+        logger.exception("Unhandled error in %s", request.path)
         return error_response(str(exc), status_code=500)
 
 
 @topic_quiz_bp.route("/topic-quiz/<uid>/progress", methods=["GET"])
+@require_owner()
 def get_topic_progress_route(uid):
     try:
         progress = get_topic_progress(uid=uid)
         return success_response(data=progress, message=f"{len(progress)} topic(s) with recorded progress.")
     except Exception as exc:  # noqa: BLE001
+        logger.exception("Unhandled error in %s", request.path)
         return error_response(str(exc), status_code=500)
 
 
 @topic_quiz_bp.route("/revisions/<uid>", methods=["GET"])
+@require_owner()
 def get_due_revisions_route(uid):
     try:
         result = get_due_revisions(uid=uid)
         total = len(result["due"]) + len(result["upcoming"])
         return success_response(data=result, message=f"{total} revision(s) found.")
     except Exception as exc:  # noqa: BLE001
+        logger.exception("Unhandled error in %s", request.path)
         return error_response(str(exc), status_code=500)
 
 
 @topic_quiz_bp.route("/revisions/<uid>/<skill>/<topic>/snooze", methods=["POST"])
+@require_owner()
 def snooze_revision_route(uid, skill, topic):
     try:
         progress = snooze_topic_revision(uid=uid, skill=skill, topic=topic)
@@ -132,4 +147,5 @@ def snooze_revision_route(uid, skill, topic):
     except TopicQuizError as exc:
         return error_response(str(exc), status_code=422)
     except Exception as exc:  # noqa: BLE001
+        logger.exception("Unhandled error in %s", request.path)
         return error_response(str(exc), status_code=500)

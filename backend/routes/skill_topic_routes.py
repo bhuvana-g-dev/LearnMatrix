@@ -14,6 +14,8 @@ and dots included). The frontend already has these exact strings in
 constants/skills.js, so no slug/encoding layer is introduced here.
 """
 
+import logging
+
 from flask import Blueprint, request
 
 from firebase.firebase_config import get_firestore_client
@@ -24,6 +26,8 @@ from services.skill_topic_service import (
 )
 from services.syllabus_compression_service import get_compressed_role_syllabus
 from utils.response_helper import success_response, error_response
+
+logger = logging.getLogger(__name__)
 
 skill_topic_bp = Blueprint("skill_topics", __name__)
 
@@ -38,6 +42,7 @@ def get_skill_topics(skill: str):
             message="Skill topics fetched successfully.",
         )
     except Exception as exc:  # noqa: BLE001 - single top-level guard per route
+        logger.exception("Unhandled error in %s", request.path)
         return error_response(str(exc), status_code=500)
 
 
@@ -50,6 +55,7 @@ def get_role_syllabus(role_id: str):
     except SkillTopicError as exc:
         return error_response(str(exc), status_code=404)
     except Exception as exc:  # noqa: BLE001
+        logger.exception("Unhandled error in %s", request.path)
         return error_response(str(exc), status_code=500)
 
 
@@ -81,4 +87,5 @@ def get_compressed_role_syllabus_route(role_id: str):
     except SkillTopicError as exc:
         return error_response(str(exc), status_code=404)
     except Exception as exc:  # noqa: BLE001
+        logger.exception("Unhandled error in %s", request.path)
         return error_response(str(exc), status_code=500)

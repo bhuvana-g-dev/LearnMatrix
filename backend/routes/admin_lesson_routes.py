@@ -22,11 +22,15 @@ Generated Content one.
         id (see services/lesson_service.py) — no other change needed.
 """
 
+import logging
+
 from flask import Blueprint, request
 
 from services.lesson_service import list_lesson_plans, delete_lessons, LessonServiceError
 from utils.admin_auth import require_admin
 from utils.response_helper import success_response, error_response
+
+logger = logging.getLogger(__name__)
 
 admin_lesson_bp = Blueprint("admin_lesson", __name__)
 
@@ -41,6 +45,7 @@ def list_lesson_plans_route():
         )
         return success_response(data=items, message=f"{len(items)} lesson plan(s) found.")
     except Exception as exc:  # noqa: BLE001
+        logger.exception("Unhandled error in %s", request.path)
         return error_response(str(exc), status_code=500)
 
 
@@ -53,4 +58,5 @@ def delete_lesson_plan_route(skill, topic):
     except LessonServiceError as exc:
         return error_response(str(exc), status_code=422)
     except Exception as exc:  # noqa: BLE001
+        logger.exception("Unhandled error in %s", request.path)
         return error_response(str(exc), status_code=500)

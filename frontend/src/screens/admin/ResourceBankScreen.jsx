@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback } from "react";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   Plus, Trash2, Pencil, Pin, PinOff, Eye, EyeOff, Check, X,
-  Youtube, Sparkles, Loader2, Undo2, Zap,
+  Youtube, Sparkles, Loader2, Undo2, Zap, ChevronDown, ChevronUp, Filter,
 } from "lucide-react";
 import { COLORS, GRADIENTS, GLASS_CARD } from "../../constants/theme";
 import {
@@ -117,6 +117,12 @@ export default function ResourceBankScreen({ admin }) {
   const [bandBySkill, setBandBySkill] = useState({}); // skill -> selected band for that section, defaults to "fundamentals"
   const [suggestingKey, setSuggestingKey] = useState(""); // `${skill}:${action}` while a request is in flight, else ""
   const [skillMessages, setSkillMessages] = useState({}); // skill -> { message, error }
+
+  // AI generation is collapsed by default — the page opens on the
+  // stored resource collection (table below), not on the AI panel.
+  // Keeps free-tier AI usage a deliberate opt-in click rather than the
+  // first thing every admin sees on this screen.
+  const [showAIPanel, setShowAIPanel] = useState(false);
 
   const [skillsForRole, setSkillsForRole] = useState([]); // suggest-panel skill list for suggestRole
   const [skillsLoading, setSkillsLoading] = useState(false);
@@ -311,6 +317,11 @@ export default function ResourceBankScreen({ admin }) {
   const setSkillMsg = (skill, patch) =>
     setSkillMessages((m) => ({ ...m, [skill]: { message: "", error: "", ...m[skill], ...patch } }));
 
+  // Explicit dismiss for a single skill's result banner — previously
+  // the only way to clear it was to trigger another generation.
+  const dismissSkillMsg = (skill) =>
+    setSkillMessages((m) => ({ ...m, [skill]: { message: "", error: "" } }));
+
   const bandFor = (skill) => bandBySkill[skill] || "fundamentals";
 
   const handleSuggest = async (skill, via) => {
@@ -440,9 +451,36 @@ export default function ResourceBankScreen({ admin }) {
       {/* Generate suggestions: real YouTube search + AI-suggested docs/articles/github/etc.
           Scoped to Role -> Skill, each skill section has its own Band
           picker (fundamentals/application/advanced/polish) — no topic
-          anywhere, no dependency on a seeded topic tree. */}
-      <div className="p-5 mb-6" style={{ ...GLASS_CARD, borderRadius: 20 }}>
-        <p className="text-sm font-bold mb-3" style={{ color: COLORS.textDark }}>Generate Suggestions</p>
+          anywhere, no dependency on a seeded topic tree.
+          Collapsed by default (see showAIPanel) so opening this screen
+          shows the stored resource collection first, not an AI panel —
+          AI calls stay a deliberate click, not the default view. */}
+      <div className="mb-6" style={{ ...GLASS_CARD, borderRadius: 20, overflow: "hidden" }}>
+        <button
+          onClick={() => setShowAIPanel((v) => !v)}
+          className="w-full flex items-center justify-between gap-3 p-5"
+          style={{ background: "none", border: "none", cursor: "pointer", textAlign: "left" }}
+        >
+          <span>
+            <span className="text-sm font-bold block" style={{ color: COLORS.textDark }}>
+              <Sparkles size={14} style={{ display: "inline", marginRight: 6, verticalAlign: -2 }} />
+              Generate Suggestions (AI / YouTube)
+            </span>
+            <span className="text-xs block mt-0.5" style={{ color: COLORS.textLight }}>
+              {showAIPanel ? "Uses AI calls — collapse when you're done." : "Optional — expand to generate new resources for a skill."}
+            </span>
+          </span>
+          {showAIPanel ? <ChevronUp size={18} color={COLORS.textMid} /> : <ChevronDown size={18} color={COLORS.textMid} />}
+        </button>
+        <AnimatePresence>
+        {showAIPanel && (
+        <motion.div
+          initial={{ opacity: 0, height: 0 }}
+          animate={{ opacity: 1, height: "auto" }}
+          exit={{ opacity: 0, height: 0 }}
+          style={{ overflow: "hidden" }}
+        >
+        <div className="px-5 pb-5">
         {suggestError2 && (
           <p className="text-xs font-semibold mb-2" style={{ color: "#DC2626" }}>{suggestError2}</p>
         )}
@@ -539,8 +577,21 @@ export default function ResourceBankScreen({ admin }) {
                     Generate &amp; Publish Now
                   </motion.button>
                 </div>
-                {msg.error && <p className="text-xs mt-2 font-medium" style={{ color: "#DC2626" }}>{msg.error}</p>}
-                {msg.message && <p className="text-xs mt-2 font-medium" style={{ color: COLORS.textMid }}>{msg.message}</p>}
+                {(msg.error || msg.message) && (
+                  <div className="flex items-start justify-between gap-2 mt-2">
+                    <p className="text-xs font-medium" style={{ color: msg.error ? "#DC2626" : COLORS.textMid }}>
+                      {msg.error || msg.message}
+                    </p>
+                    <button
+                      onClick={() => dismissSkillMsg(skill)}
+                      title="Clear this message"
+                      className="flex-shrink-0"
+                      style={{ background: "none", border: "none", cursor: "pointer", color: COLORS.textLight }}
+                    >
+                      <X size={13} />
+                    </button>
+                  </div>
+                )}
               </div>
             );
           })}
@@ -548,6 +599,10 @@ export default function ResourceBankScreen({ admin }) {
             <p className="text-xs" style={{ color: COLORS.textLight }}>No skills found for this role.</p>
           )}
         </div>
+        </div>
+        </motion.div>
+        )}
+        </AnimatePresence>
       </div>
 
       {/* Pending Review queue — preserves the existing pending/verified/rejected workflow */}
@@ -599,66 +654,8 @@ export default function ResourceBankScreen({ admin }) {
         </div>
       )}
 
-      {/* Search bar: Role -> Skill -> Band, plus Status. Band is a fixed
-          4-value dropdown, not fetched from anywhere. */}
-      <div className="flex flex-wrap items-center gap-2.5 mb-4">
-        <select
-          value={filterRole}
-          onChange={(e) => handleFilterRoleChange(e.target.value)}
-          disabled={rolesLoading}
-          className="text-sm px-3 py-2 rounded-lg outline-none"
-          style={{ border: `1px solid ${COLORS.border}`, background: "#fff", color: filterRole ? COLORS.textDark : COLORS.textLight }}
-        >
-          <option value="">{rolesLoading ? "Loading roles…" : "All roles"}</option>
-          {roles.map((r) => (
-            <option key={r.id} value={r.id}>{r.title || r.id}</option>
-          ))}
-        </select>
-        <select
-          value={filterSkill}
-          onChange={(e) => setFilterSkill(e.target.value)}
-          disabled={!filterRole || filterSkillsLoading}
-          className="text-sm px-3 py-2 rounded-lg outline-none"
-          style={{ border: `1px solid ${COLORS.border}`, background: "#fff", color: filterSkill ? COLORS.textDark : COLORS.textLight, opacity: filterRole ? 1 : 0.6 }}
-        >
-          <option value="">{!filterRole ? "Select a role first" : filterSkillsLoading ? "Loading skills…" : "All skills"}</option>
-          {filterSkillsForRole.map((skill) => (
-            <option key={skill} value={skill}>{skill}</option>
-          ))}
-        </select>
-        <select
-          value={filterBand}
-          onChange={(e) => setFilterBand(e.target.value)}
-          className="text-sm px-3 py-2 rounded-lg outline-none"
-          style={{ border: `1px solid ${COLORS.border}`, background: "#fff", color: filterBand ? COLORS.textDark : COLORS.textLight }}
-        >
-          <option value="">All bands</option>
-          {BANDS.map((b) => (
-            <option key={b} value={b}>{BAND_LABELS[b]}</option>
-          ))}
-        </select>
-        <select
-          value={filterStatus}
-          onChange={(e) => setFilterStatus(e.target.value)}
-          className="text-sm px-3 py-2 rounded-lg outline-none"
-          style={{ border: `1px solid ${COLORS.border}`, background: "#fff" }}
-        >
-          <option value="">Verified + Rejected</option>
-          <option value="verified">Verified only</option>
-          <option value="rejected">Rejected only</option>
-        </select>
-        {(filterRole || filterSkill || filterBand || filterStatus) && (
-          <button
-            onClick={clearFilters}
-            className="text-xs font-semibold underline"
-            style={{ color: COLORS.textMid, background: "none", border: "none", cursor: "pointer" }}
-          >
-            Clear filters
-          </button>
-        )}
-      </div>
-
-      {/* Practice / Reference & Reading / Videos tabs */}
+      {/* Practice / Reference & Reading / Videos tabs — the primary
+          view switch, so it comes before the finer-grained filters. */}
       <div className="flex items-center gap-2 mb-4">
         {TABS.map((tab) => {
           const isActive = activeTab === tab.key;
@@ -679,6 +676,87 @@ export default function ResourceBankScreen({ admin }) {
             </button>
           );
         })}
+      </div>
+
+      {/* Filter bar: Role -> Skill -> Band, plus Status. Grouped into a
+          single labeled card so each control's purpose is clear at a
+          glance, with one always-visible Clear action. */}
+      <div className="flex flex-wrap items-end gap-3 mb-4" style={{ ...GLASS_CARD, borderRadius: 16, padding: 14 }}>
+        <div className="flex items-center gap-1.5 mr-1" style={{ color: COLORS.textLight }}>
+          <Filter size={13} />
+          <span className="text-xs font-semibold">Filter</span>
+        </div>
+        <div className="flex flex-col gap-1">
+          <label className="text-[11px] font-semibold" style={{ color: COLORS.textLight }}>Role</label>
+          <select
+            value={filterRole}
+            onChange={(e) => handleFilterRoleChange(e.target.value)}
+            disabled={rolesLoading}
+            className="text-sm px-3 py-2 rounded-lg outline-none"
+            style={{ border: `1px solid ${COLORS.border}`, background: "#fff", color: filterRole ? COLORS.textDark : COLORS.textLight, minWidth: 160 }}
+          >
+            <option value="">{rolesLoading ? "Loading roles…" : "All roles"}</option>
+            {roles.map((r) => (
+              <option key={r.id} value={r.id}>{r.title || r.id}</option>
+            ))}
+          </select>
+        </div>
+        <div className="flex flex-col gap-1">
+          <label className="text-[11px] font-semibold" style={{ color: COLORS.textLight }}>Skill</label>
+          <select
+            value={filterSkill}
+            onChange={(e) => setFilterSkill(e.target.value)}
+            disabled={!filterRole || filterSkillsLoading}
+            className="text-sm px-3 py-2 rounded-lg outline-none"
+            style={{ border: `1px solid ${COLORS.border}`, background: "#fff", color: filterSkill ? COLORS.textDark : COLORS.textLight, opacity: filterRole ? 1 : 0.6, minWidth: 160 }}
+          >
+            <option value="">{!filterRole ? "Select a role first" : filterSkillsLoading ? "Loading skills…" : "All skills"}</option>
+            {filterSkillsForRole.map((skill) => (
+              <option key={skill} value={skill}>{skill}</option>
+            ))}
+          </select>
+        </div>
+        <div className="flex flex-col gap-1">
+          <label className="text-[11px] font-semibold" style={{ color: COLORS.textLight }}>Band</label>
+          <select
+            value={filterBand}
+            onChange={(e) => setFilterBand(e.target.value)}
+            className="text-sm px-3 py-2 rounded-lg outline-none"
+            style={{ border: `1px solid ${COLORS.border}`, background: "#fff", color: filterBand ? COLORS.textDark : COLORS.textLight, minWidth: 140 }}
+          >
+            <option value="">All bands</option>
+            {BANDS.map((b) => (
+              <option key={b} value={b}>{BAND_LABELS[b]}</option>
+            ))}
+          </select>
+        </div>
+        <div className="flex flex-col gap-1">
+          <label className="text-[11px] font-semibold" style={{ color: COLORS.textLight }}>Status</label>
+          <select
+            value={filterStatus}
+            onChange={(e) => setFilterStatus(e.target.value)}
+            className="text-sm px-3 py-2 rounded-lg outline-none"
+            style={{ border: `1px solid ${COLORS.border}`, background: "#fff", minWidth: 160 }}
+          >
+            <option value="">Verified + Rejected</option>
+            <option value="verified">Verified only</option>
+            <option value="rejected">Rejected only</option>
+          </select>
+        </div>
+        <button
+          onClick={clearFilters}
+          disabled={!(filterRole || filterSkill || filterBand || filterStatus)}
+          className="flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg"
+          style={{
+            color: (filterRole || filterSkill || filterBand || filterStatus) ? "#DC2626" : COLORS.textLight,
+            background: "none",
+            border: `1px solid ${(filterRole || filterSkill || filterBand || filterStatus) ? "#DC2626" : COLORS.border}`,
+            cursor: (filterRole || filterSkill || filterBand || filterStatus) ? "pointer" : "default",
+            opacity: (filterRole || filterSkill || filterBand || filterStatus) ? 1 : 0.5,
+          }}
+        >
+          <X size={13} /> Clear filters
+        </button>
       </div>
 
       {/* Main Resource table, filtered to the active tab's types */}

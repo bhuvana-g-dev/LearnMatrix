@@ -251,8 +251,23 @@ def generate_roadmap(
 
     mastered_count = len(mastered)
     not_assessed_count = len(not_assessed_skills)
+    # Continuous, not binary: an assessed-but-not-mastered skill's own
+    # diagnostic score contributes its real share here (e.g. an
+    # Intermediate skill at 47% counts as 47%, not 0%) instead of only
+    # fully-mastered skills counting toward completion. Keeps this
+    # starting value on the same footing as
+    # recompute_mastery_after_topic_progress()'s _skill_progress_fraction,
+    # which continues this same continuous accounting once topic quizzes
+    # start coming in — see that function's docstring for the full
+    # rationale (avoids the number reading as "stuck at 0%" for a
+    # legitimately-progressing learner).
+    skill_percents = (
+        [100.0] * mastered_count
+        + [s["scorePercent"] for s in needs_work]
+        + [0.0] * not_assessed_count
+    )
     course_completion_percent = round(
-        (mastered_count / total_skills * 100) if total_skills else 0.0, 1
+        (sum(skill_percents) / total_skills) if total_skills else 0.0, 1
     )
 
     # Pace framing: mostly-mastered-already reads as "fast track" (short
@@ -401,28 +416,87 @@ def load_saved_roadmap(uid: str) -> dict | None:
 
 # Same bar evaluation_service.py uses for "Strong" on the diagnostic —
 # kept identical so a skill mastered via topic quizzes means the same
-# thing as a skill mastered on the original assessment.
+# thing as a skill mastered on the original assessment. Used ONLY for
+# the discrete "Skills Mastered X/Y" count/badge below — the Overall
+# Progress % (course_completion_percent) is intentionally NOT gated on
+# this threshold, see _skill_progress_fraction()'s docstring.
 SKILL_MASTERY_THRESHOLD_PERCENT = 75
+
+
+def _skill_progress_fraction(db, uid: str, entry: dict) -> float:
+    """
+    Continuous 0-100 "how far along is this ONE skill" score — used to
+    build Overall Progress as a smooth number that moves after every
+    topic quiz, instead of jumping only once a skill fully crosses
+    SKILL_MASTERY_THRESHOLD_PERCENT on every topic (which reads as
+    "stuck at 0%" for a long time even while the learner is genuinely
+    improving).
+
+      - status "mastered"      -> 100
+      - status "not_assessed"  -> 0 (role skill never touched at all)
+      - status "upcoming" (assessed, not yet fully mastered):
+          - if the skill has topic-seed data (services/skill_topic_service
+            — currently "frontend" role skills only): average across
+            every topic, using that topic's own AverageScorePercent
+            where the learner has attempted it, and falling back to the
+            skill's diagnostic scorePercent for topics not attempted yet
+            (so an untouched topic doesn't drag the number down below
+            what the diagnostic already showed — it just doesn't add
+            anything new until attempted).
+          - otherwise (no topic-seed data for this skill) -> just the
+            diagnostic scorePercent, since there's no finer-grained
+            signal available.
+    """
+    status = entry.get("status")
+    if status == "mastered":
+        return 100.0
+    if status == "not_assessed":
+        return 0.0
+
+    baseline = entry.get("scorePercent") or 0.0
+    skill = entry.get("skill")
+
+    from services.skill_topic_service import get_topics_for_skill
+    from services import topic_quiz_repository as topic_repo
+
+    topics = get_topics_for_skill(db, skill)
+    if not topics:
+        return baseline
+
+    all_topic_names = [t["Topic"] if isinstance(t, dict) else t for t in topics]
+    progress_by_topic = {
+        p["Topic"]: p
+        for p in topic_repo.list_progress_by_uid(db, uid)
+        if p.get("Skill") == skill
+    }
+
+    topic_scores = [
+        progress_by_topic[name].get("AverageScorePercent", baseline)
+        if name in progress_by_topic else baseline
+        for name in all_topic_names
+    ]
+    return sum(topic_scores) / len(topic_scores) if topic_scores else baseline
 
 
 def recompute_mastery_after_topic_progress(uid: str, skill: str) -> dict | None:
     """
-    Call after a topic quiz submission. If EVERY topic under `skill` (per
-    services/skill_topic_service.get_topics_for_skill) now has an
-    AverageScorePercent >= SKILL_MASTERY_THRESHOLD_PERCENT, flips that
-    skill's roadmap entry from "upcoming"/"not_assessed" to "mastered"
-    and re-saves the roadmap so masteredCount/courseCompletionPercent on
-    the Profile dashboard actually move.
+    Call after a topic quiz submission. Does two independent things:
 
-    Silently does nothing (returns None) when:
-      - the learner has no saved roadmap yet,
-      - the skill isn't on their roadmap,
-      - the skill is already "mastered",
-      - the skill has no topic-seed data yet (services/skill_topic_service
-        only covers the "frontend" role today — see its module docstring)
-        so there's nothing to measure "every topic done" against.
-    This mirrors the rest of the codebase's "role/skill not seeded yet ->
-    skip, never error" convention.
+      1. Discrete mastery flip (unchanged threshold logic): if EVERY
+         topic under `skill` now has an AverageScorePercent >=
+         SKILL_MASTERY_THRESHOLD_PERCENT, flips that skill's roadmap
+         entry to "mastered" — this drives the "Skills Mastered X/Y"
+         count/badge specifically.
+      2. Continuous course_completion_percent recompute (via
+         _skill_progress_fraction, above) across EVERY entry on the
+         roadmap — this drives the Overall Progress ring, and moves a
+         little after every topic quiz attempt rather than only on a
+         full skill mastery.
+
+    Returns None (no-op) only when there's no saved roadmap yet, or the
+    skill isn't on it — every other case still recomputes and saves
+    course_completion_percent even if the mastery flip itself didn't
+    happen this time.
     """
     db = get_firestore_client()
     roadmap = _get_roadmap(db, uid)
@@ -431,43 +505,40 @@ def recompute_mastery_after_topic_progress(uid: str, skill: str) -> dict | None:
 
     entries = roadmap.get("entries", [])
     entry = next((e for e in entries if e.get("skill") == skill), None)
-    if entry is None or entry.get("status") == "mastered":
+    if entry is None:
         return None
 
-    from services.skill_topic_service import get_topics_for_skill
-    from services import topic_quiz_repository as topic_repo
+    if entry.get("status") != "mastered":
+        from services.skill_topic_service import get_topics_for_skill
+        from services import topic_quiz_repository as topic_repo
 
-    topics = get_topics_for_skill(db, skill)
-    if not topics:
-        return None  # no topic-seed data for this skill yet — can't measure
-
-    progress_by_topic = {
-        p["Topic"]: p
-        for p in topic_repo.list_progress_by_uid(db, uid)
-        if p.get("Skill") == skill
-    }
-
-    all_topic_names = [t["Topic"] if isinstance(t, dict) else t for t in topics]
-    if not all(name in progress_by_topic for name in all_topic_names):
-        return None  # not every topic attempted yet
-
-    scores = [progress_by_topic[name].get("AverageScorePercent", 0) for name in all_topic_names]
-    if min(scores) < SKILL_MASTERY_THRESHOLD_PERCENT:
-        return None  # attempted everything, but not consistently strong enough yet
-
-    avg_score = round(sum(scores) / len(scores), 1)
-    entry["status"] = "mastered"
-    entry["currentLevel"] = "Strong"
-    entry["scorePercent"] = avg_score
-    entry["week"] = None
-    entry["focusBand"] = "advanced"
-    entry["recommendation"] = MASTERED_MESSAGE
+        topics = get_topics_for_skill(db, skill)
+        if topics:
+            all_topic_names = [t["Topic"] if isinstance(t, dict) else t for t in topics]
+            progress_by_topic = {
+                p["Topic"]: p
+                for p in topic_repo.list_progress_by_uid(db, uid)
+                if p.get("Skill") == skill
+            }
+            if all(name in progress_by_topic for name in all_topic_names):
+                scores = [progress_by_topic[name].get("AverageScorePercent", 0) for name in all_topic_names]
+                if min(scores) >= SKILL_MASTERY_THRESHOLD_PERCENT:
+                    entry["status"] = "mastered"
+                    entry["currentLevel"] = "Strong"
+                    entry["scorePercent"] = round(sum(scores) / len(scores), 1)
+                    entry["week"] = None
+                    entry["focusBand"] = "advanced"
+                    entry["recommendation"] = MASTERED_MESSAGE
 
     mastered_count = sum(1 for e in entries if e.get("status") == "mastered")
     upcoming_count = sum(1 for e in entries if e.get("status") == "upcoming")
     not_assessed_count = sum(1 for e in entries if e.get("status") == "not_assessed")
     total_skills = roadmap.get("totalSkills") or len(entries)
-    course_completion_percent = round((mastered_count / total_skills * 100) if total_skills else 0.0, 1)
+
+    course_completion_percent = (
+        round(sum(_skill_progress_fraction(db, uid, e) for e in entries) / total_skills, 1)
+        if total_skills else 0.0
+    )
     pace_label = PACE_FAST_TRACK if (mastered_count / total_skills if total_skills else 0) >= 0.5 else PACE_STEADY
 
     from services.roadmap_repository import update_roadmap_progress

@@ -9,9 +9,13 @@ Firestore via services/question_service.py -> services/question_repository.py.
 Only scripts/upload_questions.py is allowed to open an .xlsx file.
 """
 
+import logging
+
 from flask import Blueprint, request
 from services.question_service import get_questions
 from utils.response_helper import success_response, error_response
+
+logger = logging.getLogger(__name__)
 
 question_bp = Blueprint("questions", __name__)
 
@@ -26,4 +30,5 @@ def get_questions_route():
             data=questions, message="Questions fetched successfully."
         )
     except Exception as exc:  # noqa: BLE001
+        logger.exception("Unhandled error in %s", request.path)
         return error_response(str(exc), status_code=500)

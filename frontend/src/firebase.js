@@ -6,13 +6,18 @@ import {
 } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 
+// Values come from .env (see .env.example) — never hardcoded, so the
+// same code works across dev/staging/prod projects and the key isn't
+// sitting in plaintext in the repo. Vite only exposes env vars
+// prefixed VITE_ to client code, same convention VITE_API_BASE_URL
+// already uses in this project.
 const firebaseConfig = {
-  apiKey: "AIzaSyC2eBg6EENZ3NDRS72fKDR9zixxKRHOUJ0",
-  authDomain: "learnmatrix-7d553.firebaseapp.com",
-  projectId: "learnmatrix-7d553",
-  storageBucket: "learnmatrix-7d553.firebasestorage.app",
-  messagingSenderId: "769105931304",
-  appId: "1:769105931304:web:26b9a35a2e203dff89191d",
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID,
 };
 
 const app = initializeApp(firebaseConfig);

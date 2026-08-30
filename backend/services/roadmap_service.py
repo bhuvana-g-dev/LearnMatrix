@@ -389,3 +389,95 @@ def generate_roadmap_preview(evaluation: dict, role_id: str | None = None) -> di
 def load_saved_roadmap(uid: str) -> dict | None:
     db = get_firestore_client()
     return _get_roadmap(db, uid)
+
+
+# ---------------------------------------------------------------------------
+# Post-diagnostic recompute — keeps masteredCount/courseCompletionPercent
+# honest as the learner actually completes topic quizzes, instead of
+# freezing them at whatever the one-time diagnostic assessment produced.
+# See services/topic_quiz_service.py::submit_topic_quiz(), which calls this
+# right after every topic quiz submission.
+# ---------------------------------------------------------------------------
+
+# Same bar evaluation_service.py uses for "Strong" on the diagnostic —
+# kept identical so a skill mastered via topic quizzes means the same
+# thing as a skill mastered on the original assessment.
+SKILL_MASTERY_THRESHOLD_PERCENT = 75
+
+
+def recompute_mastery_after_topic_progress(uid: str, skill: str) -> dict | None:
+    """
+    Call after a topic quiz submission. If EVERY topic under `skill` (per
+    services/skill_topic_service.get_topics_for_skill) now has an
+    AverageScorePercent >= SKILL_MASTERY_THRESHOLD_PERCENT, flips that
+    skill's roadmap entry from "upcoming"/"not_assessed" to "mastered"
+    and re-saves the roadmap so masteredCount/courseCompletionPercent on
+    the Profile dashboard actually move.
+
+    Silently does nothing (returns None) when:
+      - the learner has no saved roadmap yet,
+      - the skill isn't on their roadmap,
+      - the skill is already "mastered",
+      - the skill has no topic-seed data yet (services/skill_topic_service
+        only covers the "frontend" role today — see its module docstring)
+        so there's nothing to measure "every topic done" against.
+    This mirrors the rest of the codebase's "role/skill not seeded yet ->
+    skip, never error" convention.
+    """
+    db = get_firestore_client()
+    roadmap = _get_roadmap(db, uid)
+    if not roadmap:
+        return None
+
+    entries = roadmap.get("entries", [])
+    entry = next((e for e in entries if e.get("skill") == skill), None)
+    if entry is None or entry.get("status") == "mastered":
+        return None
+
+    from services.skill_topic_service import get_topics_for_skill
+    from services import topic_quiz_repository as topic_repo
+
+    topics = get_topics_for_skill(db, skill)
+    if not topics:
+        return None  # no topic-seed data for this skill yet — can't measure
+
+    progress_by_topic = {
+        p["Topic"]: p
+        for p in topic_repo.list_progress_by_uid(db, uid)
+        if p.get("Skill") == skill
+    }
+
+    all_topic_names = [t["Topic"] if isinstance(t, dict) else t for t in topics]
+    if not all(name in progress_by_topic for name in all_topic_names):
+        return None  # not every topic attempted yet
+
+    scores = [progress_by_topic[name].get("AverageScorePercent", 0) for name in all_topic_names]
+    if min(scores) < SKILL_MASTERY_THRESHOLD_PERCENT:
+        return None  # attempted everything, but not consistently strong enough yet
+
+    avg_score = round(sum(scores) / len(scores), 1)
+    entry["status"] = "mastered"
+    entry["currentLevel"] = "Strong"
+    entry["scorePercent"] = avg_score
+    entry["week"] = None
+    entry["focusBand"] = "advanced"
+    entry["recommendation"] = MASTERED_MESSAGE
+
+    mastered_count = sum(1 for e in entries if e.get("status") == "mastered")
+    upcoming_count = sum(1 for e in entries if e.get("status") == "upcoming")
+    not_assessed_count = sum(1 for e in entries if e.get("status") == "not_assessed")
+    total_skills = roadmap.get("totalSkills") or len(entries)
+    course_completion_percent = round((mastered_count / total_skills * 100) if total_skills else 0.0, 1)
+    pace_label = PACE_FAST_TRACK if (mastered_count / total_skills if total_skills else 0) >= 0.5 else PACE_STEADY
+
+    from services.roadmap_repository import update_roadmap_progress
+
+    return update_roadmap_progress(
+        db, uid,
+        entries=entries,
+        mastered_count=mastered_count,
+        upcoming_count=upcoming_count,
+        not_assessed_count=not_assessed_count,
+        course_completion_percent=course_completion_percent,
+        pace_label=pace_label,
+    )

@@ -27,6 +27,8 @@ AI/YouTube suggestion + review queue (services/resource_review_service.py):
     PATCH  /api/admin/learning-resources/<id>/reject           -> pending -> rejected
 """
 
+import logging
+
 from flask import Blueprint, request
 
 from config.settings import settings
@@ -49,6 +51,8 @@ from firebase.firebase_config import get_firestore_client
 from utils.admin_auth import require_admin
 from utils.response_helper import success_response, error_response
 
+logger = logging.getLogger(__name__)
+
 learning_bp = Blueprint("learning", __name__)
 
 # Was hardcoded to ["documentation", "github"] — now the single shared
@@ -68,6 +72,7 @@ def get_topic_package_route(skill, topic, focus_band):
     except LearningContentError as exc:
         return error_response(str(exc), status_code=422)
     except Exception as exc:  # noqa: BLE001
+        logger.exception("Unhandled error in %s", request.path)
         return error_response(str(exc), status_code=500)
 
 
@@ -97,6 +102,7 @@ def list_learning_resources_route():
         )
         return success_response(data=resources, message="Resources fetched successfully.")
     except Exception as exc:  # noqa: BLE001
+        logger.exception("Unhandled error in %s", request.path)
         return error_response(str(exc), status_code=500)
 
 
@@ -140,6 +146,7 @@ def add_learning_resource_route():
     except ValueError as exc:
         return error_response(str(exc), status_code=400)
     except Exception as exc:  # noqa: BLE001
+        logger.exception("Unhandled error in %s", request.path)
         return error_response(str(exc), status_code=500)
 
 
@@ -158,6 +165,7 @@ def edit_learning_resource_route(resource_id):
     except ValueError as exc:
         return error_response(str(exc), status_code=400)
     except Exception as exc:  # noqa: BLE001
+        logger.exception("Unhandled error in %s", request.path)
         return error_response(str(exc), status_code=500)
 
 
@@ -169,6 +177,7 @@ def delete_learning_resource_route(resource_id):
         delete_resource(db, resource_id)
         return success_response(data=None, message="Resource deleted successfully.")
     except Exception as exc:  # noqa: BLE001
+        logger.exception("Unhandled error in %s", request.path)
         return error_response(str(exc), status_code=500)
 
 
@@ -180,6 +189,7 @@ def pin_learning_resource_route(resource_id):
         resource = pin_resource(resource_id, bool(payload.get("pinned", True)))
         return success_response(data=resource, message="Resource pin status updated.")
     except Exception as exc:  # noqa: BLE001
+        logger.exception("Unhandled error in %s", request.path)
         return error_response(str(exc), status_code=500)
 
 
@@ -191,6 +201,7 @@ def set_learning_resource_enabled_route(resource_id):
         resource = set_resource_enabled(resource_id, bool(payload.get("enabled", True)))
         return success_response(data=resource, message="Resource visibility updated.")
     except Exception as exc:  # noqa: BLE001
+        logger.exception("Unhandled error in %s", request.path)
         return error_response(str(exc), status_code=500)
 
 
@@ -226,6 +237,7 @@ def suggest_learning_resources_route():
     except ResourceReviewError as exc:
         return error_response(str(exc), status_code=422)
     except Exception as exc:  # noqa: BLE001
+        logger.exception("Unhandled error in %s", request.path)
         return error_response(str(exc), status_code=500)
 
 
@@ -262,6 +274,7 @@ def suggest_youtube_resources_route():
     except ResourceReviewError as exc:
         return error_response(str(exc), status_code=422)
     except Exception as exc:  # noqa: BLE001
+        logger.exception("Unhandled error in %s", request.path)
         return error_response(str(exc), status_code=500)
 
 
@@ -306,6 +319,7 @@ def bulk_generate_and_verify_route():
             message=f"Generated and verified {total} resource(s) for {skill} ({band}).",
         )
     except Exception as exc:  # noqa: BLE001
+        logger.exception("Unhandled error in %s", request.path)
         return error_response(str(exc), status_code=500)
 
 
@@ -317,6 +331,7 @@ def list_pending_resources_route():
         queue = get_pending_queue(skill=request.args.get("skill"), band=request.args.get("band"))
         return success_response(data=queue, message=f"{len(queue)} suggestion(s) awaiting review.")
     except Exception as exc:  # noqa: BLE001
+        logger.exception("Unhandled error in %s", request.path)
         return error_response(str(exc), status_code=500)
 
 
@@ -329,6 +344,7 @@ def verify_resource_route(resource_id):
         resource = verify_resource(resource_id, verified_by=payload.get("verifiedBy", ""))
         return success_response(data=resource, message="Resource verified and published.")
     except Exception as exc:  # noqa: BLE001
+        logger.exception("Unhandled error in %s", request.path)
         return error_response(str(exc), status_code=500)
 
 
@@ -345,6 +361,7 @@ def unverify_resource_route(resource_id):
         resource = unverify_resource(resource_id)
         return success_response(data=resource, message="Resource unverified and removed from student view.")
     except Exception as exc:  # noqa: BLE001
+        logger.exception("Unhandled error in %s", request.path)
         return error_response(str(exc), status_code=500)
 
 
@@ -356,4 +373,5 @@ def reject_resource_route(resource_id):
         resource = reject_resource(resource_id)
         return success_response(data=resource, message="Resource rejected.")
     except Exception as exc:  # noqa: BLE001
+        logger.exception("Unhandled error in %s", request.path)
         return error_response(str(exc), status_code=500)

@@ -19,11 +19,15 @@ from firebase.firebase_config import get_firestore_client
 from services.mindmap_service import generate_mindmap, MindMapServiceError
 from services import studio_repository
 from utils.response_helper import success_response, error_response
+from utils.user_auth import require_owner_body
+from utils.rate_limiter import limiter
 
 mindmap_bp = Blueprint("mindmap", __name__)
 
 
 @mindmap_bp.route("/mindmap/generate", methods=["POST"])
+@limiter.limit("15 per minute")
+@require_owner_body()
 def generate_mindmap_route():
     payload = request.get_json(silent=True)
     if not payload:

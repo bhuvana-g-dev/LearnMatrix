@@ -19,7 +19,11 @@ export default function AdminDashboardLayout({ activeKey, onNavigate, onLogout, 
   return (
     <div style={{ minHeight: "100vh", width: "100%", background: GRADIENTS.pageBg }}>
       <div className="flex" style={{ minHeight: "100vh" }}>
-        {/* Desktop sidebar */}
+        {/* Desktop sidebar — position: fixed (not sticky) so it stays
+            pinned to the viewport regardless of how tall the page
+            content grows or what any ancestor's overflow/scroll
+            setting is. The main content column below gets a matching
+            left margin so nothing renders underneath it. */}
         <aside
           className="hidden lg:block"
           style={{
@@ -28,9 +32,11 @@ export default function AdminDashboardLayout({ activeKey, onNavigate, onLogout, 
             ...GLASS_CARD,
             borderRadius: 0,
             borderRight: `1px solid ${COLORS.border}`,
-            position: "sticky",
+            position: "fixed",
             top: 0,
+            left: 0,
             height: "100vh",
+            zIndex: 30,
           }}
         >
           <AdminSidebar activeKey={activeKey} onNavigate={onNavigate} onLogout={onLogout} />
@@ -69,8 +75,10 @@ export default function AdminDashboardLayout({ activeKey, onNavigate, onLogout, 
           )}
         </AnimatePresence>
 
-        {/* Main content */}
-        <div className="flex-1 min-w-0">
+        {/* Main content — lg:ml-[280px] offsets the fixed desktop
+            sidebar's width; on mobile the sidebar is an overlay drawer,
+            not part of the flow, so no offset is needed there. */}
+        <div className="flex-1 min-w-0 lg:ml-[280px]">
           <div
             className="flex items-center justify-between px-4 sm:px-8 py-4 lg:hidden"
             style={{ borderBottom: `1px solid ${COLORS.border}`, background: "rgba(255,255,255,0.2)" }}

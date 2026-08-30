@@ -18,6 +18,8 @@ separate nav sections.
         services/learning_content_service.py) — no other change needed.
 """
 
+import logging
+
 from flask import Blueprint, request
 
 from services.generated_content_service import (
@@ -28,6 +30,8 @@ from services.generated_content_service import (
 )
 from utils.admin_auth import require_admin
 from utils.response_helper import success_response, error_response
+
+logger = logging.getLogger(__name__)
 
 generated_content_bp = Blueprint("generated_content", __name__)
 
@@ -42,6 +46,7 @@ def list_generated_content_route():
         )
         return success_response(data=items, message=f"{len(items)} generated content item(s) found.")
     except Exception as exc:  # noqa: BLE001
+        logger.exception("Unhandled error in %s", request.path)
         return error_response(str(exc), status_code=500)
 
 
@@ -54,6 +59,7 @@ def get_generated_content_route(doc_id):
     except GeneratedContentError as exc:
         return error_response(str(exc), status_code=404)
     except Exception as exc:  # noqa: BLE001
+        logger.exception("Unhandled error in %s", request.path)
         return error_response(str(exc), status_code=500)
 
 
@@ -66,4 +72,5 @@ def delete_generated_content_route(doc_id):
     except GeneratedContentError as exc:
         return error_response(str(exc), status_code=404)
     except Exception as exc:  # noqa: BLE001
+        logger.exception("Unhandled error in %s", request.path)
         return error_response(str(exc), status_code=500)

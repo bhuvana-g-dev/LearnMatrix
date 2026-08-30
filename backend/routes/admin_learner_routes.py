@@ -16,11 +16,15 @@ reads the EXISTING topic_quiz_progress / topic_quiz_attempts collections
         (required).
 """
 
+import logging
+
 from flask import Blueprint, request
 
 from services.learner_intelligence_service import get_dashboard_summary, get_student_profile, list_learners
 from utils.admin_auth import require_admin
 from utils.response_helper import error_response, success_response
+
+logger = logging.getLogger(__name__)
 
 admin_learner_bp = Blueprint("admin_learners", __name__)
 
@@ -32,6 +36,7 @@ def dashboard_summary_route():
         summary = get_dashboard_summary()
         return success_response(data=summary, message="Dashboard summary fetched successfully.")
     except Exception as exc:  # noqa: BLE001
+        logger.exception("Unhandled error in %s", request.path)
         return error_response(str(exc), status_code=500)
 
 
@@ -47,6 +52,7 @@ def list_learners_route():
         )
         return success_response(data=rows, message=f"{len(rows)} record(s) found.")
     except Exception as exc:  # noqa: BLE001
+        logger.exception("Unhandled error in %s", request.path)
         return error_response(str(exc), status_code=500)
 
 
@@ -63,4 +69,5 @@ def student_profile_route():
             return error_response(f"No user found for email '{email}'.", status_code=404)
         return success_response(data=profile, message="Learner profile fetched successfully.")
     except Exception as exc:  # noqa: BLE001
+        logger.exception("Unhandled error in %s", request.path)
         return error_response(str(exc), status_code=500)

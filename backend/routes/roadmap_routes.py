@@ -10,15 +10,21 @@ agent action, so it doesn't belong under the /ai/ path prefix pattern
 those routes use.
 """
 
-from flask import Blueprint
+import logging
+
+from flask import Blueprint, request
 
 from services.roadmap_service import load_saved_roadmap
 from utils.response_helper import success_response, error_response
+from utils.user_auth import require_owner
+
+logger = logging.getLogger(__name__)
 
 roadmap_bp = Blueprint("roadmap", __name__)
 
 
 @roadmap_bp.route("/roadmap/<uid>", methods=["GET"])
+@require_owner()
 def get_roadmap_route(uid):
     try:
         roadmap = load_saved_roadmap(uid)
@@ -29,4 +35,5 @@ def get_roadmap_route(uid):
             )
         return success_response(data=roadmap, message="Roadmap loaded.")
     except Exception as exc:  # noqa: BLE001
+        logger.exception("Unhandled error in %s", request.path)
         return error_response(str(exc), status_code=500)

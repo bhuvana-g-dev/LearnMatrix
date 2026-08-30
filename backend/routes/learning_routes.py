@@ -7,6 +7,16 @@ GET  /api/learning/topic/<skill>/<topic>/<focusBand>  -> assembled Topic
     only — see services/resource_repository.py's module docstring for
     why resources dropped the topic dimension. Student-facing.
 
+GET  /api/learning/path/<skill>/<topic>  -> the caller's full learning
+    path for that skill/topic: one Topic Package per band, in order,
+    per services/learning_path.py (band sequence decided by the
+    learner's initial-assessment current_level from their saved
+    roadmap, NOT by topic-quiz mastery). Requires a Firebase ID token
+    (Authorization: Bearer <token>) — uid is derived from the verified
+    token via utils/learner_auth.require_learner, never accepted as a
+    URL/query/body param, so a caller can only ever fetch their own
+    path.
+
 Admin CRUD for the Resource Bank (services/resource_repository.py via
 services/resource_review_service.py), same pattern as
 routes/admin_question_routes.py:
@@ -29,10 +39,11 @@ AI/YouTube suggestion + review queue (services/resource_review_service.py):
 
 import logging
 
-from flask import Blueprint, request
+from flask import Blueprint, g, request
 
 from config.settings import settings
 from services.learning_content_service import get_topic_package, LearningContentError
+from services.learning_path import build_learning_path, LearningPathError
 from services.resource_repository import add_resource, list_resources, delete_resource
 from services.resource_review_service import (
     generate_pending_suggestions,
@@ -49,6 +60,7 @@ from services.resource_review_service import (
 )
 from firebase.firebase_config import get_firestore_client
 from utils.admin_auth import require_admin
+from utils.learner_auth import require_learner
 from utils.response_helper import success_response, error_response
 
 logger = logging.getLogger(__name__)
@@ -70,6 +82,23 @@ def get_topic_package_route(skill, topic, focus_band):
         package = get_topic_package(skill=skill, topic=topic, focus_band=focus_band)
         return success_response(data=package, message="Topic package loaded.")
     except LearningContentError as exc:
+        return error_response(str(exc), status_code=422)
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("Unhandled error in %s", request.path)
+        return error_response(str(exc), status_code=500)
+
+
+@learning_bp.route("/learning/path/<skill>/<topic>", methods=["GET"])
+@require_learner
+def get_learning_path_route(skill, topic):
+    """uid comes ONLY from the verified token (flask.g.learner["uid"],
+    set by require_learner) — never from the URL, query string, or
+    body, so a caller can't request another learner's path."""
+    uid = g.learner["uid"]
+    try:
+        path = build_learning_path(uid=uid, skill=skill, topic=topic)
+        return success_response(data=path, message="Learning path loaded.")
+    except LearningPathError as exc:
         return error_response(str(exc), status_code=422)
     except Exception as exc:  # noqa: BLE001
         logger.exception("Unhandled error in %s", request.path)

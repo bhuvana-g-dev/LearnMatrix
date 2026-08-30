@@ -164,6 +164,15 @@ def submit_topic_quiz(
         questions=questions, answers=answers,
     )
 
+    # Recompute the saved roadmap's mastery for this skill (Profile
+    # dashboard's Overall Progress / Skills Mastered cards) — no-ops
+    # cleanly if there's no roadmap, no topic-seed data for this skill,
+    # or not every topic is Strong yet. See roadmap_service.py's
+    # docstring for why this didn't happen automatically before.
+    from services.roadmap_service import recompute_mastery_after_topic_progress
+
+    recompute_mastery_after_topic_progress(uid=uid, skill=skill)
+
     # NOTE: the quiz question cache (topic_quiz_bank_cache.py) is
     # intentionally NOT cleared here anymore — it's shared per
     # (skill, topic, focusBand) category now, not per student, so

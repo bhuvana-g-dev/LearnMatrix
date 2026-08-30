@@ -12,11 +12,15 @@ GET /api/lessons/<skill>/<topic>/<lesson_title>/<focus_band>
        returned by the list route above.
 """
 
-from flask import Blueprint
+import logging
+
+from flask import Blueprint, request
 
 from services.lesson_service import get_lessons, get_lesson_content, LessonServiceError
 from services.learning_content_service import LearningContentError
 from utils.response_helper import success_response, error_response
+
+logger = logging.getLogger(__name__)
 
 lesson_bp = Blueprint("lesson", __name__)
 
@@ -32,6 +36,7 @@ def get_lessons_route(skill, topic):
     except LessonServiceError as exc:
         return error_response(str(exc), status_code=422)
     except Exception as exc:  # noqa: BLE001
+        logger.exception("Unhandled error in %s", request.path)
         return error_response(str(exc), status_code=500)
 
 
@@ -43,4 +48,5 @@ def get_lesson_content_route(skill, topic, lesson_title, focus_band):
     except LearningContentError as exc:
         return error_response(str(exc), status_code=422)
     except Exception as exc:  # noqa: BLE001
+        logger.exception("Unhandled error in %s", request.path)
         return error_response(str(exc), status_code=500)

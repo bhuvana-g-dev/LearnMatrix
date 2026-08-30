@@ -228,11 +228,11 @@ def _generate_json_gemini_with_rotation(
         try:
             result = _generate_json_gemini(prompt, temperature, api_key=key)
             if i > 0:
-                print(f"[AI_PROVIDER] gemini succeeded on rotation key #{i + 1}/{len(candidates)}", flush=True)
+                logger.info("gemini succeeded on rotation key #%d/%d", i + 1, len(candidates))
             return result
         except Exception as exc:  # noqa: BLE001
             last_exc = exc
-            print(f"[AI_PROVIDER] gemini key #{i + 1}/{len(candidates)} failed: {exc}", flush=True)
+            logger.warning("gemini key #%d/%d failed: %s", i + 1, len(candidates), exc)
             attempts_log.append(f"gemini (key #{i + 1}/{len(candidates)}): {exc}")
             continue
 
@@ -499,7 +499,7 @@ def generate_json(
                 result = _generate_json_gemini_with_rotation(
                     prompt, temperature, gemini_api_key, gemini_key_pool, attempts
                 )
-                print("[AI_PROVIDER] request served by: gemini", flush=True)
+                logger.info("request served by: gemini")
                 return result
             except GeminiClientError:
                 continue
@@ -516,10 +516,10 @@ def generate_json(
         try:
             func = globals()[func_name]
             result = func(prompt, temperature)
-            print(f"[AI_PROVIDER] request served by: {provider_name}", flush=True)
+            logger.info("request served by: %s", provider_name)
             return result
         except Exception as exc:  # noqa: BLE001
-            print(f"[AI_PROVIDER] {provider_name} failed: {exc}", flush=True)
+            logger.warning("%s failed: %s", provider_name, exc)
             attempts.append(f"{provider_name}: {exc}")
             continue
 

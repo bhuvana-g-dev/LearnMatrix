@@ -15,10 +15,28 @@ this file should stay this short even after Gemini, Scikit-Learn, and
 Firestore are all wired in.
 """
 
+import logging
+
 from flask import Flask
 from flask_cors import CORS
 
 from config.settings import settings
+from utils.rate_limiter import limiter
+from utils.response_helper import error_response
+
+# Process-wide logging config. Without this, Python's root logger
+# defaults to WARNING with no handler attached — every logger.info(...)
+# call already scattered across services/utils (and the ones added by
+# this fix) was silently getting dropped, and even logger.exception(...)
+# calls only reached stderr via the interpreter's bare "last resort"
+# fallback with no timestamp/module context. This makes every module's
+# `logging.getLogger(__name__)` calls actually show up in Render's log
+# viewer (or the terminal in local dev), with enough context (time,
+# logger name, level) to tell where a line came from.
+logging.basicConfig(
+    level=logging.INFO if not settings.DEBUG else logging.DEBUG,
+    format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
+)
 
 from routes.health_routes import health_bp
 from routes.role_routes import role_bp
@@ -34,6 +52,7 @@ from routes.admin_learner_routes import admin_learner_bp
 from routes.admin_auth_routes import admin_auth_bp
 from routes.ai_chat_routes import ai_chat_bp
 from routes.flashcard_routes import flashcard_bp
+from routes.certificate_routes import certificate_bp
 from routes.ppt_routes import ppt_bp
 from routes.mindmap_routes import mindmap_bp
 from routes.slidedeck_routes import slidedeck_bp
@@ -48,9 +67,19 @@ from routes.audio_overview_routes import audio_overview_bp
 def create_app() -> Flask:
     app = Flask(__name__)
 
+    # Hard cap on request body size (see config/settings.py) — was unset
+    # before, so nothing stopped an oversized upload from being read
+    # fully into memory before any route-level check ran.
+    app.config["MAX_CONTENT_LENGTH"] = settings.MAX_CONTENT_LENGTH_MB * 1024 * 1024
+
     # Allow the Vite dev server (and later, your deployed frontend origin)
     # to call this API. Origins are configured via .env, never hardcoded.
     CORS(app, origins=settings.CORS_ORIGINS)
+
+    # Per-route AI-call ceilings (see utils/rate_limiter.py) — init_app
+    # here, limits are declared with @limiter.limit(...) on the
+    # individual AI-calling routes themselves.
+    limiter.init_app(app)
 
     # Health/root routes are unversioned, unprefixed infrastructure routes.
     app.register_blueprint(health_bp)
@@ -70,6 +99,7 @@ def create_app() -> Flask:
     app.register_blueprint(admin_auth_bp, url_prefix="/api")
     app.register_blueprint(ai_chat_bp, url_prefix="/api")
     app.register_blueprint(flashcard_bp, url_prefix="/api")
+    app.register_blueprint(certificate_bp, url_prefix="/api")
     app.register_blueprint(ppt_bp, url_prefix="/api")
     app.register_blueprint(mindmap_bp, url_prefix="/api")
     app.register_blueprint(slidedeck_bp, url_prefix="/api")
@@ -79,6 +109,18 @@ def create_app() -> Flask:
     app.register_blueprint(generated_content_bp, url_prefix="/api")
     app.register_blueprint(admin_lesson_bp, url_prefix="/api")
     app.register_blueprint(audio_overview_bp, url_prefix="/api")
+
+    # Without this, a request that trips MAX_CONTENT_LENGTH gets Flask's
+    # default HTML 413 page instead of the {success, error} JSON envelope
+    # every other error on this API returns — the frontend's error
+    # handling (apiClient's response interceptor, error_response readers)
+    # expects JSON, not HTML.
+    @app.errorhandler(413)
+    def handle_payload_too_large(_exc):
+        return error_response(
+            f"File/request too large — the limit is {settings.MAX_CONTENT_LENGTH_MB}MB.",
+            status_code=413,
+        )
 
     return app
 

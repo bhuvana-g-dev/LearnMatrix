@@ -41,6 +41,7 @@ from services.pdf_service import (
     PdfServiceError,
 )
 from utils.response_helper import error_response
+from utils.user_auth import require_owner
 
 ppt_bp = Blueprint("ppt", __name__)
 
@@ -71,6 +72,7 @@ def download_topic_pptx_route(skill, topic, focus_band):
 
 
 @ppt_bp.route("/study-summary/sources/<uid>/pptx", methods=["GET"])
+@require_owner()
 def download_sources_pptx_route(uid):
     try:
         file_bytes, filename = generate_sources_summary_pptx(uid)
@@ -80,6 +82,7 @@ def download_sources_pptx_route(uid):
 
 
 @ppt_bp.route("/study-summary/chat/<uid>/<session_id>/pptx", methods=["GET"])
+@require_owner()
 def download_chat_pptx_route(uid, session_id):
     try:
         file_bytes, filename = generate_chat_summary_pptx(uid, session_id)
@@ -114,6 +117,7 @@ def download_topic_pdf_route(skill, topic, focus_band):
 
 
 @ppt_bp.route("/study-summary/sources/<uid>/pdf", methods=["GET"])
+@require_owner()
 def download_sources_pdf_route(uid):
     try:
         file_bytes, filename = generate_sources_summary_pdf(uid)
@@ -123,6 +127,7 @@ def download_sources_pdf_route(uid):
 
 
 @ppt_bp.route("/study-summary/chat/<uid>/<session_id>/pdf", methods=["GET"])
+@require_owner()
 def download_chat_pdf_route(uid, session_id):
     try:
         file_bytes, filename = generate_chat_summary_pdf(uid, session_id)

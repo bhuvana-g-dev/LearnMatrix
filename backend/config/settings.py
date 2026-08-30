@@ -261,7 +261,11 @@ class Settings:
     GROQ_MODEL: str = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
 
     CEREBRAS_API_KEY: str = os.getenv("CEREBRAS_API_KEY", "")
-    CEREBRAS_MODEL: str = os.getenv("CEREBRAS_MODEL", "llama-3.3-70b")
+    # Cerebras deprecated llama-3.3-70b on Feb 16, 2026 (along with
+    # qwen-3-32b) — requests to it now 404 with "model not found".
+    # gpt-oss-120b is Cerebras's own documented migration target for
+    # both deprecated models.
+    CEREBRAS_MODEL: str = os.getenv("CEREBRAS_MODEL", "gpt-oss-120b")
     CEREBRAS_BASE_URL: str = "https://api.cerebras.ai/v1"
 
     OPENROUTER_API_KEY: str = os.getenv("OPENROUTER_API_KEY", "")

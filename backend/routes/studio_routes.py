@@ -27,11 +27,13 @@ from flask import Blueprint, request
 from firebase.firebase_config import get_firestore_client
 from services import studio_repository
 from utils.response_helper import success_response, error_response
+from utils.user_auth import require_owner
 
 studio_bp = Blueprint("studio", __name__)
 
 
 @studio_bp.route("/studio/<uid>/<session_id>", methods=["GET"])
+@require_owner()
 def list_studio_artifacts_route(uid, session_id):
     db = get_firestore_client()
     result = studio_repository.list_artifacts(db, uid, session_id)
@@ -39,6 +41,7 @@ def list_studio_artifacts_route(uid, session_id):
 
 
 @studio_bp.route("/studio/<uid>/<session_id>/<artifact_id>", methods=["GET"])
+@require_owner()
 def get_studio_artifact_route(uid, session_id, artifact_id):
     db = get_firestore_client()
     artifact = studio_repository.get_artifact(db, uid, session_id, artifact_id)
@@ -48,6 +51,7 @@ def get_studio_artifact_route(uid, session_id, artifact_id):
 
 
 @studio_bp.route("/studio/<uid>/<session_id>", methods=["POST"])
+@require_owner()
 def save_studio_artifact_route(uid, session_id):
     payload = request.get_json(silent=True)
     if not payload:

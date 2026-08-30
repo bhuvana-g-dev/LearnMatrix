@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import { COLORS, GRADIENTS, GLASS_CARD } from "../../constants/theme";
 import { getTopicQuiz, getTopicQuizAttempt, submitTopicQuiz } from "../../services/topicQuizService";
+import { invalidateRoadmap } from "../../services/userProgressCache";
 
 const OPTION_KEYS = ["OptionA", "OptionB", "OptionC", "OptionD"];
 const OPTION_LETTERS = { OptionA: "A", OptionB: "B", OptionC: "C", OptionD: "D" };
@@ -209,6 +210,12 @@ export default function TopicQuizModal({ skill, topic, uid, focusBand, onComplet
       const outcome = await submitTopicQuiz(skill, topic, {
         uid, questions, answers, timeTakenSeconds,
       });
+      // Backend may have just flipped this skill to "mastered" on the
+      // saved roadmap (services/roadmap_service.recompute_mastery_after_topic_progress)
+      // — drop the 30s roadmap cache so Profile's Overall Progress /
+      // Skills Mastered cards reflect it on next load instead of
+      // reusing stale pre-quiz numbers. See services/userProgressCache.js.
+      invalidateRoadmap(uid);
       setResult(outcome);
       setState("result");
     } catch (err) {

@@ -148,7 +148,7 @@ def _get_gemini_tts_client(api_key: str | None = None):
     return _gemini_tts_client
 
 
-def _generate_json_gemini(prompt: str, temperature: float, api_key: str | None = None) -> dict | list:
+def _generate_json_gemini(prompt: str, temperature: float, api_key: str | None = None, max_tokens: int = 8192) -> dict | list:
     from google.genai import types
 
     client = _get_gemini_client(api_key)
@@ -162,7 +162,9 @@ def _generate_json_gemini(prompt: str, temperature: float, api_key: str | None =
             # 10-section slide deck) can get cut off mid-JSON by the
             # model's own default output limit, which then fails
             # json.loads() below and looks like a provider failure.
-            max_output_tokens=8192,
+            # Callers with small, bounded output (e.g. notes generation)
+            # should pass a lower max_tokens — see generate_json().
+            max_output_tokens=max_tokens,
         ),
     )
     raw_text = (response.text or "").strip()
@@ -209,6 +211,7 @@ def _generate_json_gemini_with_rotation(
     override_key: str | None,
     key_pool: list[str] | None,
     attempts_log: list[str],
+    max_tokens: int = 8192,
 ) -> dict | list:
     """
     Tries every candidate key from _gemini_key_candidates() in order,
@@ -226,7 +229,7 @@ def _generate_json_gemini_with_rotation(
     last_exc: Exception | None = None
     for i, key in enumerate(candidates):
         try:
-            result = _generate_json_gemini(prompt, temperature, api_key=key)
+            result = _generate_json_gemini(prompt, temperature, api_key=key, max_tokens=max_tokens)
             if i > 0:
                 logger.info("gemini succeeded on rotation key #%d/%d", i + 1, len(candidates))
             return result
@@ -379,14 +382,20 @@ def _get_groq_client():
     return _groq_client
 
 
-def _generate_json_groq(prompt: str, temperature: float) -> dict | list:
+def _generate_json_groq(prompt: str, temperature: float, max_tokens: int = 8192) -> dict | list:
     client = _get_groq_client()
     response = client.chat.completions.create(
         model=settings.GROQ_MODEL,
         temperature=temperature,
         # See the matching comment in _generate_json_gemini — same
-        # mid-JSON truncation risk without an explicit cap.
-        max_tokens=8192,
+        # mid-JSON truncation risk without an explicit cap. NOTE: Groq's
+        # free-tier TPM (tokens-per-minute) limit counts the REQUESTED
+        # max_tokens against the budget, not just what's actually
+        # generated — so a caller with a small, bounded output (e.g.
+        # notes generation) MUST pass a lower max_tokens here, or the
+        # request itself exceeds the org's TPM cap (8000) regardless of
+        # prompt size and Groq returns 413 on every single call.
+        max_tokens=max_tokens,
         messages=[
             {"role": "system", "content": "You always respond with valid JSON only — no prose, no markdown code fences."},
             {"role": "user", "content": prompt},
@@ -401,7 +410,7 @@ def _generate_json_groq(prompt: str, temperature: float) -> dict | list:
 # ---------------------------------------------------------------------
 def _generate_json_openai_compatible(
     base_url: str, api_key: str, model: str, prompt: str, temperature: float,
-    extra_headers: dict | None = None,
+    extra_headers: dict | None = None, max_tokens: int = 8192,
 ) -> dict | list:
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
     if extra_headers:
@@ -415,8 +424,10 @@ def _generate_json_openai_compatible(
             "temperature": temperature,
             # See the matching comment in _generate_json_gemini — same
             # mid-JSON truncation risk without an explicit cap. Shared
-            # by both Cerebras and OpenRouter, which both call this helper.
-            "max_tokens": 8192,
+            # by both Cerebras and OpenRouter, which both call this
+            # helper. Callers with small, bounded output (e.g. notes
+            # generation) should pass a lower max_tokens.
+            "max_tokens": max_tokens,
             "messages": [
                 {"role": "system", "content": "You always respond with valid JSON only — no prose, no markdown code fences."},
                 {"role": "user", "content": prompt},
@@ -429,17 +440,17 @@ def _generate_json_openai_compatible(
     return json.loads(raw_text)
 
 
-def _generate_json_cerebras(prompt: str, temperature: float) -> dict | list:
+def _generate_json_cerebras(prompt: str, temperature: float, max_tokens: int = 8192) -> dict | list:
     return _generate_json_openai_compatible(
         settings.CEREBRAS_BASE_URL, settings.CEREBRAS_API_KEY, settings.CEREBRAS_MODEL,
-        prompt, temperature,
+        prompt, temperature, max_tokens=max_tokens,
     )
 
 
-def _generate_json_openrouter(prompt: str, temperature: float) -> dict | list:
+def _generate_json_openrouter(prompt: str, temperature: float, max_tokens: int = 8192) -> dict | list:
     return _generate_json_openai_compatible(
         settings.OPENROUTER_BASE_URL, settings.OPENROUTER_API_KEY, settings.OPENROUTER_MODEL,
-        prompt, temperature,
+        prompt, temperature, max_tokens=max_tokens,
         # OpenRouter asks for these but doesn't require real values — harmless to include.
         extra_headers={"HTTP-Referer": "https://learnmatrix.onrender.com", "X-Title": "LearnMatrix"},
     )
@@ -460,6 +471,7 @@ def generate_json(
     temperature: float = 0.4,
     gemini_api_key: str | None = None,
     gemini_key_pool: list[str] | None = None,
+    max_tokens: int = 8192,
 ) -> dict | list:
     """
     Try each provider in settings.AI_PROVIDER_CHAIN, in order, until one
@@ -491,13 +503,23 @@ def generate_json(
     at call time (not captured as direct references at import time) so
     that unit tests can patch e.g. `gemini_client._generate_json_gemini`
     and have generate_json() actually pick up the patched version.
+
+    max_tokens: requested output-token cap, forwarded to whichever
+    provider ends up serving the call. Defaults to 8192 (unchanged
+    behavior for every existing caller). Pass a lower value for
+    features with small, bounded output (e.g. notes generation) — on
+    Groq specifically, the free-tier TPM (tokens-per-minute) limit
+    counts this REQUESTED value against the budget even before
+    counting the prompt, so leaving it at 8192 for a small-output
+    feature can make Groq fail every call regardless of prompt size.
     """
     attempts = []
     for provider_name in settings.AI_PROVIDER_CHAIN:
         if provider_name == "gemini":
             try:
                 result = _generate_json_gemini_with_rotation(
-                    prompt, temperature, gemini_api_key, gemini_key_pool, attempts
+                    prompt, temperature, gemini_api_key, gemini_key_pool, attempts,
+                    max_tokens=max_tokens,
                 )
                 logger.info("request served by: gemini")
                 return result
@@ -515,7 +537,7 @@ def generate_json(
             continue
         try:
             func = globals()[func_name]
-            result = func(prompt, temperature)
+            result = func(prompt, temperature, max_tokens=max_tokens)
             logger.info("request served by: %s", provider_name)
             return result
         except Exception as exc:  # noqa: BLE001

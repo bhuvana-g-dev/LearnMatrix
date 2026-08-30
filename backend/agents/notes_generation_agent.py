@@ -73,7 +73,12 @@ class NotesGenerationAgent(BaseAgent):
         last_error: Exception | None = None
         for attempt in range(settings.AI_GENERATION_MAX_RETRIES + 1):
             try:
-                raw = generate_json(prompt)
+                # Notes output is short and bounded (2-4 sections, a
+                # few sentences each) — 2048 is generous headroom for
+                # it. Passing the default 8192 here would, on its own,
+                # exceed Groq's free-tier 8000 TPM limit on every call
+                # regardless of prompt size (see utils/gemini_client.py).
+                raw = generate_json(prompt, max_tokens=2048)
                 self._validate(raw)
                 return raw
             except (GeminiClientError, NotesGenerationError) as exc:

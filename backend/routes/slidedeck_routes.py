@@ -27,6 +27,8 @@ from firebase.firebase_config import get_firestore_client
 from services.slide_deck_service import generate_deck_content, SlideDeckServiceError
 from services import studio_repository
 from utils.response_helper import success_response, error_response
+from utils.user_auth import require_owner_body
+from utils.rate_limiter import limiter
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +36,8 @@ slidedeck_bp = Blueprint("slidedeck", __name__)
 
 
 @slidedeck_bp.route("/slidedeck/generate", methods=["POST"])
+@limiter.limit("10 per minute")
+@require_owner_body()
 def generate_slidedeck_route():
     payload = request.get_json(silent=True)
     if not payload:

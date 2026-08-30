@@ -88,6 +88,38 @@ def save_roadmap(
     return doc_ref.get().to_dict()
 
 
+def update_roadmap_progress(
+    db, uid: str, *, entries: list[dict], mastered_count: int, upcoming_count: int,
+    not_assessed_count: int, course_completion_percent: float, pace_label: str,
+) -> dict | None:
+    """
+    Partial update (merge=True) used by
+    services/roadmap_service.recompute_mastery_after_topic_progress() to
+    reflect topic-quiz-driven mastery WITHOUT touching role/roleId/
+    compressedSyllabus/generatedAt — unlike save_roadmap(), this never
+    replaces the document, only the fields that can change post-generation.
+    No-op (returns None) if the roadmap doc doesn't exist yet.
+    """
+    doc_ref = _doc_ref(db, uid)
+    if not doc_ref.get().exists:
+        return None
+
+    doc_ref.set(
+        {
+            "entries": entries,
+            "masteredCount": mastered_count,
+            "upcomingCount": upcoming_count,
+            "notAssessedCount": not_assessed_count,
+            "completionPercent": course_completion_percent,
+            "courseCompletionPercent": course_completion_percent,
+            "paceLabel": pace_label,
+            "updatedAt": SERVER_TIMESTAMP,
+        },
+        merge=True,
+    )
+    return doc_ref.get().to_dict()
+
+
 def get_roadmap(db, uid: str) -> dict | None:
     """Returns None if the user has never generated a roadmap yet —
     callers should treat that as "take the assessment first", not an error."""

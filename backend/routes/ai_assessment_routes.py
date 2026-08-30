@@ -16,6 +16,8 @@ built, all delegating to services/ai_assessment_service.py — this file
 only parses the request, same as every other route module.
 """
 
+import logging
+
 from flask import Blueprint, request
 
 from services.ai_assessment_service import (
@@ -30,11 +32,16 @@ from services.ai_assessment_service import (
 from services.roadmap_service import generate_and_save_roadmap, generate_roadmap_preview
 from services.certificate_service import issue_or_update_certificate
 from utils.response_helper import success_response, error_response
+from utils.user_auth import require_owner, require_owner_body
+from utils.rate_limiter import limiter
+
+logger = logging.getLogger(__name__)
 
 ai_assessment_bp = Blueprint("ai_assessment", __name__)
 
 
 @ai_assessment_bp.route("/ai/generate-questions", methods=["POST"])
+@limiter.limit("10 per minute")
 def generate_questions_route():
     payload = request.get_json(silent=True)
     if not payload:
@@ -78,10 +85,12 @@ def generate_questions_route():
     except AIAssessmentError as exc:
         return error_response(str(exc), status_code=422)
     except Exception as exc:  # noqa: BLE001
+        logger.exception("Unhandled error in %s", request.path)
         return error_response(str(exc), status_code=500)
 
 
 @ai_assessment_bp.route("/ai/generate-diagnostic-assessment", methods=["POST"])
+@limiter.limit("5 per minute")
 def generate_diagnostic_assessment_route():
     """
     The real diagnostic assessment described in ARCHITECTURE.md's
@@ -115,10 +124,13 @@ def generate_diagnostic_assessment_route():
     except AIAssessmentError as exc:
         return error_response(str(exc), status_code=422)
     except Exception as exc:  # noqa: BLE001
+        logger.exception("Unhandled error in %s", request.path)
         return error_response(str(exc), status_code=500)
 
 
 @ai_assessment_bp.route("/ai/evaluate-diagnostic-assessment", methods=["POST"])
+@limiter.limit("10 per minute")
+@require_owner_body()
 def evaluate_diagnostic_assessment_route():
     """
     Evaluation Agent (#5): given the same questions the diagnostic
@@ -171,10 +183,12 @@ def evaluate_diagnostic_assessment_route():
                     + (" (saved)" if uid else " (not saved — no uid provided)"),
         )
     except Exception as exc:  # noqa: BLE001
+        logger.exception("Unhandled error in %s", request.path)
         return error_response(str(exc), status_code=500)
 
 
 @ai_assessment_bp.route("/assessment-result/<uid>", methods=["GET"])
+@require_owner()
 def get_assessment_result_route(uid):
     """
     Returns the user's last completed assessment (questions, answers,
@@ -191,10 +205,12 @@ def get_assessment_result_route(uid):
             )
         return success_response(data=result, message="Assessment result loaded.")
     except Exception as exc:  # noqa: BLE001
+        logger.exception("Unhandled error in %s", request.path)
         return error_response(str(exc), status_code=500)
 
 
 @ai_assessment_bp.route("/career-path/<uid>", methods=["DELETE"])
+@require_owner()
 def quit_role_route(uid):
     """
     "Quit Role" (Learning Hub -> Quit Role, after the student types the
@@ -208,10 +224,12 @@ def quit_role_route(uid):
         quit_role(uid)
         return success_response(data=None, message="Role quit — Role Selection is unlocked again.")
     except Exception as exc:  # noqa: BLE001
+        logger.exception("Unhandled error in %s", request.path)
         return error_response(str(exc), status_code=500)
 
 
 @ai_assessment_bp.route("/ai/generate-roadmap", methods=["POST"])
+@require_owner_body()
 def generate_roadmap_route():
     """
     Roadmap Agent (#9): given an evaluation result (the exact object
@@ -279,4 +297,5 @@ def generate_roadmap_route():
                     + (" (saved)" if uid else " (not saved — no uid provided)"),
         )
     except Exception as exc:  # noqa: BLE001
+        logger.exception("Unhandled error in %s", request.path)
         return error_response(str(exc), status_code=500)

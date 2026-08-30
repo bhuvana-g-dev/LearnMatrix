@@ -78,7 +78,16 @@ class ResourceSuggestionAgent(BaseAgent):
         last_error: Exception | None = None
         for attempt in range(settings.AI_GENERATION_MAX_RETRIES + 1):
             try:
-                raw = generate_json(prompt)
+                # Small explicit cap — this call only ever returns up to
+                # 10 short JSON objects (title/url/type/platform), a few
+                # hundred tokens at most. Leaving max_tokens at
+                # generate_json()'s 8192 default was blowing straight
+                # through Groq's free-tier 8000 TPM limit on every call
+                # (the REQUESTED max_tokens counts against that budget,
+                # not just what's actually generated — see
+                # utils/gemini_client.py's docstring), so Groq 413'd
+                # regardless of how short the actual prompt/response was.
+                raw = generate_json(prompt, max_tokens=1024)
                 rows = self._extract_rows(raw)
                 self._validate_rows(rows)
                 return rows

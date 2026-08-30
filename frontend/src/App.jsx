@@ -15,7 +15,7 @@ import SkillProgressScreen from "./screens/SkillProgressScreen";
 import AssessmentScreen from "./screens/AssessmentScreen";
 import RoadmapScreen from "./screens/RoadmapScreen";
 import CourseWorkspaceScreen from "./screens/CourseWorkspaceScreen";
-import LearningSessionScreen from "./screens/LearningSessionScreen";
+import LearningPathScreen from "./screens/LearningPathScreen";
 import ProfileScreen from "./screens/ProfileScreen";
 import RevisionScheduleScreen from "./screens/RevisionScheduleScreen";
 import AIStudyAssistantScreen from "./screens/AIStudyAssistantScreen";
@@ -52,10 +52,10 @@ export default function App() {
   // "Profile" (or any page) reloads that same page instead of bouncing
   // back to Home/Login.
   //
-  // "course-workspace" and "learning-session" used to be excluded from
+  // "course-workspace" and "learning-path" used to be excluded from
   // this restore because both need in-memory context (workspaceContext /
-  // learningSession below) that only ever lived in useState. Now each
-  // one has its own small, persisted "pointer" (see lm_learningSession
+  // learningPath below) that only ever lived in useState. Now each
+  // one has its own small, persisted "pointer" (see lm_learningPath
   // and lm_workspacePointer below) that's enough to rebuild that
   // context after a refresh — so we only fall back to Learning Hub
   // when that pointer is actually missing (e.g. an older session from
@@ -66,21 +66,24 @@ export default function App() {
     if (saved === "course-workspace") {
       return localStorage.getItem("lm_workspacePointer") ? "course-workspace" : "roadmap";
     }
-    if (saved === "learning-session") {
-      return localStorage.getItem("lm_learningSession") ? "learning-session" : "roadmap";
+    if (saved === "learning-path") {
+      return localStorage.getItem("lm_learningPath") ? "learning-path" : "roadmap";
     }
     return saved || "home";
   });
   const [showSignup, setShowSignup] = useState(false);
   const [showLanding, setShowLanding] = useState(true);
-  // { skill, topic, focusBand } — restored synchronously from
-  // localStorage on a fresh mount when we're reopening straight into
-  // Learning Session, since this is just plain strings (no roadmap
-  // object needed).
-  const [learningSession, setLearningSession] = useState(() => {
-    if (localStorage.getItem("lm_activeKey") !== "learning-session") return null;
+  // { skill, topic } — restored synchronously from localStorage on a
+  // fresh mount when we're reopening straight into the Learning Path
+  // screen. No focusBand/skillLevel needed here (unlike the old
+  // Learning Session pointer this replaces) — LearningPathScreen /
+  // LearningPathPane derive the whole band sequence themselves from
+  // the signed-in learner's roadmap via GET /learning/path/<skill>/<topic>,
+  // never from a client-supplied band.
+  const [learningPath, setLearningPath] = useState(() => {
+    if (localStorage.getItem("lm_activeKey") !== "learning-path") return null;
     try {
-      const raw = localStorage.getItem("lm_learningSession");
+      const raw = localStorage.getItem("lm_learningPath");
       return raw ? JSON.parse(raw) : null;
     } catch {
       return null;
@@ -151,15 +154,15 @@ export default function App() {
     localStorage.setItem("lm_activeKey", activeKey);
   }, [activeKey]);
 
-  // Keep the Learning Session pointer in sync so a refresh while on
-  // that screen can restore it directly (see the lazy useState above).
+  // Keep the Learning Path pointer in sync so a refresh while on that
+  // screen can restore it directly (see the lazy useState above).
   useEffect(() => {
-    if (learningSession) {
-      localStorage.setItem("lm_learningSession", JSON.stringify(learningSession));
+    if (learningPath) {
+      localStorage.setItem("lm_learningPath", JSON.stringify(learningPath));
     } else {
-      localStorage.removeItem("lm_learningSession");
+      localStorage.removeItem("lm_learningPath");
     }
-  }, [learningSession]);
+  }, [learningPath]);
 
   // Rebuild Course Workspace's context after a refresh. Unlike Learning
   // Session, this can't be done synchronously — roadmap/compressedSyllabus
@@ -362,8 +365,8 @@ export default function App() {
           onNavigate={setActiveKey}
           onSelectSkill={(entry) => {
             const topic = entry.currentTopic || entry.skill;
-            setLearningSession({ skill: entry.skill, topic, focusBand: entry.focusBand || "application", skillLevel: entry.currentLevel });
-            setActiveKey("learning-session");
+            setLearningPath({ skill: entry.skill, topic });
+            setActiveKey("learning-path");
           }}
         />
       );
@@ -428,9 +431,9 @@ export default function App() {
           // skill name itself when no topic-level data exists for this
           // skill (role/skill not topic-seeded yet) — same "one learning
           // session per roadmap week" behavior as before in that case.
-         const topic = entry.currentTopic || entry.skill;
-setLearningSession({ skill: entry.skill, topic, focusBand: entry.focusBand || "application", skillLevel: entry.currentLevel });
-          setActiveKey("learning-session");
+          const topic = entry.currentTopic || entry.skill;
+          setLearningPath({ skill: entry.skill, topic });
+          setActiveKey("learning-path");
         }}
         onStartJourney={(context) => {
           setWorkspaceContext(context);
@@ -443,13 +446,13 @@ setLearningSession({ skill: entry.skill, topic, focusBand: entry.focusBand || "a
           // role as still "Selected", then send them to Role Selection.
           careerPath.selectRole(null);
           // workspaceContext still holds the OLD compressedSyllabus (the
-          // Verified/Current/Locked tree) and learningSession still
+          // Verified/Current/Locked tree) and learningPath still
           // points at a topic from the quit role — without clearing
-          // these, Course Workspace/Learning Session keep showing pages
+          // these, Course Workspace/Learning Path keep showing pages
           // as Locked using stale pre-quit data even after the backend
           // roadmap is gone.
           setWorkspaceContext(null);
-          setLearningSession(null);
+          setLearningPath(null);
           setActiveKey("role");
         }}
       />
@@ -474,13 +477,11 @@ setLearningSession({ skill: entry.skill, topic, focusBand: entry.focusBand || "a
         onBack={() => setActiveKey("roadmap")}
       />
     );
-  } else if (activeKey === "learning-session" && learningSession) {
+  } else if (activeKey === "learning-path" && learningPath) {
     content = (
-      <LearningSessionScreen
-        skill={learningSession.skill}
-        topic={learningSession.topic}
-        focusBand={learningSession.focusBand}
-        skillLevel={learningSession.skillLevel}
+      <LearningPathScreen
+        skill={learningPath.skill}
+        topic={learningPath.topic}
         onBack={() => setActiveKey("roadmap")}
       />
     );
@@ -502,7 +503,7 @@ setLearningSession({ skill: entry.skill, topic, focusBand: entry.focusBand || "a
   const handleLogout = async () => {
     await auth.logout();
     localStorage.removeItem("lm_activeKey");
-    localStorage.removeItem("lm_learningSession");
+    localStorage.removeItem("lm_learningPath");
     localStorage.removeItem("lm_workspacePointer");
     setRoadmapCache(null); // don't leak this account's roadmap into the next login
     setActiveKey("home");

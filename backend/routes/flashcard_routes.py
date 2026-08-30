@@ -20,11 +20,15 @@ from services.flashcard_service import (
     FlashcardServiceError,
 )
 from utils.response_helper import success_response, error_response
+from utils.user_auth import require_owner, require_owner_body
+from utils.rate_limiter import limiter
 
 flashcard_bp = Blueprint("flashcards", __name__)
 
 
 @flashcard_bp.route("/flashcards/generate", methods=["POST"])
+@limiter.limit("15 per minute")
+@require_owner_body()
 def generate_flashcards_route():
     payload = request.get_json(silent=True)
     if not payload:
@@ -59,12 +63,14 @@ def generate_flashcards_route():
 
 
 @flashcard_bp.route("/flashcards/<uid>", methods=["GET"])
+@require_owner()
 def list_flashcards_route(uid):
     sets_ = list_flashcard_sets(uid)
     return success_response(data={"sets": sets_}, message="Flashcard sets loaded.")
 
 
 @flashcard_bp.route("/flashcards/<uid>/<set_id>", methods=["DELETE"])
+@require_owner()
 def delete_flashcards_route(uid, set_id):
     delete_flashcard_set(uid, set_id)
     return success_response(data=None, message="Flashcard set removed.")

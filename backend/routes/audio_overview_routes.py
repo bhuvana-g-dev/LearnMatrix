@@ -35,11 +35,15 @@ from services.audio_overview_service import (
     AudioOverviewServiceError,
 )
 from utils.response_helper import success_response, error_response
+from utils.user_auth import require_owner_body
+from utils.rate_limiter import limiter
 
 audio_overview_bp = Blueprint("audio_overview", __name__)
 
 
 @audio_overview_bp.route("/audio-overview/generate", methods=["POST"])
+@limiter.limit("5 per minute")
+@require_owner_body()
 def generate_audio_overview_route():
     payload = request.get_json(silent=True)
     if not payload:
@@ -70,6 +74,7 @@ def generate_audio_overview_route():
 
 
 @audio_overview_bp.route("/audio-overview/synthesize", methods=["POST"])
+@limiter.limit("10 per minute")
 def synthesize_audio_overview_route():
     """Re-renders audio for an ALREADY-WRITTEN script — used when a
     student reopens a previously-generated Audio Overview from Studio

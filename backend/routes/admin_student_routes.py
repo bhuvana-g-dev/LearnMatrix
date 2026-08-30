@@ -10,11 +10,15 @@ learning_activity + Firebase Auth), never invented.
                                           Quiz Attempts sheets)
 """
 
-from flask import Blueprint, send_file
+import logging
+
+from flask import Blueprint, send_file, request
 
 from services.student_records_service import get_student_summaries, build_export_workbook
 from utils.admin_auth import require_admin
 from utils.response_helper import success_response, error_response
+
+logger = logging.getLogger(__name__)
 
 admin_student_bp = Blueprint("admin_student", __name__)
 
@@ -26,6 +30,7 @@ def list_students_route():
         summaries = get_student_summaries()
         return success_response(data=summaries, message=f"{len(summaries)} student(s) with a completed assessment.")
     except Exception as exc:  # noqa: BLE001
+        logger.exception("Unhandled error in %s", request.path)
         return error_response(str(exc), status_code=500)
 
 
@@ -41,4 +46,5 @@ def export_students_route():
             download_name="learnmatrix-student-records.xlsx",
         )
     except Exception as exc:  # noqa: BLE001
+        logger.exception("Unhandled error in %s", request.path)
         return error_response(str(exc), status_code=500)

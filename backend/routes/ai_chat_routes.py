@@ -39,12 +39,17 @@ from services.ai_chat_service import (
     AIChatError,
     SourceError,
 )
+from config.settings import settings
 from utils.response_helper import success_response, error_response
+from utils.user_auth import require_owner, require_owner_body
+from utils.rate_limiter import limiter
 
 ai_chat_bp = Blueprint("ai_chat", __name__)
 
 
 @ai_chat_bp.route("/ai/chat", methods=["POST"])
+@limiter.limit("20 per minute")
+@require_owner_body()
 def send_chat_message_route():
     payload = request.get_json(silent=True)
     if not payload:
@@ -68,30 +73,35 @@ def send_chat_message_route():
 
 
 @ai_chat_bp.route("/ai/chat/<uid>/sessions", methods=["GET"])
+@require_owner()
 def list_chat_sessions_route(uid):
     sessions = list_chat_sessions(uid)
     return success_response(data={"sessions": sessions}, message="Chat sessions loaded.")
 
 
 @ai_chat_bp.route("/ai/chat/<uid>/sessions/<session_id>", methods=["GET"])
+@require_owner()
 def get_chat_session_route(uid, session_id):
     history = load_chat_session(uid, session_id)
     return success_response(data={"history": history}, message="Conversation loaded.")
 
 
 @ai_chat_bp.route("/ai/chat/<uid>/sessions/<session_id>", methods=["DELETE"])
+@require_owner()
 def delete_chat_session_route(uid, session_id):
     delete_chat_session(uid, session_id)
     return success_response(data=None, message="Conversation deleted.")
 
 
 @ai_chat_bp.route("/ai/chat/<uid>/sources", methods=["GET"])
+@require_owner()
 def list_chat_sources_route(uid):
     sources = list_sources(uid)
     return success_response(data={"sources": sources}, message="Sources loaded.")
 
 
 @ai_chat_bp.route("/ai/chat/<uid>/sources/content", methods=["GET"])
+@require_owner()
 def get_chat_sources_content_route(uid):
     """Full text per source (not just titles) — used by Mind Map,
     Audio Overview, PPT, and Flashcards' "From Sources" mode, instead
@@ -101,6 +111,8 @@ def get_chat_sources_content_route(uid):
 
 
 @ai_chat_bp.route("/ai/chat/<uid>/sources", methods=["POST"])
+@limiter.limit("20 per hour")
+@require_owner()
 def upload_chat_source_route(uid):
     """multipart/form-data with a single 'file' field — a PDF, .txt, or
     .md the student wants the assistant grounded on."""
@@ -111,6 +123,22 @@ def upload_chat_source_route(uid):
     if not file.filename:
         return error_response("No file selected.", status_code=400)
 
+    # Flask's global MAX_CONTENT_LENGTH already stops anything bigger
+    # than that outright, but chat sources have their own, usually
+    # tighter, limit — check it here for a specific, friendly message
+    # instead of letting an oversized-but-under-the-global-cap file
+    # reach extract_text() and get fully read into memory first.
+    file.stream.seek(0, 2)  # SEEK_END
+    size_bytes = file.stream.tell()
+    file.stream.seek(0)
+    max_bytes = settings.CHAT_SOURCE_MAX_FILE_MB * 1024 * 1024
+    if size_bytes > max_bytes:
+        return error_response(
+            f"File is too large — the limit for chat sources is "
+            f"{settings.CHAT_SOURCE_MAX_FILE_MB}MB.",
+            status_code=413,
+        )
+
     try:
         result = add_upload_source(uid, file.filename, file.stream)
         return success_response(data=result, message="Source added.")
@@ -119,6 +147,8 @@ def upload_chat_source_route(uid):
 
 
 @ai_chat_bp.route("/ai/chat/<uid>/sources/from-notes", methods=["POST"])
+@limiter.limit("20 per hour")
+@require_owner()
 def add_notes_source_route(uid):
     """Adds an already-generated Learning Hub notes entry (see
     services/notes_repository.py) as a chat source — no file upload
@@ -144,6 +174,8 @@ def add_notes_source_route(uid):
 
 
 @ai_chat_bp.route("/ai/chat/<uid>/sources/from-youtube", methods=["POST"])
+@limiter.limit("20 per hour")
+@require_owner()
 def add_youtube_source_route(uid):
     """Adds a YouTube video's transcript as a chat source — NotebookLM-
     style "paste a link" alongside file upload and Learning Hub notes."""
@@ -163,6 +195,8 @@ def add_youtube_source_route(uid):
 
 
 @ai_chat_bp.route("/ai/chat/<uid>/sources/from-text", methods=["POST"])
+@limiter.limit("20 per hour")
+@require_owner()
 def add_text_source_route(uid):
     """Adds raw pasted text as a chat source — NotebookLM's "Copied
     text" option alongside file upload, YouTube, and Learning Hub
@@ -184,6 +218,7 @@ def add_text_source_route(uid):
 
 
 @ai_chat_bp.route("/ai/chat/<uid>/sources/<source_id>", methods=["DELETE"])
+@require_owner()
 def delete_chat_source_route(uid, source_id):
     delete_source(uid, source_id)
     return success_response(data=None, message="Source removed.")

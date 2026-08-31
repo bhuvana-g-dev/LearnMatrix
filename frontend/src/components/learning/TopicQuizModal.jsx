@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   Loader2, XCircle, RotateCcw, ArrowRight, ArrowLeft as ArrowLeftIcon,
   X, Trophy, CalendarClock, Target, Layers, Check,
@@ -308,7 +308,7 @@ export default function TopicQuizModal({ skill, topic, uid, focusBand, onComplet
 
           {/* ---------------- In progress ---------------- */}
           {(state === "ready" || state === "submitting") && currentQuestion && (
-            <div>
+            <div style={{ perspective: 1200 }}>
               <div className="flex items-center justify-between mb-1">
                 <span className="text-xs font-bold uppercase tracking-wide" style={{ color: COLORS.textLight }}>
                   Question {currentIndex + 1} of {questions.length}
@@ -330,44 +330,55 @@ export default function TopicQuizModal({ skill, topic, uid, focusBand, onComplet
                 />
               </div>
 
-              <h3 className="text-base font-bold mb-5 leading-snug" style={{ color: COLORS.textDark }}>
-                {currentQuestion.Question}
-              </h3>
+              <AnimatePresence mode="wait" initial={false}>
+                <motion.div
+                  key={currentIndex}
+                  initial={{ rotateY: 90, opacity: 0 }}
+                  animate={{ rotateY: 0, opacity: 1 }}
+                  exit={{ rotateY: -90, opacity: 0 }}
+                  transition={{ duration: 0.32, ease: "easeInOut" }}
+                  style={{ transformStyle: "preserve-3d" }}
+                >
+                  <h3 className="text-base font-bold mb-5 leading-snug" style={{ color: COLORS.textDark }}>
+                    {currentQuestion.Question}
+                  </h3>
 
-              <div className="flex flex-col gap-2.5 mb-6">
-                {OPTION_KEYS.map((key) => {
-                  const text = currentQuestion[key];
-                  if (!text) return null;
-                  const isSelected = selectedOption === key;
-                  return (
-                    <button
-                      key={key}
-                      onClick={() => selectAnswer(key)}
-                      disabled={state === "submitting"}
-                      className="flex items-center gap-3 px-4 py-3 text-left"
-                      style={{
-                        borderRadius: 14,
-                        border: `2px solid ${isSelected ? COLORS.purple : COLORS.border}`,
-                        background: isSelected ? "rgba(212,160,23,0.10)" : "rgba(255,255,255,0.5)",
-                        cursor: state === "submitting" ? "default" : "pointer",
-                      }}
-                    >
-                      <span
-                        className="flex items-center justify-center flex-shrink-0 text-xs font-bold"
-                        style={{
-                          width: 24, height: 24, borderRadius: "50%",
-                          background: isSelected ? GRADIENTS.purplePink : "transparent",
-                          border: `1.5px solid ${isSelected ? "transparent" : COLORS.border}`,
-                          color: isSelected ? "#fff" : COLORS.textLight,
-                        }}
-                      >
-                        {OPTION_LETTERS[key]}
-                      </span>
-                      <span className="text-sm" style={{ color: COLORS.textDark }}>{text}</span>
-                    </button>
-                  );
-                })}
-              </div>
+                  <div className="flex flex-col gap-2.5 mb-6">
+                    {OPTION_KEYS.map((key) => {
+                      const text = currentQuestion[key];
+                      if (!text) return null;
+                      const isSelected = selectedOption === key;
+                      return (
+                        <button
+                          key={key}
+                          onClick={() => selectAnswer(key)}
+                          disabled={state === "submitting"}
+                          className="flex items-center gap-3 px-4 py-3 text-left"
+                          style={{
+                            borderRadius: 14,
+                            border: `2px solid ${isSelected ? COLORS.purple : COLORS.border}`,
+                            background: isSelected ? "rgba(212,160,23,0.10)" : "rgba(255,255,255,0.5)",
+                            cursor: state === "submitting" ? "default" : "pointer",
+                          }}
+                        >
+                          <span
+                            className="flex items-center justify-center flex-shrink-0 text-xs font-bold"
+                            style={{
+                              width: 24, height: 24, borderRadius: "50%",
+                              background: isSelected ? GRADIENTS.purplePink : "transparent",
+                              border: `1.5px solid ${isSelected ? "transparent" : COLORS.border}`,
+                              color: isSelected ? "#fff" : COLORS.textLight,
+                            }}
+                          >
+                            {OPTION_LETTERS[key]}
+                          </span>
+                          <span className="text-sm" style={{ color: COLORS.textDark }}>{text}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </motion.div>
+              </AnimatePresence>
 
               <div className="flex items-center justify-between gap-3">
                 <button

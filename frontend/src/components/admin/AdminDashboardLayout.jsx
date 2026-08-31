@@ -1,48 +1,59 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Menu } from "lucide-react";
+import PageShell from "../layout/PageShell";
 import AdminSidebar from "./AdminSidebar";
 import Logo from "../common/Logo";
-import { COLORS, GLASS_CARD, GRADIENTS } from "../../constants/theme";
+import { COLORS, GLASS_CARD } from "../../constants/theme";
 
-// Deliberately NOT using PageShell/FloatingOrbs here. FloatingOrbs
-// renders 5 blurred divs animating with framer-motion's `repeat:
-// Infinity` — continuous GPU/CPU work for as long as the tab stays
-// open. That's fine for a short-lived marketing page, but the admin
-// panel is a long-running, data-dense session (tables, filters,
-// modals) — it's exactly the kind of tab Chrome flags as "using extra
-// resources" when a decorative background never stops animating. A
-// static gradient gives the same visual base with none of the cost.
+const EXPANDED_WIDTH = 280;
+const COLLAPSED_WIDTH = 76;
+
 export default function AdminDashboardLayout({ activeKey, onNavigate, onLogout, children }) {
   const [mobileOpen, setMobileOpen] = useState(false);
+  // Desktop-only, persisted across sessions so an admin who prefers
+  // the icon-only rail doesn't have to re-collapse it every visit.
+  // Mobile's drawer is unaffected — it always opens full-width.
+  const [collapsed, setCollapsed] = useState(() => localStorage.getItem("lm_adminSidebarCollapsed") === "true");
+
+  useEffect(() => {
+    localStorage.setItem("lm_adminSidebarCollapsed", collapsed ? "true" : "false");
+  }, [collapsed]);
 
   return (
-    <div style={{ minHeight: "100vh", width: "100%", background: GRADIENTS.pageBg }}>
+    <PageShell>
       <div className="flex" style={{ minHeight: "100vh" }}>
-        {/* Desktop sidebar — position: fixed (not sticky) so it stays
-            pinned to the viewport regardless of how tall the page
-            content grows or what any ancestor's overflow/scroll
-            setting is. The main content column below gets a matching
-            left margin so nothing renders underneath it. */}
+        {/* Desktop sidebar — still just a normal flex sibling (sticky,
+            same as before); the content column next to it is `flex-1`,
+            so shrinking this width to COLLAPSED_WIDTH reflows the
+            content automatically, no manual margin math needed. */}
         <aside
           className="hidden lg:block"
           style={{
-            width: 280,
+            width: collapsed ? COLLAPSED_WIDTH : EXPANDED_WIDTH,
             flexShrink: 0,
             ...GLASS_CARD,
             borderRadius: 0,
             borderRight: `1px solid ${COLORS.border}`,
-            position: "fixed",
+            position: "sticky",
             top: 0,
-            left: 0,
             height: "100vh",
-            zIndex: 30,
+            transition: "width 0.2s ease",
+            overflow: "hidden",
           }}
         >
-          <AdminSidebar activeKey={activeKey} onNavigate={onNavigate} onLogout={onLogout} />
+          <AdminSidebar
+            activeKey={activeKey}
+            onNavigate={onNavigate}
+            onLogout={onLogout}
+            collapsed={collapsed}
+            onToggleCollapse={setCollapsed}
+          />
         </aside>
 
-        {/* Mobile drawer */}
+        {/* Mobile drawer — always full-width regardless of the
+            desktop collapse preference; a narrow icon rail makes no
+            sense as an overlay drawer on a phone. */}
         <AnimatePresence>
           {mobileOpen && (
             <>
@@ -75,10 +86,8 @@ export default function AdminDashboardLayout({ activeKey, onNavigate, onLogout, 
           )}
         </AnimatePresence>
 
-        {/* Main content — lg:ml-[280px] offsets the fixed desktop
-            sidebar's width; on mobile the sidebar is an overlay drawer,
-            not part of the flow, so no offset is needed there. */}
-        <div className="flex-1 min-w-0 lg:ml-[280px]">
+        {/* Main content */}
+        <div className="flex-1 min-w-0">
           <div
             className="flex items-center justify-between px-4 sm:px-8 py-4 lg:hidden"
             style={{ borderBottom: `1px solid ${COLORS.border}`, background: "rgba(255,255,255,0.2)" }}
@@ -94,6 +103,6 @@ export default function AdminDashboardLayout({ activeKey, onNavigate, onLogout, 
           {children}
         </div>
       </div>
-    </div>
+    </PageShell>
   );
 }

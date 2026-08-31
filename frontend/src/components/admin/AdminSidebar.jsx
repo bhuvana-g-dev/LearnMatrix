@@ -1,11 +1,20 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ChevronDown, LogOut, ShieldCheck } from "lucide-react";
+import { ChevronDown, ChevronsLeft, ChevronsRight, LogOut, ShieldCheck } from "lucide-react";
 import Logo from "../common/Logo";
 import { COLORS, GRADIENTS } from "../../constants/theme";
 import { ADMIN_NAV_SECTIONS } from "../../constants/adminNavigation";
 
-export default function AdminSidebar({ activeKey, onNavigate, onLogout }) {
+/**
+ * AdminSidebar — full nav when `collapsed` is false (the only mode
+ * this component had before), icon-only rail when true. Collapsed
+ * mode has no room to show a multi-child section's own child links
+ * inline, so clicking one of those sections while collapsed expands
+ * the sidebar back out AND opens that section in the same click —
+ * see handleSectionIconClick — rather than adding a second UI
+ * pattern (flyout menu) just for the narrow state.
+ */
+export default function AdminSidebar({ activeKey, onNavigate, onLogout, collapsed = false, onToggleCollapse }) {
   const [openSections, setOpenSections] = useState(() =>
     Object.fromEntries(ADMIN_NAV_SECTIONS.map((s) => [s.key, true]))
   );
@@ -13,21 +22,50 @@ export default function AdminSidebar({ activeKey, onNavigate, onLogout }) {
   const toggleSection = (key) =>
     setOpenSections((prev) => ({ ...prev, [key]: !prev[key] }));
 
+  const handleSectionIconClick = (key) => {
+    if (collapsed) {
+      onToggleCollapse?.(false);
+      setOpenSections((prev) => ({ ...prev, [key]: true }));
+    } else {
+      toggleSection(key);
+    }
+  };
+
   return (
     <div className="flex flex-col h-full">
-      <div className="px-5 pt-6 pb-2">
-        <Logo />
-      </div>
-      <div className="px-5 pb-4">
-        <span
-          className="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full"
-          style={{ background: "rgba(192,132,252,0.18)", color: COLORS.purple }}
-        >
-          <ShieldCheck size={12} /> Admin Panel
-        </span>
+      <div className={collapsed ? "pt-6 pb-2 flex justify-center" : "px-5 pt-6 pb-2"}>
+        <Logo compact={collapsed} />
       </div>
 
-      <div className="flex-1 overflow-y-auto px-3 pb-4">
+      {!collapsed && (
+        <div className="px-5 pb-4">
+          <span
+            className="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full"
+            style={{ background: "rgba(192,132,252,0.18)", color: COLORS.purple }}
+          >
+            <ShieldCheck size={12} /> Admin Panel
+          </span>
+        </div>
+      )}
+
+      {/* Collapse/expand toggle — always visible, own row so it never
+          competes with a nav item for click targeting. */}
+      {onToggleCollapse && (
+        <div className={collapsed ? "flex justify-center pb-3" : "px-5 pb-3 flex justify-end"}>
+          <button
+            onClick={() => onToggleCollapse(!collapsed)}
+            title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+            style={{
+              width: 28, height: 28, borderRadius: 9999, display: "flex", alignItems: "center", justifyContent: "center",
+              border: `1px solid ${COLORS.border}`, background: "rgba(255,255,255,0.5)", cursor: "pointer",
+            }}
+          >
+            {collapsed ? <ChevronsRight size={14} color={COLORS.textMid} /> : <ChevronsLeft size={14} color={COLORS.textMid} />}
+          </button>
+        </div>
+      )}
+
+      <div className={collapsed ? "flex-1 overflow-y-auto px-2 pb-4" : "flex-1 overflow-y-auto px-3 pb-4"}>
         {ADMIN_NAV_SECTIONS.map((section) => {
           const SectionIcon = section.icon;
           const isOpen = openSections[section.key];
@@ -41,7 +79,12 @@ export default function AdminSidebar({ activeKey, onNavigate, onLogout }) {
               <div key={section.key} className="mb-1.5">
                 <button
                   onClick={() => onNavigate(only.key)}
-                  className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all"
+                  title={collapsed ? section.title : undefined}
+                  className={
+                    collapsed
+                      ? "w-full flex items-center justify-center py-2.5 rounded-xl transition-all"
+                      : "w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all"
+                  }
                   style={{
                     color: isActive ? "#fff" : COLORS.textDark,
                     background: isActive ? GRADIENTS.purplePink : "transparent",
@@ -51,7 +94,7 @@ export default function AdminSidebar({ activeKey, onNavigate, onLogout }) {
                   }}
                 >
                   <SectionIcon size={16} color={isActive ? "#fff" : COLORS.purple} />
-                  {section.title}
+                  {!collapsed && section.title}
                 </button>
               </div>
             );
@@ -60,21 +103,32 @@ export default function AdminSidebar({ activeKey, onNavigate, onLogout }) {
           return (
             <div key={section.key} className="mb-1.5">
               <button
-                onClick={() => toggleSection(section.key)}
-                className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-semibold"
+                onClick={() => handleSectionIconClick(section.key)}
+                title={collapsed ? section.title : undefined}
+                className={
+                  collapsed
+                    ? "w-full flex items-center justify-center py-2.5 rounded-xl"
+                    : "w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-semibold"
+                }
                 style={{ color: COLORS.textDark, background: "transparent", border: "none", cursor: "pointer" }}
               >
-                <span className="flex items-center gap-2.5">
+                {collapsed ? (
                   <SectionIcon size={16} color={COLORS.purple} />
-                  {section.title}
-                </span>
-                <motion.span animate={{ rotate: isOpen ? 180 : 0 }} transition={{ duration: 0.2 }}>
-                  <ChevronDown size={14} color={COLORS.textLight} />
-                </motion.span>
+                ) : (
+                  <>
+                    <span className="flex items-center gap-2.5">
+                      <SectionIcon size={16} color={COLORS.purple} />
+                      {section.title}
+                    </span>
+                    <motion.span animate={{ rotate: isOpen ? 180 : 0 }} transition={{ duration: 0.2 }}>
+                      <ChevronDown size={14} color={COLORS.textLight} />
+                    </motion.span>
+                  </>
+                )}
               </button>
 
               <AnimatePresence initial={false}>
-                {isOpen && (
+                {isOpen && !collapsed && (
                   <motion.div
                     initial={{ height: 0, opacity: 0 }}
                     animate={{ height: "auto", opacity: 1 }}
@@ -112,13 +166,18 @@ export default function AdminSidebar({ activeKey, onNavigate, onLogout }) {
         })}
       </div>
 
-      <div className="px-3 pb-5 pt-2" style={{ borderTop: `1px solid ${COLORS.border}` }}>
+      <div className={collapsed ? "px-2 pb-5 pt-2" : "px-3 pb-5 pt-2"} style={{ borderTop: `1px solid ${COLORS.border}` }}>
         <button
           onClick={onLogout}
-          className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-semibold mt-2"
+          title={collapsed ? "Logout" : undefined}
+          className={
+            collapsed
+              ? "w-full flex items-center justify-center py-2.5 rounded-xl mt-2"
+              : "w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-semibold mt-2"
+          }
           style={{ color: "#E4568A", background: "rgba(240,171,252,0.15)", border: "none", cursor: "pointer" }}
         >
-          <LogOut size={16} /> Logout
+          <LogOut size={16} /> {!collapsed && "Logout"}
         </button>
       </div>
     </div>

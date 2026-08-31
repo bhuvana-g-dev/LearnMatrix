@@ -481,6 +481,7 @@ export default function CourseWorkspaceScreen({ roadmap, compressedSyllabus, ini
                   errorMessage={lessonErrorMessage}
                   lessons={lessons}
                   completedOrders={completedLessons}
+                  lessonScores={lessonScores}
                   onSelectLesson={openLesson}
                   onRetry={fetchLessonsForActiveTopic}
                 />

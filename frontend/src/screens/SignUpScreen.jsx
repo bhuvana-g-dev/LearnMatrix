@@ -49,7 +49,6 @@ function getSignupErrorMessage(err) {
 const STRONG_PASSWORD_REGEX =
   /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]).{8,}$/;
 
-const USER_TYPES = [{ key: "college", label: "College Student", icon: GraduationCap }];
 
 // Firestore documents cap out at 1MB, so we keep the base64 photo small
 // by resizing it down before storing it.
@@ -192,7 +191,11 @@ export default function SignUpScreen({ auth, onLogin, onSuccess, onBack }) {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [mobile, setMobile] = useState("");
-  const [userType, setUserType] = useState("college");
+  // Fixed to "college" — this was previously a picker with one choice
+  // ("College Student"); removed the picker UI, kept the constant so the
+  // college/department/academicYear conditional fields and the signup
+  // payload below don't need to change.
+  const userType = "college";
   const [college, setCollege] = useState("");
   const [department, setDepartment] = useState("");
   const [academicYear, setAcademicYear] = useState("");
@@ -458,39 +461,6 @@ export default function SignUpScreen({ auth, onLogin, onSuccess, onBack }) {
                 onChange={(e) => setMobile(e.target.value.replace(/\D/g, "").slice(0, 10))}
                 disabled={loading || !!successMessage}
               />
-            </div>
-
-            {/* User type */}
-            <div>
-              <p className="text-xs font-semibold mb-2" style={{ color: COLORS.textMid }}>
-                User Type *
-              </p>
-              <div className="flex flex-wrap gap-2">
-                {USER_TYPES.map((t) => {
-                  const Icon = t.icon;
-                  const isActive = userType === t.key;
-                  return (
-                    <button
-                      key={t.key}
-                      type="button"
-                      onClick={() => setUserType(t.key)}
-                      disabled={loading || !!successMessage}
-                      className="flex items-center gap-1.5 text-xs font-semibold"
-                      style={{
-                        padding: "9px 16px",
-                        borderRadius: 9999,
-                        border: `1.5px solid ${isActive ? "transparent" : COLORS.border}`,
-                        background: isActive ? GRADIENTS.purpleSky : "rgba(255,255,255,0.55)",
-                        color: isActive ? "#fff" : COLORS.textDark,
-                        cursor: "pointer",
-                      }}
-                    >
-                      <Icon size={14} />
-                      {t.label}
-                    </button>
-                  );
-                })}
-              </div>
             </div>
 
             {/* College fields — only for College Student */}

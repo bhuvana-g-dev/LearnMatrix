@@ -3,7 +3,7 @@ import { DASH } from "../../../constants/profileDashboardTheme";
 import DashCard, { DashCardTitle, ProgressRow } from "./DashCard";
 
 export function CareerPathCard({ profile, roadmap, stats }) {
-  const skillNames = (roadmap?.entries || []).map((e) => e.skill);
+  const entries = roadmap?.entries || [];
 
   return (
     <DashCard>
@@ -20,21 +20,33 @@ export function CareerPathCard({ profile, roadmap, stats }) {
             color={DASH.accentPurple}
           />
 
-          {skillNames.length > 0 && (
+          {entries.length > 0 && (
             <>
               <p className="text-xs font-semibold mt-4 mb-2" style={{ color: DASH.textLight }}>
                 Skills in this path
               </p>
               <div className="flex flex-wrap gap-2">
-                {skillNames.map((s) => (
-                  <span
-                    key={s}
-                    className="text-[11px] font-medium px-2.5 py-1 rounded-full"
-                    style={{ background: DASH.trackBg, color: DASH.textMid }}
-                  >
-                    {s}
-                  </span>
-                ))}
+                {entries.map((e) => {
+                  // Fully done = "mastered" (see backend/services/roadmap_service.py's
+                  // recompute_mastery_after_topic_progress — every topic/lesson under
+                  // this skill scored 75%+) — highlighted gold to stand out from the
+                  // rest, same accent Roadmap Completion above uses.
+                  const isMastered = e.status === "mastered";
+                  return (
+                    <span
+                      key={e.skill}
+                      className="text-[11px] font-semibold px-2.5 py-1 rounded-full"
+                      style={
+                        isMastered
+                          ? { background: DASH.accentPurple, color: "#fff" }
+                          : { background: DASH.trackBg, color: DASH.textMid, fontWeight: 500 }
+                      }
+                    >
+                      {isMastered && "✓ "}
+                      {e.skill}
+                    </span>
+                  );
+                })}
               </div>
             </>
           )}

@@ -422,27 +422,60 @@ def load_saved_roadmap(uid: str) -> dict | None:
 # this threshold, see _skill_progress_fraction()'s docstring.
 SKILL_MASTERY_THRESHOLD_PERCENT = 75
 
+# Must match frontend/src/services/lessonService.js's compositeTopicKey()
+# EXACTLY (same "—" em dash + spacing) — Learning Hub lesson quizzes
+# submit under "{topic} — {lessonTitle}" as the Topic field (see
+# CourseWorkspaceScreen.jsx), not the bare topic name a whole-topic
+# Test uses. Without stripping this suffix back off, every lesson a
+# learner passes inside the Learning Hub writes a Firestore progress
+# row that _topic_effective_score() below would never match against
+# get_topics_for_skill()'s plain topic names — i.e. studying lessons
+# would silently never move Overall Progress at all, only the separate
+# per-topic "Test" button would. This is exactly that fix.
+_LESSON_COMPOSITE_INFIX = " — "
+
+
+def _topic_effective_score(progress_rows: list[dict], topic: str, baseline: float) -> float:
+    """
+    One topic's effective score for progress purposes, folding together
+    BOTH ways a learner can generate progress for it:
+      - a direct whole-topic "Test" attempt (Topic field == topic exactly), and
+      - one or more per-lesson quiz passes inside the Learning Hub
+        (Topic field == "{topic} — {lessonTitle}", one row per lesson).
+    All matching rows (whichever kind) are averaged together. Falls
+    back to `baseline` (the skill's diagnostic scorePercent) when this
+    topic has no rows of either kind yet — same "don't punish an
+    untouched topic" behavior as before this existed.
+    """
+    prefix = f"{topic}{_LESSON_COMPOSITE_INFIX}"
+    matches = [
+        r for r in progress_rows
+        if r.get("Topic") == topic or str(r.get("Topic", "")).startswith(prefix)
+    ]
+    if not matches:
+        return baseline
+    return sum(r.get("AverageScorePercent", baseline) for r in matches) / len(matches)
+
 
 def _skill_progress_fraction(db, uid: str, entry: dict) -> float:
     """
     Continuous 0-100 "how far along is this ONE skill" score — used to
     build Overall Progress as a smooth number that moves after every
-    topic quiz, instead of jumping only once a skill fully crosses
-    SKILL_MASTERY_THRESHOLD_PERCENT on every topic (which reads as
-    "stuck at 0%" for a long time even while the learner is genuinely
-    improving).
+    topic quiz (whole-topic Test OR individual Learning Hub lesson —
+    see _topic_effective_score()), instead of jumping only once a skill
+    fully crosses SKILL_MASTERY_THRESHOLD_PERCENT on every topic (which
+    reads as "stuck at 0%" for a long time even while the learner is
+    genuinely improving).
 
       - status "mastered"      -> 100
       - status "not_assessed"  -> 0 (role skill never touched at all)
       - status "upcoming" (assessed, not yet fully mastered):
           - if the skill has topic-seed data (services/skill_topic_service
             — currently "frontend" role skills only): average across
-            every topic, using that topic's own AverageScorePercent
-            where the learner has attempted it, and falling back to the
-            skill's diagnostic scorePercent for topics not attempted yet
-            (so an untouched topic doesn't drag the number down below
-            what the diagnostic already showed — it just doesn't add
-            anything new until attempted).
+            every topic's _topic_effective_score() (falls back to the
+            skill's diagnostic scorePercent per-topic where untouched,
+            so an untouched topic doesn't drag the number down below
+            what the diagnostic already showed).
           - otherwise (no topic-seed data for this skill) -> just the
             diagnostic scorePercent, since there's no finer-grained
             signal available.
@@ -464,17 +497,9 @@ def _skill_progress_fraction(db, uid: str, entry: dict) -> float:
         return baseline
 
     all_topic_names = [t["Topic"] if isinstance(t, dict) else t for t in topics]
-    progress_by_topic = {
-        p["Topic"]: p
-        for p in topic_repo.list_progress_by_uid(db, uid)
-        if p.get("Skill") == skill
-    }
+    progress_rows = [p for p in topic_repo.list_progress_by_uid(db, uid) if p.get("Skill") == skill]
 
-    topic_scores = [
-        progress_by_topic[name].get("AverageScorePercent", baseline)
-        if name in progress_by_topic else baseline
-        for name in all_topic_names
-    ]
+    topic_scores = [_topic_effective_score(progress_rows, name, baseline) for name in all_topic_names]
     return sum(topic_scores) / len(topic_scores) if topic_scores else baseline
 
 
@@ -515,13 +540,21 @@ def recompute_mastery_after_topic_progress(uid: str, skill: str) -> dict | None:
         topics = get_topics_for_skill(db, skill)
         if topics:
             all_topic_names = [t["Topic"] if isinstance(t, dict) else t for t in topics]
-            progress_by_topic = {
-                p["Topic"]: p
-                for p in topic_repo.list_progress_by_uid(db, uid)
-                if p.get("Skill") == skill
-            }
-            if all(name in progress_by_topic for name in all_topic_names):
-                scores = [progress_by_topic[name].get("AverageScorePercent", 0) for name in all_topic_names]
+            progress_rows = [p for p in topic_repo.list_progress_by_uid(db, uid) if p.get("Skill") == skill]
+
+            def _matches_for(name: str) -> list[dict]:
+                prefix = f"{name}{_LESSON_COMPOSITE_INFIX}"
+                return [
+                    r for r in progress_rows
+                    if r.get("Topic") == name or str(r.get("Topic", "")).startswith(prefix)
+                ]
+
+            per_topic_matches = {name: _matches_for(name) for name in all_topic_names}
+            if all(per_topic_matches[name] for name in all_topic_names):
+                scores = [
+                    sum(r.get("AverageScorePercent", 0) for r in per_topic_matches[name]) / len(per_topic_matches[name])
+                    for name in all_topic_names
+                ]
                 if min(scores) >= SKILL_MASTERY_THRESHOLD_PERCENT:
                     entry["status"] = "mastered"
                     entry["currentLevel"] = "Strong"

@@ -17,6 +17,7 @@ import { COLORS, GRADIENTS, GLASS_CARD } from "../../constants/theme";
 export default function LessonListPane({
   topic, state, errorMessage, lessons, onSelectLesson, onRetry,
   completedOrders = new Set(), // Set of lesson.Order values already finished — see utils/lessonProgress.js
+  lessonScores = {}, // { [lesson.Order]: scorePercent } for passed lessons — see getLessonScores()
 }) {
   if (state === "loading") {
     return (
@@ -55,18 +56,39 @@ export default function LessonListPane({
     );
   }
 
+  const scoredValues = Object.values(lessonScores).filter((v) => typeof v === "number");
+  const topicAverage = scoredValues.length
+    ? Math.round(scoredValues.reduce((sum, v) => sum + v, 0) / scoredValues.length)
+    : null;
+
   return (
     <div>
-      <div className="flex items-center gap-2 mb-4">
-        <ListChecks size={16} style={{ color: COLORS.purple }} />
-        <p className="text-xs font-bold uppercase tracking-wide" style={{ color: COLORS.textLight }}>
-          {lessons.length} lesson{lessons.length === 1 ? "" : "s"} in {topic}
-        </p>
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2">
+          <ListChecks size={16} style={{ color: COLORS.purple }} />
+          <p className="text-xs font-bold uppercase tracking-wide" style={{ color: COLORS.textLight }}>
+            {lessons.length} lesson{lessons.length === 1 ? "" : "s"} in {topic}
+          </p>
+        </div>
+        {/* Average of every scored lesson quiz in this topic so far — same
+            AverageScorePercent math the backend uses per topic
+            (services/roadmap_service._topic_effective_score), shown here
+            so the learner sees a real number instead of just a row of
+            "Completed" labels with no sense of how well they actually did. */}
+        {topicAverage !== null && (
+          <span
+            className="text-xs font-bold px-2.5 py-1 rounded-full"
+            style={{ background: "rgba(212,160,23,0.14)", color: COLORS.purple }}
+          >
+            Avg score: {topicAverage}%
+          </span>
+        )}
       </div>
 
       <div className="flex flex-col gap-2.5">
         {lessons.map((lesson, i) => {
           const isDone = completedOrders.has(lesson.Order);
+          const score = lessonScores[lesson.Order];
           return (
             <motion.div
               key={lesson.Order}
@@ -87,7 +109,11 @@ export default function LessonListPane({
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-bold" style={{ color: COLORS.textDark }}>{lesson.Title}</p>
                 <p className="text-xs mt-0.5 line-clamp-1" style={{ color: COLORS.textMid }}>
-                  {isDone ? "Completed" : lesson.Summary}
+                  {isDone
+                    ? typeof score === "number"
+                      ? `Completed · Scored ${score}%`
+                      : "Completed"
+                    : lesson.Summary}
                 </p>
               </div>
               <BookOpen size={14} style={{ color: COLORS.textLight, flexShrink: 0 }} />

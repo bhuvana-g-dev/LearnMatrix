@@ -309,36 +309,36 @@ export default function TopicQuizModal({ skill, topic, uid, focusBand, onComplet
           {/* ---------------- In progress ---------------- */}
           {(state === "ready" || state === "submitting") && currentQuestion && (
             <div style={{ perspective: 1200 }}>
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-xs font-bold uppercase tracking-wide" style={{ color: COLORS.textLight }}>
-                  Question {currentIndex + 1} of {questions.length}
-                </span>
-                <span
-                  className="px-2.5 py-0.5 text-[10px] font-bold rounded-full"
-                  style={{ background: "rgba(212,160,23,0.14)", color: COLORS.purple }}
-                >
-                  {currentQuestion.Difficulty}
-                </span>
-              </div>
-              <div className="w-full h-1.5 rounded-full mb-6" style={{ background: COLORS.border }}>
-                <div
-                  className="h-full rounded-full"
-                  style={{
-                    width: `${((currentIndex + 1) / questions.length) * 100}%`,
-                    background: GRADIENTS.purplePink,
-                  }}
-                />
-              </div>
-
               <AnimatePresence mode="wait" initial={false}>
                 <motion.div
                   key={currentIndex}
                   initial={{ rotateY: 90, opacity: 0 }}
                   animate={{ rotateY: 0, opacity: 1 }}
                   exit={{ rotateY: -90, opacity: 0 }}
-                  transition={{ duration: 0.32, ease: "easeInOut" }}
-                  style={{ transformStyle: "preserve-3d" }}
+                  transition={{ duration: 0.38, ease: "easeInOut" }}
+                  style={{ transformStyle: "preserve-3d", backfaceVisibility: "hidden" }}
                 >
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs font-bold uppercase tracking-wide" style={{ color: COLORS.textLight }}>
+                      Question {currentIndex + 1} of {questions.length}
+                    </span>
+                    <span
+                      className="px-2.5 py-0.5 text-[10px] font-bold rounded-full"
+                      style={{ background: "rgba(212,160,23,0.14)", color: COLORS.purple }}
+                    >
+                      {currentQuestion.Difficulty}
+                    </span>
+                  </div>
+                  <div className="w-full h-1.5 rounded-full mb-6" style={{ background: COLORS.border }}>
+                    <div
+                      className="h-full rounded-full"
+                      style={{
+                        width: `${((currentIndex + 1) / questions.length) * 100}%`,
+                        background: GRADIENTS.purplePink,
+                      }}
+                    />
+                  </div>
+
                   <h3 className="text-base font-bold mb-5 leading-snug" style={{ color: COLORS.textDark }}>
                     {currentQuestion.Question}
                   </h3>

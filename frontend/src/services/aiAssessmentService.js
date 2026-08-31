@@ -193,6 +193,29 @@ export async function loadSavedRoadmap(uid) {
 }
 
 /**
+ * recomputeRoadmapMastery — POSTs to /roadmap/<uid>/recompute, which
+ * re-judges every skill on the saved roadmap under the CURRENT mastery
+ * rules (services.roadmap_service.recompute_all_mastery). Needed
+ * because the automatic recompute only fires as a side-effect of a NEW
+ * topic quiz submission — progress completed before a mastery-logic
+ * change ships otherwise stays stuck showing the old verdict forever.
+ * See services/userProgressCache.js, which calls this once per Profile
+ * dashboard load (bounded by the same cache TTL) and invalidates the
+ * roadmap cache if anything actually changed.
+ *
+ * @param {string} uid
+ * @returns {Promise<object|null>} the recomputed roadmap, or null if
+ *   the user has no saved roadmap yet.
+ */
+export async function recomputeRoadmapMastery(uid) {
+  const { data } = await apiClient.post(`/roadmap/${uid}/recompute`);
+  if (!data.success) {
+    throw new Error(data.error || data.message || "Failed to recompute roadmap.");
+  }
+  return data.data;
+}
+
+/**
  * quitRole — "Quit Role" (Learning Hub). Deletes the saved assessment
  * AND saved roadmap for this uid so Role Selection unlocks again. This
  * is the ONLY way back to Role Selection once a role has been chosen —

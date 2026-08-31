@@ -401,6 +401,33 @@ def generate_roadmap_preview(evaluation: dict, role_id: str | None = None) -> di
     return roadmap_dict
 
 
+def recompute_all_mastery(uid: str) -> dict | None:
+    """
+    Re-runs recompute_mastery_after_topic_progress() for EVERY skill on
+    the learner's saved roadmap, not just one.
+
+    Why this exists: that function only fires as a side-effect of
+    submit_topic_quiz() — i.e. it only re-evaluates a skill the moment a
+    NEW quiz comes in. Progress completed BEFORE a mastery-logic change
+    ships (e.g. the min()->average() change in this same function) has
+    no new quiz event to trigger a re-check with the new rule, so it
+    stays stuck showing the OLD verdict forever even though the
+    underlying Firestore attempts already qualify. This walks every
+    entry once so a learner's existing history gets re-judged under
+    current logic without needing to retake anything.
+    Called from GET /api/roadmap/<uid>/recompute (routes/roadmap_routes.py).
+    """
+    db = get_firestore_client()
+    roadmap = _get_roadmap(db, uid)
+    if not roadmap:
+        return None
+
+    result = None
+    for entry in roadmap.get("entries", []):
+        result = recompute_mastery_after_topic_progress(uid=uid, skill=entry.get("skill")) or result
+    return result
+
+
 def load_saved_roadmap(uid: str) -> dict | None:
     db = get_firestore_client()
     return _get_roadmap(db, uid)

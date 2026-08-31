@@ -507,11 +507,20 @@ def recompute_mastery_after_topic_progress(uid: str, skill: str) -> dict | None:
     """
     Call after a topic quiz submission. Does two independent things:
 
-      1. Discrete mastery flip (unchanged threshold logic): if EVERY
-         topic under `skill` now has an AverageScorePercent >=
-         SKILL_MASTERY_THRESHOLD_PERCENT, flips that skill's roadmap
-         entry to "mastered" — this drives the "Skills Mastered X/Y"
-         count/badge specifically.
+      1. Discrete mastery flip: once every topic under `skill` has at
+         least one attempt, average all of them together (per-topic
+         average, then averaged again across topics — "total plus
+         divide", not "every single topic must independently clear the
+         bar"). If that overall average >= SKILL_MASTERY_THRESHOLD_PERCENT,
+         flips the skill to "mastered" — this drives the "Skills
+         Mastered X/Y" count/badge specifically. Deliberately an
+         average, not a min(): a learner who scored 100/90/100/60
+         across 4 Learning Hub lessons (each individually clearing
+         lessonProgress.js's own LESSON_PASS_THRESHOLD=70 "completed"
+         bar) has a real 87.5% grasp of the topic — requiring every
+         single lesson to also individually clear 75% on top of that
+         was why finishing every lesson in a topic could still leave
+         "Skills Mastered" stuck at 0.
       2. Continuous course_completion_percent recompute (via
          _skill_progress_fraction, above) across EVERY entry on the
          roadmap — this drives the Overall Progress ring, and moves a
@@ -555,10 +564,11 @@ def recompute_mastery_after_topic_progress(uid: str, skill: str) -> dict | None:
                     sum(r.get("AverageScorePercent", 0) for r in per_topic_matches[name]) / len(per_topic_matches[name])
                     for name in all_topic_names
                 ]
-                if min(scores) >= SKILL_MASTERY_THRESHOLD_PERCENT:
+                overall_avg = sum(scores) / len(scores)
+                if overall_avg >= SKILL_MASTERY_THRESHOLD_PERCENT:
                     entry["status"] = "mastered"
                     entry["currentLevel"] = "Strong"
-                    entry["scorePercent"] = round(sum(scores) / len(scores), 1)
+                    entry["scorePercent"] = round(overall_avg, 1)
                     entry["week"] = None
                     entry["focusBand"] = "advanced"
                     entry["recommendation"] = MASTERED_MESSAGE

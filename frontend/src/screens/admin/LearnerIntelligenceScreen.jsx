@@ -12,6 +12,19 @@ const TYPE_COLORS = {
   Slow: "#DC2626",
 };
 
+// Initial-assessment tier vocabulary (services/roadmap_service.py's
+// RoadmapEntry.currentLevel) — deliberately a different palette from
+// TYPE_COLORS above since these are two unrelated classifications:
+// this one is the ONE-TIME diagnostic result, TYPE_COLORS is the
+// ongoing topic-quiz-derived Fast/Moderate/Slow.
+const LEVEL_COLORS = {
+  Strong: "#16A34A",
+  Intermediate: "#D4A017",
+  Weak: "#DC2626",
+  "Not Attempted": COLORS.textLight,
+  "Not Assessed": COLORS.textLight,
+};
+
 function TypeBadge({ type }) {
   if (!type) return <span style={{ color: COLORS.textLight }}>—</span>;
   const color = TYPE_COLORS[type] || COLORS.textMid;
@@ -21,6 +34,19 @@ function TypeBadge({ type }) {
       style={{ borderRadius: 9999, color, background: `${color}1A`, border: `1px solid ${color}40` }}
     >
       {type}
+    </span>
+  );
+}
+
+function LevelBadge({ level }) {
+  if (!level) return <span style={{ color: COLORS.textLight }}>—</span>;
+  const color = LEVEL_COLORS[level] || COLORS.textMid;
+  return (
+    <span
+      className="text-xs font-semibold px-2.5 py-1"
+      style={{ borderRadius: 9999, color, background: `${color}1A`, border: `1px solid ${color}40` }}
+    >
+      {level}
     </span>
   );
 }
@@ -44,6 +70,71 @@ const inputStyle = {
   outline: "none",
 };
 
+const OPTION_KEYS = ["OptionA", "OptionB", "OptionC", "OptionD"];
+
+/**
+ * LastQuizReview — one skill/topic's most recent attempt, question by
+ * question: what was asked, every option, which one this learner
+ * picked, and the correct one — sourced from
+ * learner_intelligence_service.get_student_profile()'s lastQuestions/
+ * lastAnswers (topic_quiz_progress's LastQuestions/LastAnswers,
+ * overwritten every attempt — latest only, no per-question history
+ * beyond it).
+ */
+function LastQuizReview({ questions, answers }) {
+  if (!questions || questions.length === 0) {
+    return (
+      <p className="text-xs mt-2" style={{ color: COLORS.textLight }}>
+        No quiz attempt recorded for this topic yet.
+      </p>
+    );
+  }
+  return (
+    <div className="flex flex-col gap-2 mt-2">
+      {questions.map((q, i) => {
+        const qid = q.QuestionID || q.TempID;
+        const chosen = answers?.[qid];
+        const isCorrect = chosen != null && chosen === q.CorrectAnswer;
+        return (
+          <div
+            key={qid || i}
+            className="px-3 py-2.5 text-xs"
+            style={{ borderRadius: 10, background: "#fff", border: `1px solid ${COLORS.border}` }}
+          >
+            <p className="font-semibold mb-1.5" style={{ color: COLORS.textDark }}>
+              {i + 1}. {q.Question}
+            </p>
+            <div className="flex flex-col gap-1 ml-1">
+              {OPTION_KEYS.map((key) => {
+                const optionText = q[key];
+                if (!optionText) return null;
+                const isChosen = optionText === chosen;
+                const isRightAnswer = optionText === q.CorrectAnswer;
+                let color = COLORS.textMid;
+                let prefix = "";
+                if (isRightAnswer) { color = "#16A34A"; prefix = "✓ "; }
+                if (isChosen && !isRightAnswer) { color = "#DC2626"; prefix = "✗ "; }
+                return (
+                  <span key={key} style={{ color, fontWeight: isChosen || isRightAnswer ? 700 : 400 }}>
+                    {prefix}{optionText}
+                    {isChosen && <span style={{ color: COLORS.textLight, fontWeight: 400 }}> (their answer)</span>}
+                  </span>
+                );
+              })}
+              {chosen == null && (
+                <span style={{ color: COLORS.textLight, fontStyle: "italic" }}>Not answered</span>
+              )}
+            </div>
+            <p className="mt-1.5" style={{ color: isCorrect ? "#16A34A" : "#DC2626", fontWeight: 600 }}>
+              {isCorrect ? "Correct" : "Incorrect"}
+            </p>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 /**
  * LearnerIntelligenceScreen — real skill-wise classification data
  * (backend: services/learner_intelligence_service.py, reading the
@@ -64,6 +155,7 @@ export default function LearnerIntelligenceScreen() {
   const [profile, setProfile] = useState(null);
   const [profileLoading, setProfileLoading] = useState(false);
   const [profileError, setProfileError] = useState("");
+  const [quizOpenKey, setQuizOpenKey] = useState(null); // `${skill}-${topic}` currently showing its last-quiz review, or null
 
   const runSearch = useCallback(async (activeFilters) => {
     setLoading(true);
@@ -102,6 +194,7 @@ export default function LearnerIntelligenceScreen() {
     setExpandedRowKey(rowKey);
     setProfile(null);
     setProfileError("");
+    setQuizOpenKey(null);
     setProfileLoading(true);
     try {
       const data = await fetchLearnerProfile(row.email);
@@ -296,19 +389,46 @@ export default function LearnerIntelligenceScreen() {
                                         )}
                                       </div>
                                       <div className="grid gap-2">
-                                        {profile.skills.map((s) => (
-                                          <div
-                                            key={`${s.skill}-${s.topic}`}
-                                            className="flex flex-wrap items-center gap-2 text-xs px-3 py-2"
-                                            style={{ borderRadius: 10, background: "rgba(255,255,255,0.6)", border: `1px solid ${COLORS.border}` }}
-                                          >
-                                            <span className="font-semibold" style={{ color: COLORS.textDark }}>
-                                              {s.skill} / {s.topic}
-                                            </span>
-                                            <TypeBadge type={s.learnerType} />
-                                            <span style={{ color: COLORS.textMid }}>{s.why}</span>
-                                          </div>
-                                        ))}
+                                        {profile.skills.map((s) => {
+                                          const skillKey = `${s.skill}-${s.topic}`;
+                                          const quizOpen = quizOpenKey === skillKey;
+                                          return (
+                                            <div
+                                              key={skillKey}
+                                              className="px-3 py-2.5"
+                                              style={{ borderRadius: 10, background: "rgba(255,255,255,0.6)", border: `1px solid ${COLORS.border}` }}
+                                            >
+                                              <div className="flex flex-wrap items-center gap-2 text-xs">
+                                                <span className="font-semibold" style={{ color: COLORS.textDark }}>
+                                                  {s.skill} / {s.topic}
+                                                </span>
+                                                <span style={{ color: COLORS.textLight }}>Topic quiz:</span>
+                                                <TypeBadge type={s.learnerType} />
+                                                {s.initialAssessmentLevel && (
+                                                  <>
+                                                    <span style={{ color: COLORS.textLight }}>Initial assessment ({s.skill}):</span>
+                                                    <LevelBadge level={s.initialAssessmentLevel} />
+                                                  </>
+                                                )}
+                                                <button
+                                                  onClick={() => setQuizOpenKey(quizOpen ? null : skillKey)}
+                                                  className="ml-auto text-[11px] font-semibold px-2.5 py-1"
+                                                  style={{
+                                                    borderRadius: 9999, border: `1px solid ${COLORS.purple}`,
+                                                    background: quizOpen ? COLORS.purple : "transparent",
+                                                    color: quizOpen ? "#fff" : COLORS.purple, cursor: "pointer",
+                                                  }}
+                                                >
+                                                  {quizOpen ? "Hide Last Quiz" : "View Last Quiz"}
+                                                </button>
+                                              </div>
+                                              <p className="text-xs mt-1.5" style={{ color: COLORS.textMid }}>{s.why}</p>
+                                              {quizOpen && (
+                                                <LastQuizReview questions={s.lastQuestions} answers={s.lastAnswers} />
+                                              )}
+                                            </div>
+                                          );
+                                        })}
                                       </div>
                                     </div>
                                   ) : null}

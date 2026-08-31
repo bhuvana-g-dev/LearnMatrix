@@ -31,6 +31,7 @@ from collections import defaultdict
 from firebase.firebase_config import get_firestore_client
 from services import topic_quiz_repository as repo
 from services import learner_classifier
+from services.roadmap_service import load_saved_roadmap
 from utils.auth_lookup import email_for_uid, uid_for_email
 
 
@@ -171,6 +172,21 @@ def get_student_profile(email: str) -> dict | None:
     attempts = repo.list_attempts_by_uid(db, uid)
     grouped_attempts = _group_attempts_by_uid_skill_topic(attempts)
 
+    # Initial-assessment result per skill — the ONE-TIME diagnostic
+    # outcome from when this learner's roadmap was generated
+    # (services/roadmap_service.py's RoadmapEntry), not derived from
+    # topic quizzes at all. Loaded once here and matched by skill name
+    # below, same as everything else in this function: read real
+    # stored data, never re-derive it.
+    roadmap = load_saved_roadmap(uid)
+    initial_by_skill = {
+        e.get("skill"): {
+            "currentLevel": e.get("currentLevel"),
+            "focusBand": e.get("focusBand"),
+        }
+        for e in (roadmap.get("entries", []) if roadmap else [])
+    }
+
     skills = []
     type_counts: dict[str, int] = defaultdict(int)
 
@@ -194,6 +210,21 @@ def get_student_profile(email: str) -> dict | None:
             "nextReviewDate": p.get("NextReviewDate"),
             "why": why["reasoning"] if why else "No attempts recorded yet.",
             "probabilities": why["probabilities"] if why else None,
+            # Initial diagnostic result for this SKILL (not this
+            # specific topic) — every topic under the same skill shares
+            # it, since the roadmap's diagnostic runs per skill, not
+            # per topic. None when this skill isn't on the learner's
+            # roadmap (e.g. practiced ad hoc outside their assigned path).
+            "initialAssessmentLevel": initial_by_skill.get(s, {}).get("currentLevel"),
+            "initialFocusBand": initial_by_skill.get(s, {}).get("focusBand"),
+            # Most-recent attempt's actual quiz + this learner's picks —
+            # see topic_quiz_repository.record_attempt()'s docstring:
+            # overwritten every attempt, latest only, same as
+            # LastScorePercent above. Lets the admin see exactly which
+            # questions were asked and what this learner answered, not
+            # just the aggregate score.
+            "lastQuestions": p.get("LastQuestions", []),
+            "lastAnswers": p.get("LastAnswers", {}),
             "history": [
                 {
                     "attemptNumber": a.get("AttemptNumber"),

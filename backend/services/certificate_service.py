@@ -120,8 +120,25 @@ def _every_topic_completed(roadmap: dict, uid: str, db) -> bool:
 def get_certificate_with_live_status(uid: str) -> dict | None:
     db = get_firestore_client()
     certificate = get_certificate(db, uid)
+
     if not certificate:
-        return None
+        # Self-heal, same pattern as the roadmap mastery recompute in
+        # services/userProgressCache.js: a student can have an active
+        # roadmap/career path with no certificate row yet — e.g. their
+        # roadmap was generated before this feature shipped, or the
+        # /ai/generate-roadmap call that created it didn't have a
+        # non-empty `role` at the time (see routes/ai_assessment_routes.py's
+        # `if role:` guard around issue_or_update_certificate). Rather
+        # than permanently showing "start a career path" to someone who
+        # already started one, lazily issue the missing certificate from
+        # their existing roadmap the next time it's read.
+        roadmap = get_roadmap(db, uid)
+        role = (roadmap or {}).get("role")
+        if not roadmap or not role:
+            return None
+        certificate = issue_or_update_certificate(
+            uid=uid, course_name=role, role_id=roadmap.get("roleId"),
+        )
 
     if certificate.get("status") == "completed":
         return certificate

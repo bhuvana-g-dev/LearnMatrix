@@ -14,6 +14,16 @@ export async function fetchStudents() {
 }
 
 /**
+ * Permanently deletes one student — Firestore records AND their
+ * Firebase Auth account (backend: services/user_deletion_service.py).
+ * Irreversible; there's no undo and no Firebase console step needed.
+ */
+export async function deleteStudent(uid) {
+  const { data } = await apiClient.delete(ENDPOINTS.ADMIN.STUDENTS.DELETE(uid));
+  return data.data;
+}
+
+/**
  * Downloads the two-sheet Student Summary + Quiz Attempts .xlsx
  * straight from the browser — the file is built server-side
  * (services/student_records_service.py via openpyxl), this just

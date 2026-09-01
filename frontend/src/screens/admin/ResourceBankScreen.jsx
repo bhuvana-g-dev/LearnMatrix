@@ -616,13 +616,18 @@ export default function ResourceBankScreen({ admin }) {
         </AnimatePresence>
       </div>
 
-      {/* Pending Review queue — preserves the existing pending/verified/rejected workflow */}
+      {/* Pending Review queue — preserves the existing pending/verified/rejected workflow.
+          Capped at a fixed height with its own scroll (instead of an
+          unbounded flex-col) so a large queue (seen: 79 items) doesn't
+          push the verified Practice/Reference/Videos table hundreds of
+          pixels down the page — the admin can scroll this box on its
+          own and still see the tabs+table right below it. */}
       {pending.length > 0 && (
         <div className="p-5 mb-6" style={{ ...GLASS_CARD, borderRadius: 20, border: "1px solid rgba(212,160,23,0.35)" }}>
           <p className="text-sm font-bold mb-3" style={{ color: COLORS.textDark }}>
             Pending Review ({pending.length})
           </p>
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-2 overflow-y-auto pr-1" style={{ maxHeight: 420 }}>
             {pending.map((r) => (
               <div
                 key={r.id}
@@ -635,7 +640,7 @@ export default function ResourceBankScreen({ admin }) {
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-semibold truncate" style={{ color: COLORS.textDark }}>{r.title}</p>
                   <p className="text-xs" style={{ color: COLORS.textLight }}>
-                    {TYPE_LABELS[r.type] || r.type} · {r.skill} / {BAND_LABELS[r.band] || r.band} · via {r.source === "youtube_api" ? "YouTube API" : "AI"}
+                    {TYPE_LABELS[r.type] || r.type} · {r.skill} / {BAND_LABELS[r.band] || r.band} · via {r.source === "youtube_api" ? "YouTube API" : "AI"} · {formatAddedAt(r.addedAt)}
                   </p>
                 </div>
                 <a

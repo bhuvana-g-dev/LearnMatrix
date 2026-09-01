@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Plus, Trash2, Pencil, Pin, PinOff, Eye, EyeOff, Check, X,
-  Youtube, Sparkles, Loader2, Undo2, Zap, ChevronDown, ChevronUp, Filter,
+  Youtube, Sparkles, Loader2, Undo2, Zap, ChevronDown, ChevronUp, Filter, ExternalLink,
 } from "lucide-react";
 import { COLORS, GRADIENTS, GLASS_CARD } from "../../constants/theme";
 import {
@@ -617,55 +617,67 @@ export default function ResourceBankScreen({ admin }) {
       </div>
 
       {/* Pending Review queue — preserves the existing pending/verified/rejected workflow.
-          Capped at a fixed height with its own scroll (instead of an
-          unbounded flex-col) so a large queue (seen: 79 items) doesn't
-          push the verified Practice/Reference/Videos table hundreds of
-          pixels down the page — the admin can scroll this box on its
-          own and still see the tabs+table right below it. */}
+          Rendered as a table (same visual language as the main resource
+          table below it) instead of a stacked card list, so a large
+          queue (seen: 79 items) reads as neat rows with aligned columns
+          rather than a wall of repeating cards. The table body scrolls
+          within a capped height with a sticky header, so the queue
+          doesn't push the tabs+table below it hundreds of pixels down
+          the page, and the column headers stay visible while scrolling. */}
       {pending.length > 0 && (
-        <div className="p-5 mb-6" style={{ ...GLASS_CARD, borderRadius: 20, border: "1px solid rgba(212,160,23,0.35)" }}>
-          <p className="text-sm font-bold mb-3" style={{ color: COLORS.textDark }}>
+        <div className="mb-6" style={{ ...GLASS_CARD, borderRadius: 20, border: "1px solid rgba(212,160,23,0.35)", overflow: "hidden" }}>
+          <p className="text-sm font-bold px-5 pt-5 pb-3" style={{ color: COLORS.textDark }}>
             Pending Review ({pending.length})
           </p>
-          <div className="flex flex-col gap-2 overflow-y-auto pr-1" style={{ maxHeight: 420 }}>
-            {pending.map((r) => (
-              <div
-                key={r.id}
-                className="flex items-center gap-3 p-3 rounded-xl"
-                style={{ background: "rgba(255,255,255,0.6)" }}
-              >
-                {r.thumbnail && (
-                  <img src={r.thumbnail} alt="" style={{ width: 64, height: 36, borderRadius: 6, objectFit: "cover" }} />
-                )}
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold truncate" style={{ color: COLORS.textDark }}>{r.title}</p>
-                  <p className="text-xs" style={{ color: COLORS.textLight }}>
-                    {TYPE_LABELS[r.type] || r.type} · {r.skill} / {BAND_LABELS[r.band] || r.band} · via {r.source === "youtube_api" ? "YouTube API" : "AI"} · {formatAddedAt(r.addedAt)}
-                  </p>
-                </div>
-                <a
-                  href={r.url} target="_blank" rel="noreferrer"
-                  className="text-xs font-semibold underline flex-shrink-0"
-                  style={{ color: COLORS.purple }}
-                >
-                  Open link
-                </a>
-                <button
-                  onClick={() => handleVerify(r)}
-                  className="flex items-center gap-1 text-xs font-semibold px-3 py-1.5 rounded-full flex-shrink-0"
-                  style={{ background: "#22C55E", color: "#fff", border: "none", cursor: "pointer" }}
-                >
-                  <Check size={12} /> Verify
-                </button>
-                <button
-                  onClick={() => handleReject(r)}
-                  className="flex items-center gap-1 text-xs font-semibold px-3 py-1.5 rounded-full flex-shrink-0"
-                  style={{ background: "#DC2626", color: "#fff", border: "none", cursor: "pointer" }}
-                >
-                  <X size={12} /> Reject
-                </button>
-              </div>
-            ))}
+          <div className="overflow-y-auto" style={{ maxHeight: 420 }}>
+            <table className="w-full text-sm">
+              <thead>
+                <tr style={{ borderBottom: `1px solid ${COLORS.border}` }}>
+                  {["Title", "Type", "Skill / Band", "Source", "Generated", "Actions"].map((h) => (
+                    <th
+                      key={h}
+                      className="text-left px-4 py-2.5 font-semibold sticky top-0"
+                      style={{ color: COLORS.textLight, background: "rgba(255,250,235,0.96)", backdropFilter: "blur(8px)" }}
+                    >
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {pending.map((r) => (
+                  <tr key={r.id} style={{ borderBottom: `1px solid ${COLORS.border}` }}>
+                    <td className="px-4 py-3 max-w-[260px]">
+                      <div className="flex items-center gap-2.5">
+                        {r.thumbnail && (
+                          <img src={r.thumbnail} alt="" style={{ width: 48, height: 27, borderRadius: 4, objectFit: "cover", flexShrink: 0 }} />
+                        )}
+                        <a href={r.url} target="_blank" rel="noreferrer" className="font-semibold truncate block" style={{ color: COLORS.textDark }}>
+                          {r.title}
+                        </a>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap" style={{ color: COLORS.textMid }}>{TYPE_LABELS[r.type] || r.type}</td>
+                    <td className="px-4 py-3 whitespace-nowrap" style={{ color: COLORS.textMid }}>{r.skill} / {BAND_LABELS[r.band] || r.band}</td>
+                    <td className="px-4 py-3 whitespace-nowrap" style={{ color: COLORS.textMid }}>{r.source === "youtube_api" ? "YouTube API" : "AI"}</td>
+                    <td className="px-4 py-3 whitespace-nowrap" style={{ color: COLORS.textLight }}>{formatAddedAt(r.addedAt)}</td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-2.5">
+                        <a href={r.url} target="_blank" rel="noreferrer" title="Open link" style={{ color: COLORS.textLight }}>
+                          <ExternalLink size={15} />
+                        </a>
+                        <button onClick={() => handleVerify(r)} title="Verify" style={{ background: "none", border: "none", cursor: "pointer", color: "#22C55E" }}>
+                          <Check size={16} />
+                        </button>
+                        <button onClick={() => handleReject(r)} title="Reject" style={{ background: "none", border: "none", cursor: "pointer", color: "#DC2626" }}>
+                          <X size={16} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
       )}

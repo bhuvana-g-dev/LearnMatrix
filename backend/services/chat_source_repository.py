@@ -96,3 +96,12 @@ def delete_source(db, uid: str, source_id: str) -> None:
     if count:
         batch.commit()
     source_ref.delete()
+
+
+def delete_all_sources(db, uid: str) -> None:
+    """Wipes every source this user has, chunks included — same
+    cascade delete_source() does, just for the whole tree at once.
+    Part of the admin "permanently delete this student" flow (see
+    services/user_deletion_service.py)."""
+    for source_doc in _sources_ref(db, uid).stream():
+        delete_source(db, uid, source_doc.id)

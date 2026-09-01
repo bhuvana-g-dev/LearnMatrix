@@ -37,3 +37,10 @@ def get_activity_dates(db, uid: str) -> list[str]:
     if not snap.exists:
         return []
     return snap.to_dict().get("dates", [])
+
+
+def delete_activity(db, uid: str) -> None:
+    """Removes this user's streak doc entirely. Safe to call even if no
+    document exists — part of the admin "permanently delete this
+    student" flow (see services/user_deletion_service.py)."""
+    _doc_ref(db, uid).delete()

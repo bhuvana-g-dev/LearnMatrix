@@ -85,3 +85,36 @@ def list_sessions(db, uid: str) -> list[dict]:
 
 def delete_session(db, uid: str, session_id: str) -> None:
     _sessions_ref(db, uid).document(session_id).delete()
+
+
+def delete_all_sessions(db, uid: str) -> None:
+    """Wipes every session this user has, INCLUDING each session's
+    studio subcollection (ai_chat_history/{uid}/sessions/{sessionId}/
+    studio/{artifactId} — see services/studio_repository.py), which
+    delete_session() above never touched. Part of the admin
+    "permanently delete this student" flow (see
+    services/user_deletion_service.py) — the parent
+    ai_chat_history/{uid} doc itself doesn't need a separate delete
+    since it never holds fields of its own, only this subcollection."""
+    batch = db.batch()
+    count = 0
+
+    def _flush():
+        nonlocal batch, count
+        if count:
+            batch.commit()
+            batch = db.batch()
+            count = 0
+
+    for session_doc in _sessions_ref(db, uid).stream():
+        for artifact_doc in session_doc.reference.collection("studio").stream():
+            batch.delete(artifact_doc.reference)
+            count += 1
+            if count >= 400:  # stay under Firestore's 500-write batch limit
+                _flush()
+        batch.delete(session_doc.reference)
+        count += 1
+        if count >= 400:
+            _flush()
+
+    _flush()

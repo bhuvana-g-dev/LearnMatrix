@@ -44,3 +44,20 @@ def list_sets(db, uid: str) -> list[dict]:
 
 def delete_set(db, uid: str, set_id: str) -> None:
     _sets_ref(db, uid).document(set_id).delete()
+
+
+def delete_all_sets(db, uid: str) -> None:
+    """Wipes every flashcard set this user has. Part of the admin
+    "permanently delete this student" flow (see
+    services/user_deletion_service.py)."""
+    batch = db.batch()
+    count = 0
+    for set_doc in _sets_ref(db, uid).stream():
+        batch.delete(set_doc.reference)
+        count += 1
+        if count >= 400:  # stay under Firestore's 500-write batch limit
+            batch.commit()
+            batch = db.batch()
+            count = 0
+    if count:
+        batch.commit()

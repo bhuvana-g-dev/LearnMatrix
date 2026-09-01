@@ -68,6 +68,36 @@ def list_attempts_by_uid(db, uid: str, limit: int = 500) -> list[dict]:
     return [doc.to_dict() for doc in query.stream()]
 
 
+def delete_all_for_uid(db, uid: str) -> None:
+    """Wipes every topic_quiz_progress AND topic_quiz_attempts doc for
+    ONE learner — every topic they've ever taken a quiz for, gone. Part
+    of the admin "permanently delete this student" flow (see
+    services/user_deletion_service.py)."""
+    batch = db.batch()
+    count = 0
+
+    def _flush():
+        nonlocal batch, count
+        if count:
+            batch.commit()
+            batch = db.batch()
+            count = 0
+
+    for doc in _progress_collection(db).where("Uid", "==", uid).stream():
+        batch.delete(doc.reference)
+        count += 1
+        if count >= 400:  # stay under Firestore's 500-write batch limit
+            _flush()
+
+    for doc in _attempts_collection(db).where("Uid", "==", uid).stream():
+        batch.delete(doc.reference)
+        count += 1
+        if count >= 400:
+            _flush()
+
+    _flush()
+
+
 def list_due_revisions(db, uid: str, as_of: str | None = None) -> list[dict]:
     """Every topic whose NextReviewDate <= as_of (default: today), for the
     dashboard's 'Due Today' card — includes anything overdue too.

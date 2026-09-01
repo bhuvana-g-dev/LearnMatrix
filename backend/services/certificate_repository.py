@@ -43,3 +43,10 @@ def update_certificate(db, uid: str, patch: dict) -> dict:
     doc_ref = _doc_ref(db, uid)
     doc_ref.set({**patch, "updatedAt": SERVER_TIMESTAMP}, merge=True)
     return doc_ref.get().to_dict()
+
+
+def delete_certificate(db, uid: str) -> None:
+    """Removes this user's certificate doc entirely. Safe to call even
+    if no document exists — part of the admin "permanently delete this
+    student" flow (see services/user_deletion_service.py)."""
+    _doc_ref(db, uid).delete()

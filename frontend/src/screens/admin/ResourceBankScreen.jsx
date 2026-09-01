@@ -770,11 +770,20 @@ export default function ResourceBankScreen({ admin }) {
             No {TABS.find((t) => t.key === activeTab)?.label.toLowerCase()} yet — add one above, or generate suggestions for a skill/band.
           </p>
         ) : (
+          // Same locked-scroll pattern as the Pending Review table above:
+          // capped height, internal scroll, sticky header — so a long
+          // resource list scrolls within this card instead of the whole
+          // page, and the column headers stay visible while scrolling.
+          <div className="overflow-y-auto" style={{ maxHeight: 560 }}>
           <table className="w-full text-sm">
             <thead>
               <tr style={{ borderBottom: `1px solid ${COLORS.border}` }}>
                 {["", "Title", "Type", "Skill / Band", "Status", "Generated", "Actions"].map((h) => (
-                  <th key={h} className="text-left px-4 py-3 font-semibold" style={{ color: COLORS.textLight }}>
+                  <th
+                    key={h}
+                    className="text-left px-4 py-3 font-semibold sticky top-0"
+                    style={{ color: COLORS.textLight, background: "rgba(255,255,255,0.96)", backdropFilter: "blur(8px)" }}
+                  >
                     {h}
                   </th>
                 ))}
@@ -845,6 +854,7 @@ export default function ResourceBankScreen({ admin }) {
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </div>
 

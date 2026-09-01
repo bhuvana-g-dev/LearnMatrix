@@ -157,6 +157,7 @@ export const ENDPOINTS = {
     STUDENTS: {
       LIST: "/admin/students", // GET
       EXPORT: "/admin/students/export", // GET, .xlsx file download
+      DELETE: (uid) => `/admin/students/${uid}`, // DELETE — permanent, wipes Firestore + Firebase Auth
     },
     // Learner Intelligence — backend: routes/admin_learner_routes.py
     // Reads the real per-skill classification data (topic_quiz_progress

@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
-import { Download, Loader2, RotateCcw } from "lucide-react";
+import { Download, Loader2, RotateCcw, Trash2 } from "lucide-react";
 import { COLORS, GRADIENTS, GLASS_CARD } from "../../constants/theme";
-import { fetchStudents, exportStudentsToExcel } from "../../services/adminStudentService";
+import { fetchStudents, exportStudentsToExcel, deleteStudent } from "../../services/adminStudentService";
 
 function formatDate(iso) {
   if (!iso) return "—";
@@ -28,6 +28,8 @@ export default function StudentRecordsScreen() {
   const [error, setError] = useState("");
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState("");
+  const [deletingUid, setDeletingUid] = useState("");
+  const [deleteError, setDeleteError] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -55,6 +57,24 @@ export default function StudentRecordsScreen() {
       setExportError(err.message || "Export failed.");
     } finally {
       setExporting(false);
+    }
+  };
+
+  const handleDelete = async (student) => {
+    const confirmed = window.confirm(
+      `Permanently delete "${student.email}"?\n\nThis removes their Firebase Auth account and every record — assessment, roadmap, activity, certificate, chat history, flashcards, quiz progress. This can't be undone.`
+    );
+    if (!confirmed) return;
+
+    setDeleteError("");
+    setDeletingUid(student.uid);
+    try {
+      await deleteStudent(student.uid);
+      setStudents((rows) => rows.filter((r) => r.uid !== student.uid));
+    } catch (err) {
+      setDeleteError(err.message || "Couldn't delete this student.");
+    } finally {
+      setDeletingUid("");
     }
   };
 
@@ -94,6 +114,7 @@ export default function StudentRecordsScreen() {
       </div>
 
       {exportError && <p className="text-xs font-medium mb-3" style={{ color: "#DC2626" }}>{exportError}</p>}
+      {deleteError && <p className="text-xs font-medium mb-3" style={{ color: "#DC2626" }}>{deleteError}</p>}
 
       <div style={{ ...GLASS_CARD, borderRadius: 20, overflow: "hidden" }}>
         {loading ? (
@@ -111,7 +132,7 @@ export default function StudentRecordsScreen() {
                 <tr style={{ borderBottom: `1px solid ${COLORS.border}` }}>
                   {[
                     "Email", "Role", "Skills Assessed", "Overall Score",
-                    "Roadmap Progress", "Active Days", "Assessment Date",
+                    "Roadmap Progress", "Active Days", "Assessment Date", "Actions",
                   ].map((h) => (
                     <th key={h} className="text-left px-4 py-3 font-semibold whitespace-nowrap" style={{ color: COLORS.textLight }}>
                       {h}
@@ -135,6 +156,16 @@ export default function StudentRecordsScreen() {
                     </td>
                     <td className="px-4 py-3" style={{ color: COLORS.textMid }}>{s.activeDays}</td>
                     <td className="px-4 py-3 whitespace-nowrap" style={{ color: COLORS.textMid }}>{formatDate(s.submittedAt)}</td>
+                    <td className="px-4 py-3">
+                      <button
+                        onClick={() => handleDelete(s)}
+                        disabled={deletingUid === s.uid}
+                        title="Permanently delete this student"
+                        style={{ background: "none", border: "none", cursor: deletingUid === s.uid ? "default" : "pointer", color: "#DC2626", opacity: deletingUid === s.uid ? 0.5 : 1 }}
+                      >
+                        {deletingUid === s.uid ? <Loader2 size={15} className="animate-spin" /> : <Trash2 size={15} />}
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>

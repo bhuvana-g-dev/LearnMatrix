@@ -47,6 +47,20 @@ function effectiveCategory(resource) {
   return resource.category || DEFAULT_CATEGORY_BY_TYPE[resource.type] || "reference";
 }
 
+// Same "when was this actually generated/added" formatting the admin
+// Generated Content Management screen uses for its own Generated
+// column (GeneratedContentScreen.jsx) — applied here to `addedAt`,
+// which every resource already carries (services/resource_repository.py)
+// but this table wasn't previously showing.
+function formatAddedAt(value) {
+  if (!value) return "—";
+  try {
+    return new Date(value).toLocaleString();
+  } catch {
+    return "—";
+  }
+}
+
 // Same fundamentals/application/advanced/polish vocabulary as
 // services/focus_band.py's determine_content_level() — a resource is
 // tagged with the band it's a good fit for, matched against the
@@ -742,7 +756,7 @@ export default function ResourceBankScreen({ admin }) {
           <table className="w-full text-sm">
             <thead>
               <tr style={{ borderBottom: `1px solid ${COLORS.border}` }}>
-                {["", "Title", "Type", "Skill / Band", "Status", "Actions"].map((h) => (
+                {["", "Title", "Type", "Skill / Band", "Status", "Generated", "Actions"].map((h) => (
                   <th key={h} className="text-left px-4 py-3 font-semibold" style={{ color: COLORS.textLight }}>
                     {h}
                   </th>
@@ -788,6 +802,9 @@ export default function ResourceBankScreen({ admin }) {
                         Hidden
                       </span>
                     )}
+                  </td>
+                  <td className="px-4 py-3 whitespace-nowrap" style={{ color: COLORS.textLight }}>
+                    {formatAddedAt(r.addedAt)}
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">

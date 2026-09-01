@@ -484,6 +484,63 @@ def _topic_effective_score(progress_rows: list[dict], topic: str, baseline: floa
     return sum(r.get("AverageScorePercent", baseline) for r in matches) / len(matches)
 
 
+def _effective_topic_names(skill: str, seeded_topics: list, progress_rows: list[dict]) -> list[str]:
+    """
+    Which topic names to actually score progress against for `skill`.
+
+    Normally this is just the seeded per-skill syllabus
+    (services/skill_topic_service.get_topics_for_skill) — e.g. CSS3's 14
+    seed topics (Introduction, Selectors, Colors, ...). BUT that seed
+    list is only ever used by the frontend's topic tree when a
+    `compressedSyllabus` was actually loaded for the learner's role
+    (see syllabus_compression_service.get_compressed_role_syllabus,
+    keyed off skill_topic_service.ROLE_SKILLS_BY_ROLE — today only the
+    "frontend" role id is populated there). Whenever that lookup isn't
+    available for the learner's role (e.g. role id "fullstack" has no
+    entry yet), buildCourseNavigator.js's buildFlatTopicList() falls
+    back to treating the WHOLE skill as a single topic (topic title ==
+    skill name) — see its "Fallback for skills without topic-level seed
+    data yet" comment — and every lesson quiz for that skill is then
+    recorded with Topic == "{skill} — {lessonTitle}", not
+    "{seed topic} — {lessonTitle}".
+
+    Scoring strictly against the seed topic names in that situation
+    means NONE of them ever get a matching progress row — a learner can
+    finish every lesson in a skill with high scores and the skill still
+    never crosses SKILL_MASTERY_THRESHOLD_PERCENT, because the progress
+    was filed under the skill's own name instead. So: only use the
+    seeded topic names if at least one of them actually has recorded
+    progress; otherwise fall back to the skill name itself, mirroring
+    the frontend's own fallback so the two can't disagree.
+    """
+    # NOTE: skill_topics documents use the field name "Title" (see
+    # models/skill_topic_model.py), not "Topic" — this used to read
+    # t["Topic"] here (and in the two call sites below, before they were
+    # unified into this helper), which raised a KeyError on every real
+    # seeded topic dict and meant this whole code path silently failed
+    # (caught wherever recompute_mastery_after_topic_progress's caller
+    # swallows errors) any time a skill actually had seed data.
+    seeded_names = [t["Title"] if isinstance(t, dict) else t for t in seeded_topics]
+    if seeded_names:
+        prefixes = [f"{name}{_LESSON_COMPOSITE_INFIX}" for name in seeded_names]
+        has_seeded_progress = any(
+            r.get("Topic") in seeded_names or any(str(r.get("Topic", "")).startswith(p) for p in prefixes)
+            for r in progress_rows
+        )
+        if has_seeded_progress:
+            return seeded_names
+
+    fallback_prefix = f"{skill}{_LESSON_COMPOSITE_INFIX}"
+    has_fallback_progress = any(
+        r.get("Topic") == skill or str(r.get("Topic", "")).startswith(fallback_prefix)
+        for r in progress_rows
+    )
+    if has_fallback_progress:
+        return [skill]
+
+    return seeded_names
+
+
 def _skill_progress_fraction(db, uid: str, entry: dict) -> float:
     """
     Continuous 0-100 "how far along is this ONE skill" score — used to
@@ -520,11 +577,11 @@ def _skill_progress_fraction(db, uid: str, entry: dict) -> float:
     from services import topic_quiz_repository as topic_repo
 
     topics = get_topics_for_skill(db, skill)
-    if not topics:
-        return baseline
-
-    all_topic_names = [t["Topic"] if isinstance(t, dict) else t for t in topics]
     progress_rows = [p for p in topic_repo.list_progress_by_uid(db, uid) if p.get("Skill") == skill]
+
+    all_topic_names = _effective_topic_names(skill, topics, progress_rows)
+    if not all_topic_names:
+        return baseline
 
     topic_scores = [_topic_effective_score(progress_rows, name, baseline) for name in all_topic_names]
     return sum(topic_scores) / len(topic_scores) if topic_scores else baseline
@@ -574,9 +631,18 @@ def recompute_mastery_after_topic_progress(uid: str, skill: str) -> dict | None:
         from services import topic_quiz_repository as topic_repo
 
         topics = get_topics_for_skill(db, skill)
-        if topics:
-            all_topic_names = [t["Topic"] if isinstance(t, dict) else t for t in topics]
-            progress_rows = [p for p in topic_repo.list_progress_by_uid(db, uid) if p.get("Skill") == skill]
+        progress_rows = [p for p in topic_repo.list_progress_by_uid(db, uid) if p.get("Skill") == skill]
+
+        # See _effective_topic_names()'s docstring: falls back to the
+        # skill's own name as the sole "topic" when the seeded topic
+        # names have no recorded progress at all (i.e. the frontend
+        # used its own "topic == skill" fallback to record lessons —
+        # see buildCourseNavigator.js), so a skill isn't stuck unable
+        # to ever reach "mastered" just because its role wasn't seeded
+        # into skill_topic_service.ROLE_SKILLS_BY_ROLE yet.
+        all_topic_names = _effective_topic_names(skill, topics, progress_rows)
+
+        if all_topic_names:
 
             def _matches_for(name: str) -> list[dict]:
                 prefix = f"{name}{_LESSON_COMPOSITE_INFIX}"

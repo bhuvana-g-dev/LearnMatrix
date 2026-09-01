@@ -13,9 +13,15 @@ import { getInsightsTheme } from "../constants/insightsTheme";
  *
  * Ships its own light/dark toggle — the app doesn't have a global theme
  * system yet, so dark mode here is self-contained (see insightsTheme.js).
+ *
+ * Reads aiInsightsLoading, not the hook's combined `loading` — this page
+ * only ever renders `aiInsights`, so it shouldn't sit on its skeleton
+ * waiting on progress/assessments/completedCourses/statistics, which
+ * useProfile() also fetches for other consumers but which have nothing
+ * to do with what's shown here.
  */
 export default function LearningInsightsScreen({ onStartAssessment }) {
-  const { aiInsights, loading } = useProfile();
+  const { aiInsights, aiInsightsLoading } = useProfile();
   const [dark, setDark] = useState(false);
   const theme = getInsightsTheme(dark);
 
@@ -45,7 +51,7 @@ export default function LearningInsightsScreen({ onStartAssessment }) {
           </button>
         </div>
 
-        {loading ? (
+        {aiInsightsLoading ? (
           <InsightsSkeleton theme={theme} />
         ) : (
           <AIInsightsSection insights={aiInsights} dark={dark} onStartAssessment={onStartAssessment} />

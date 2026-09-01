@@ -1,5 +1,5 @@
 import { onAuthStateChanged, signInWithEmailAndPassword, signOut } from "firebase/auth";
-import { auth as firebaseAuth } from "../firebase";
+import { adminAuth as firebaseAuth } from "../firebase";
 import apiClient from "../api/axiosClient";
 import { ENDPOINTS } from "../api/endpoints";
 

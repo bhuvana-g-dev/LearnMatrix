@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
+import { onAuthStateChanged } from "firebase/auth";
 import { auth } from "../firebase";
 import { getUserProfile } from "../services/profileService";
 import { getAIInsights } from "../services/aiInsightsService";
@@ -29,51 +30,92 @@ import { getCertificate } from "../services/certificateService";
  * a placeholder number.
  */
 export function useProfileDashboard() {
+  // uid/authReady are driven by Firebase's own onAuthStateChanged
+  // listener rather than reading auth.currentUser synchronously.
+  // auth.currentUser is briefly null after a page refresh — before
+  // Firebase finishes restoring the session — even for an already
+  // logged-in user. Reading it directly at mount time race-condition-ed
+  // profile/roadmap/activity/revision/certificate into their empty
+  // "no uid" fallbacks, and since the load effect had an empty deps
+  // array it never re-ran once auth actually resolved, so the page got
+  // stuck on that wrong snapshot (or on stale data from a previous
+  // account) until a lucky refresh. Keying everything off this
+  // listener's uid — and re-running whenever it changes — keeps the
+  // dashboard synchronized with whoever is actually authenticated.
+  const [uid, setUid] = useState(auth.currentUser?.uid ?? null);
+  const [authReady, setAuthReady] = useState(false);
+
   const [profile, setProfile] = useState(null);
   const [aiInsights, setAiInsights] = useState(null);
   const [roadmap, setRoadmap] = useState(null);
   const [activityDates, setActivityDates] = useState([]);
   const [revision, setRevision] = useState({ due: [], upcoming: [] });
   const [certificate, setCertificate] = useState(null);
+
+  // `loading` gates only the fast, identity-critical fetch (profile +
+  // AI insights) so the page paints quickly instead of blocking on
+  // every card. `secondaryLoading` covers roadmap/activity/revision/
+  // certificate, one of which (roadmap) does an extra recompute round
+  // trip server-side and would otherwise hold up the whole screen.
   const [loading, setLoading] = useState(true);
+  const [secondaryLoading, setSecondaryLoading] = useState(true);
 
-  const load = useCallback(async () => {
-    const uid = auth.currentUser?.uid;
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+      setUid(firebaseUser?.uid ?? null);
+      setAuthReady(true);
+    });
+    return () => unsubscribe();
+  }, []);
 
-    const [p, ai, rm, dates, rev, cert] = await Promise.all([
-      getUserProfile(),
-      getAIInsights(),
-      uid ? getCachedRoadmap(uid).catch(() => null) : Promise.resolve(null),
-      uid ? getActivity(uid).catch(() => []) : Promise.resolve([]),
-      uid ? getRevisionSchedule(uid).catch(() => ({ due: [], upcoming: [] })) : Promise.resolve({ due: [], upcoming: [] }),
-      uid ? getCertificate(uid).catch(() => null) : Promise.resolve(null),
-    ]);
-
+  const loadPrimary = useCallback(async () => {
+    setLoading(true);
+    const [p, ai] = await Promise.all([getUserProfile(), getAIInsights()]);
     setProfile(p);
     setAiInsights(ai);
+    setLoading(false);
+  }, []);
+
+  const loadSecondary = useCallback(async (currentUid) => {
+    setSecondaryLoading(true);
+    const [rm, dates, rev, cert] = await Promise.all([
+      currentUid ? getCachedRoadmap(currentUid).catch(() => null) : Promise.resolve(null),
+      currentUid ? getActivity(currentUid).catch(() => []) : Promise.resolve([]),
+      currentUid ? getRevisionSchedule(currentUid).catch(() => ({ due: [], upcoming: [] })) : Promise.resolve({ due: [], upcoming: [] }),
+      currentUid ? getCertificate(currentUid).catch(() => null) : Promise.resolve(null),
+    ]);
     setRoadmap(rm);
     setActivityDates(dates);
     setRevision(rev);
     setCertificate(cert);
-    setLoading(false);
+    setSecondaryLoading(false);
   }, []);
 
+  // Waits for Firebase to actually confirm who's signed in (authReady)
+  // before fetching anything, and re-fetches whenever uid changes —
+  // covering login, logout, and switching accounts without a full page
+  // reload — instead of the old "fetch once on mount" behavior.
   useEffect(() => {
+    if (!authReady) return;
     let mounted = true;
     (async () => {
-      await load();
+      await loadPrimary();
       if (!mounted) return;
+      await loadSecondary(uid);
     })();
     return () => {
       mounted = false;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [authReady, uid, loadPrimary, loadSecondary]);
 
+  // Re-pulls everything, not just `profile` — an edit (e.g. career
+  // path) can affect the roadmap/stats cards too, so a save should
+  // bring the whole dashboard back in sync, not just the identity card.
   const refetchProfile = useCallback(async () => {
     const p = await getUserProfile();
     setProfile(p);
-  }, []);
+    await loadSecondary(uid);
+  }, [uid, loadSecondary]);
 
   // ---- derived, honest stats (no fabricated numbers) ----
 
@@ -96,6 +138,7 @@ export function useProfileDashboard() {
     revision,
     certificate,
     loading,
+    secondaryLoading,
     refetchProfile,
     stats: {
       overallProgressPercent,

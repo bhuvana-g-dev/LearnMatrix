@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { motion } from "framer-motion";
 import { Loader2, Map, ArrowRight, XCircle, LogOut } from "lucide-react";
 import { COLORS, GRADIENTS, GLASS_CARD } from "../constants/theme";
@@ -41,6 +41,14 @@ export default function RoadmapScreen({
   const [errorMessage, setErrorMessage] = useState("");
   const [compressedSyllabus, setCompressedSyllabus] = useState(cachedRoadmap?.compressedSyllabus ?? null);
   const [showQuitModal, setShowQuitModal] = useState(false);
+  // Tracks the uid+role we've already attempted the live compressed-syllabus
+  // fetch for, so a FAILED attempt doesn't retry on every re-render. Without
+  // this, an unstable `onRoadmapLoaded` reference from the parent (or any
+  // other re-render) re-fires the effect below, and since the catch block
+  // silently swallows the error without ever setting compressedSyllabus,
+  // there was nothing to stop it from retrying forever — this is what
+  // flooded the network tab with thousands of failing requests.
+  const attemptedSyllabusKeyRef = useRef(null);
 
   const fetchRoadmap = useCallback(async (opts) => {
     // silent = refresh in the background without dropping back to the
@@ -97,6 +105,12 @@ export default function RoadmapScreen({
       return;
     }
 
+    // Only attempt once per uid+role. If it fails, we don't retry just
+    // because the component re-rendered — see attemptedSyllabusKeyRef above.
+    const attemptKey = `${uid}:${roadmap?.role || ""}`;
+    if (attemptedSyllabusKeyRef.current === attemptKey) return;
+    attemptedSyllabusKeyRef.current = attemptKey;
+
     let cancelled = false;
     (async () => {
       try {
@@ -118,6 +132,8 @@ export default function RoadmapScreen({
       } catch {
         // Silent — this role/skill set may not be seeded yet
         // (data/skill_syllabus_seed.py only covers "frontend" so far).
+        // attemptedSyllabusKeyRef already marks this uid+role as tried,
+        // so this won't spam the endpoint again this session.
       }
     })();
 

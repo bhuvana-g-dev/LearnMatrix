@@ -1,5 +1,6 @@
 import apiClient from "../api/axiosClient";
 import { ENDPOINTS } from "../api/endpoints";
+import { getRevisionsDirect } from "./directProfileReads";
 
 /**
  * revisionService.js
@@ -63,15 +64,28 @@ function toDisplayItem(doc) {
   };
 }
 
+// Direct-Firestore-first (topic_quiz_progress is a plain filtered read,
+// no backend computation) — falls back to the Flask route only if the
+// direct read itself throws. Same toDisplayItem shaping applies either
+// way since both paths hand back the same raw doc fields (Uid/Skill/
+// Topic/NextReviewDate/...).
 export async function getRevisionSchedule(uid) {
-  const { data } = await apiClient.get(ENDPOINTS.TOPIC_QUIZ.DUE_REVISIONS(uid));
-  if (!data.success) {
-    throw new Error(data.error || data.message || "Failed to load your revision schedule.");
+  try {
+    const direct = await getRevisionsDirect(uid);
+    return {
+      due: direct.due.map(toDisplayItem),
+      upcoming: direct.upcoming.map(toDisplayItem),
+    };
+  } catch {
+    const { data } = await apiClient.get(ENDPOINTS.TOPIC_QUIZ.DUE_REVISIONS(uid));
+    if (!data.success) {
+      throw new Error(data.error || data.message || "Failed to load your revision schedule.");
+    }
+    return {
+      due: data.data.due.map(toDisplayItem),
+      upcoming: data.data.upcoming.map(toDisplayItem),
+    };
   }
-  return {
-    due: data.data.due.map(toDisplayItem),
-    upcoming: data.data.upcoming.map(toDisplayItem),
-  };
 }
 
 export async function snoozeRevision(uid, skill, topic) {

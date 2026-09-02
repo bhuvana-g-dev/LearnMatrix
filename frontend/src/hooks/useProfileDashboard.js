@@ -3,10 +3,50 @@ import { onAuthStateChanged } from "firebase/auth";
 import { auth } from "../firebase";
 import { getUserProfile } from "../services/profileService";
 import { getAIInsights } from "../services/aiInsightsService";
-import { getCachedRoadmap } from "../services/userProgressCache";
+import { getCachedRoadmap, getCachedAssessmentResult, invalidateRoadmap } from "../services/userProgressCache";
+import { generateRoadmap } from "../services/aiAssessmentService";
 import { getActivity } from "../services/activityService";
 import { getRevisionSchedule } from "../services/revisionService";
 import { getCertificate } from "../services/certificateService";
+import { ROLES } from "../constants/roles";
+
+/**
+ * Self-heal for a real, observed failure mode: the diagnostic assessment
+ * saves fine and users/{uid}.careerPath gets set, but the very next step
+ * (AssessmentScreen.jsx's auto-call to generateRoadmap right after
+ * evaluation) can silently fail (network blip, backend hiccup, user
+ * navigating away mid-request) — its own catch only sets a
+ * roadmapError the learner may never see. Result: Profile shows a real
+ * career path + real Skill Progress/AI Insights (both sourced from the
+ * assessment, which DID save), but Overall Progress/Skills Mastered/
+ * Roadmap Completion/Achievements/Certificate all read from the
+ * roadmap doc that never got created, so they're stuck at an honest
+ * but misleading 0/empty.
+ *
+ * If we have a saved assessment (evaluation) but no roadmap, there's
+ * nothing to lose by regenerating it right here — same inputs
+ * AssessmentScreen.jsx would have used, just re-run automatically
+ * instead of leaving the learner stuck until they retake the whole
+ * assessment. roleId is resolved the same best-effort way
+ * RoadmapScreen.jsx already does (title -> id via ROLES) since it
+ * isn't persisted on the saved assessment itself; missing it just
+ * means the assessed-skills-only roadmap shape instead of the full
+ * role syllabus — still real, non-zero progress either way.
+ */
+async function selfHealMissingRoadmap(uid) {
+  const savedAssessment = await getCachedAssessmentResult(uid).catch(() => null);
+  if (!savedAssessment?.evaluation) return null; // nothing to rebuild from
+
+  const roleEntry = ROLES.find((r) => r.title === savedAssessment.role);
+  const rebuilt = await generateRoadmap(
+    savedAssessment.evaluation,
+    uid,
+    savedAssessment.role || "",
+    roleEntry?.id || ""
+  );
+  invalidateRoadmap(uid); // so every other screen picks up the just-rebuilt roadmap too
+  return rebuilt;
+}
 
 /**
  * useProfileDashboard — owns all state for the "My Profile" dashboard
@@ -74,16 +114,28 @@ export function useProfileDashboard() {
     setProfile(p);
     setAiInsights(ai);
     setLoading(false);
+    return p; // returned (not read back from state) so callers avoid a stale-closure read of `profile`
   }, []);
 
-  const loadSecondary = useCallback(async (currentUid) => {
+  const loadSecondary = useCallback(async (currentUid, currentCareerPath) => {
     setSecondaryLoading(true);
-    const [rm, dates, rev, cert] = await Promise.all([
+    let [rm, dates, rev, cert] = await Promise.all([
       currentUid ? getCachedRoadmap(currentUid).catch(() => null) : Promise.resolve(null),
       currentUid ? getActivity(currentUid).catch(() => []) : Promise.resolve([]),
       currentUid ? getRevisionSchedule(currentUid).catch(() => ({ due: [], upcoming: [] })) : Promise.resolve({ due: [], upcoming: [] }),
       currentUid ? getCertificate(currentUid).catch(() => null) : Promise.resolve(null),
     ]);
+
+    // A career path is set but no roadmap exists -> the post-assessment
+    // roadmap generation step never landed. Try to rebuild it once
+    // instead of showing a permanently stuck 0%/empty dashboard.
+    if (currentUid && currentCareerPath && !rm) {
+      rm = await selfHealMissingRoadmap(currentUid).catch(() => null);
+      if (rm) {
+        cert = await getCertificate(currentUid).catch(() => cert); // rebuild also (re)issues the certificate
+      }
+    }
+
     setRoadmap(rm);
     setActivityDates(dates);
     setRevision(rev);
@@ -99,9 +151,9 @@ export function useProfileDashboard() {
     if (!authReady) return;
     let mounted = true;
     (async () => {
-      await loadPrimary();
+      const p = await loadPrimary();
       if (!mounted) return;
-      await loadSecondary(uid);
+      await loadSecondary(uid, p?.careerPath);
     })();
     return () => {
       mounted = false;
@@ -114,7 +166,7 @@ export function useProfileDashboard() {
   const refetchProfile = useCallback(async () => {
     const p = await getUserProfile();
     setProfile(p);
-    await loadSecondary(uid);
+    await loadSecondary(uid, p?.careerPath);
   }, [uid, loadSecondary]);
 
   // ---- derived, honest stats (no fabricated numbers) ----

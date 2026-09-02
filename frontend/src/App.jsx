@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import DashboardLayout from "./components/layout/DashboardLayout";
 import PageShell from "./components/layout/PageShell";
@@ -105,6 +105,18 @@ export default function App() {
   // component that stays mounted for the whole session, lets RoadmapScreen
   // paint instantly from cache and only refresh quietly in the background.
   const [roadmapCache, setRoadmapCache] = useState(null);
+  // Stable identity across renders — RoadmapScreen's compressed-syllabus
+  // effect has this in its dependency array, so an inline arrow function
+  // here would give it a new reference on every App re-render and cause
+  // that effect to refire (and, on a failed fetch, retry forever). See
+  // RoadmapScreen.jsx's fix for the other half of this bug.
+  const handleRoadmapLoaded = useCallback((partial) => {
+    if (partial?.reset) {
+      setRoadmapCache(null);
+      return;
+    }
+    setRoadmapCache((prev) => ({ ...(prev || {}), ...partial }));
+  }, []);
 
   // "Skill Selection" (My Career Path submenu) means two different things
   // depending on whether a role is locked in: the initial "what do you
@@ -415,13 +427,7 @@ export default function App() {
         uid={auth.user?.uid}
         onNavigate={setActiveKey}
         cachedRoadmap={roadmapCache}
-        onRoadmapLoaded={(partial) => {
-          if (partial?.reset) {
-            setRoadmapCache(null);
-            return;
-          }
-          setRoadmapCache((prev) => ({ ...(prev || {}), ...partial }));
-        }}
+        onRoadmapLoaded={handleRoadmapLoaded}
         onSelectTopic={(entry) => {
           // Prefer the learner's actual CURRENT topic within this skill
           // (RoadmapDisplay.jsx's withCurrentTopic(), sourced from

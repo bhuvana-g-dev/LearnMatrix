@@ -618,6 +618,15 @@ export default function AIStudyAssistantScreen({ uid }) {
         setFlashSet(result);
         setFlashIndex(0);
         setFlashFlipped(false);
+        // Same per-session Studio history save as the Sources/Chat modes
+        // (see handleGenerateFlashcards above) — Type mode was missing
+        // this, so typed flashcards never showed up as an "already
+        // generated" card next time this chat was reopened.
+        if (activeSessionId) {
+          saveStudioArtifact(uid, activeSessionId, "flashcards", result.title || "Flashcards", result)
+            .then(refreshStudioArtifacts)
+            .catch(() => {}); // best-effort — a save failure shouldn't block the flashcards the student is already looking at
+        }
       } catch (err) {
         setStudioError(err.message || "Couldn't generate flashcards.");
       } finally {

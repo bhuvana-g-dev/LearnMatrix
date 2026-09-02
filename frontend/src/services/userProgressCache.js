@@ -1,4 +1,5 @@
 import { loadSavedRoadmap, loadSavedAssessmentResult, recomputeRoadmapMastery } from "./aiAssessmentService";
+import { getRoadmapDirect, getAssessmentResultDirect } from "./directProfileReads";
 
 /**
  * userProgressCache.js
@@ -85,13 +86,26 @@ function makeCache(fetcher) {
   return { get, invalidate };
 }
 
-/** Recompute-then-read: see this file's docstring above for why the
- * recompute step needs to happen at all. Swallows a recompute failure
- * (e.g. no roadmap saved yet, since there's nothing to recompute) and
- * falls through to the plain read either way — loadSavedRoadmap()
- * already returns null in that case, which is the correct "take your
- * assessment first" empty state, not an error. */
+/** Direct-Firestore-first, Flask-fallback: reads roadmaps/{uid} straight
+ * from Firestore (no Render round trip, so this doesn't wait on a
+ * sleeping backend just to display data that's already sitting there).
+ * A best-effort mastery recompute still fires in the background (fire-
+ * and-forget, via Flask) so scores stay current once the backend is
+ * actually awake — it just no longer blocks the FIRST paint of the
+ * roadmap the way fetchRoadmapWithRecompute's await used to.
+ * Falls back to the old recompute-then-read Flask path only if the
+ * direct read itself throws (e.g. Firestore rules not deployed yet, or
+ * a genuine network issue) — see this file's docstring above for why
+ * a failed fetch is never cached either way. */
 async function fetchRoadmapWithRecompute(uid) {
+  try {
+    const direct = await getRoadmapDirect(uid);
+    recomputeRoadmapMastery(uid).catch(() => {}); // background, doesn't block or throw here
+    return direct;
+  } catch {
+    // Direct read failed outright (not just "no roadmap yet" — that
+    // returns null above, not a throw) — fall back to the Flask path.
+  }
   try {
     await recomputeRoadmapMastery(uid);
   } catch {
@@ -101,8 +115,17 @@ async function fetchRoadmapWithRecompute(uid) {
   return loadSavedRoadmap(uid);
 }
 
+/** Same direct-first/Flask-fallback pattern for assessment_results/{uid}. */
+async function fetchAssessmentResult(uid) {
+  try {
+    return await getAssessmentResultDirect(uid);
+  } catch {
+    return loadSavedAssessmentResult(uid);
+  }
+}
+
 const roadmapCache = makeCache(fetchRoadmapWithRecompute);
-const assessmentCache = makeCache(loadSavedAssessmentResult);
+const assessmentCache = makeCache(fetchAssessmentResult);
 
 /** Drop-in replacement for loadSavedRoadmap(uid) — same return shape
  * (the roadmap object, or null if none saved yet), just de-duplicated/cached,

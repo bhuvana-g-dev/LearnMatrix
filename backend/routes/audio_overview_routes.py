@@ -28,10 +28,11 @@ instead of a full script-writing LLM call.
 from flask import Blueprint, request
 
 from firebase.firebase_config import get_firestore_client
-from services import studio_repository
+from services import studio_repository, audio_storage
 from services.audio_overview_service import (
     generate_audio_overview,
     synthesize_audio_for_script,
+    wav_bytes_from_data_uri,
     AudioOverviewServiceError,
 )
 from utils.response_helper import success_response, error_response
@@ -62,12 +63,26 @@ def generate_audio_overview_route():
     uid, session_id = payload.get("uid"), payload.get("sessionId")
     if uid and session_id:
         db = get_firestore_client()
-        # Script + title only (see module docstring) — NOT audioDataUri,
-        # which would routinely blow past Firestore's 1MiB doc limit.
+        # Script + title always saved (see module docstring) — the audio
+        # itself would routinely blow past Firestore's 1MiB doc limit, so
+        # it never goes in this document. When a Storage bucket is
+        # configured we instead upload the WAV there and save only its
+        # (tiny) blob path, so reopening this artifact later can play the
+        # exact saved audio (routes/studio_routes.py) instead of paying
+        # for a fresh TTS call. If storage isn't configured or the upload
+        # fails, audio_storage.upload_audio() returns None and reopening
+        # just falls back to the old re-synthesize behavior — nothing
+        # here treats that as an error.
+        content = {"title": result["title"], "script": result["script"]}
+        wav_bytes = wav_bytes_from_data_uri(result.get("audioDataUri"))
+        if wav_bytes:
+            storage_path = audio_storage.upload_audio(uid, session_id, wav_bytes)
+            if storage_path:
+                content["audioStoragePath"] = storage_path
         studio_repository.save_artifact(
             db, uid, session_id, "audio",
             result.get("title") or "Audio Overview",
-            {"title": result["title"], "script": result["script"]},
+            content,
         )
 
     return success_response(data=result, message="Audio Overview generated.")

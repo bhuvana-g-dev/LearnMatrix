@@ -43,6 +43,15 @@ class Settings:
         "FIREBASE_SERVICE_ACCOUNT_PATH", "firebase/serviceAccountKey.json"
     )
 
+    # Firebase Storage bucket name (e.g. "learnmatrix-xxxxx.appspot.com") —
+    # used to persist rendered Audio Overview WAV files (see
+    # services/audio_storage.py) so reopening a saved Audio Overview from
+    # Studio history plays back the exact saved audio instead of paying
+    # for a fresh Gemini TTS call every time. Leave unset to keep the old
+    # "re-synthesize on reopen" behavior (storage upload/download is
+    # skipped everywhere it's optional, never raises).
+    FIREBASE_STORAGE_BUCKET: str = os.getenv("FIREBASE_STORAGE_BUCKET", "")
+
     # --- Question Bank (Excel = import source ONLY, never read at runtime) ---
     # Folder scanned for *.xlsx files by scripts/upload_questions.py.
     # Adding a new subject later means dropping a file here — never touching
@@ -252,21 +261,6 @@ class Settings:
     # https://console.cloud.google.com/ and generate one key per project).
     GEMINI_API_KEYS_POOL_ASSESSMENT: list[str] = [
         k.strip() for k in os.getenv("GEMINI_API_KEYS_POOL_ASSESSMENT", "").split(",") if k.strip()
-    ]
-
-    # Same rotation pattern as GEMINI_API_KEYS_POOL_ASSESSMENT above, but
-    # for the AI Study Assistant / Chat (agents/chat_agent.py) and the
-    # post-Topic Quiz generator (agents/topic_quiz_agent.py) respectively.
-    # Each pool is independent — a key fails/rate-limits within its own
-    # feature's rotation only, never shared across chat/topic_quiz/assessment,
-    # for the same "don't let one heavy feature starve another" reason
-    # described above. Optional: empty by default, so nothing breaks if
-    # only GEMINI_API_KEY_CHAT / GEMINI_API_KEY_TOPIC_QUIZ (single key) is set.
-    GEMINI_API_KEYS_POOL_CHAT: list[str] = [
-        k.strip() for k in os.getenv("GEMINI_API_KEYS_POOL_CHAT", "").split(",") if k.strip()
-    ]
-    GEMINI_API_KEYS_POOL_TOPIC_QUIZ: list[str] = [
-        k.strip() for k in os.getenv("GEMINI_API_KEYS_POOL_TOPIC_QUIZ", "").split(",") if k.strip()
     ]
 
     GROQ_API_KEY: str = os.getenv("GROQ_API_KEY", "")

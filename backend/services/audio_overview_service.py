@@ -56,6 +56,25 @@ def _audio_data_uri(wav_bytes: bytes) -> str:
     return f"data:audio/wav;base64,{base64.b64encode(wav_bytes).decode('ascii')}"
 
 
+# Exposed (not prefixed) since routes/audio_overview_routes.py and
+# routes/studio_routes.py both need to convert between the data URI shape
+# the frontend expects and the raw WAV bytes services/audio_storage.py
+# uploads/downloads.
+audio_data_uri = _audio_data_uri
+
+
+def wav_bytes_from_data_uri(data_uri: str) -> bytes | None:
+    """Reverses _audio_data_uri() — used right after generation so the
+    freshly-rendered audio can also be uploaded to Storage without a
+    second TTS call. Returns None if the string isn't a data URI."""
+    if not data_uri or not data_uri.startswith("data:audio/wav;base64,"):
+        return None
+    try:
+        return base64.b64decode(data_uri.split(",", 1)[1])
+    except Exception:
+        return None
+
+
 def generate_audio_overview(text: str, label: str = "this material") -> dict:
     """Full pipeline: text -> script -> audio. Returns
     {title, script, audioDataUri, durationSeconds}. Raises

@@ -509,13 +509,20 @@ export default function AIStudyAssistantScreen({ uid }) {
         setFlashFlipped(false);
         setStudioModal("flashcards");
       } else if (full.type === "audio") {
-        // Saved artifacts only carry {title, script} — the audio itself
-        // is never persisted (see backend/services/audio_overview_service.py's
-        // docstring), so reopening one re-renders the audio via a single
-        // TTS-only call before the dock opens (no script LLM call).
+        // Saved artifacts always carry {title, script}. When the backend
+        // has the WAV in Storage (see backend/routes/studio_routes.py) it
+        // inlines it straight into full.content.audioDataUri — no TTS
+        // call needed, this is the exact audio that was generated. Only
+        // fall back to re-synthesizing (older artifact saved before
+        // Storage was wired up, or the storage fetch failed server-side)
+        // when audioDataUri didn't come back.
+        setStudioModal("audio");
+        if (full.content.audioDataUri) {
+          setAudioNotes(full.content);
+          return;
+        }
         setStudioLoading(true);
         setStudioError("");
-        setStudioModal("audio");
         setAudioNotes(null);
         try {
           const audioDataUri = await synthesizeAudioForScript(full.content.script);

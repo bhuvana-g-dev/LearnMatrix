@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { Eye, EyeOff, Mail, Lock, Github, Check, ArrowLeft } from "lucide-react";
 import PageShell from "../components/layout/PageShell";
@@ -37,6 +37,21 @@ export default function LoginScreen({ auth, onSuccess, onSignup, onBack }) {
       onSuccess();
     } catch (e) {}
   };
+
+  // Firebase blocks a second provider from signing in under an email
+  // that's already registered with a different one
+  // ("auth/account-exists-with-different-credential") — useAuth.js's
+  // loginGoogle/loginGithub catch that and set auth.linkPrompt with the
+  // email + which provider already owns it, instead of leaving the user
+  // stuck on Firebase's raw error text. When that provider is the
+  // password account, prefill the email field so all they have to do is
+  // type their password and hit Login — doing so completes the
+  // connection automatically (see useAuth.js's maybeCompleteLink).
+  useEffect(() => {
+    if (auth.linkPrompt?.existingMethods?.includes("password") && auth.linkPrompt.email) {
+      setEmail(auth.linkPrompt.email);
+    }
+  }, [auth.linkPrompt]);
 
   const handleForgotPassword = async () => {
     if (!email.trim()) {
@@ -270,6 +285,20 @@ export default function LoginScreen({ auth, onSuccess, onSignup, onBack }) {
               </p>
             )}
 
+            {/* Account-linking guidance — see the useEffect above and
+                useAuth.js's linkPrompt/maybeCompleteLink. Only the
+                "already uses Google" case needs an extra instruction
+                pointing at the Google button below; the password case
+                is self-explanatory once the email field is prefilled. */}
+            {auth.linkPrompt?.existingMethods?.includes("google.com") && (
+              <p
+                className="text-center text-xs"
+                style={{ color: COLORS.textMid, marginTop: 4 }}
+              >
+                Click <strong>Google</strong> below to sign in and connect GitHub to that account.
+              </p>
+            )}
+
           </div>
 
           <div className="flex items-center gap-3 my-6">
@@ -300,8 +329,13 @@ export default function LoginScreen({ auth, onSuccess, onSignup, onBack }) {
             <motion.button
               whileHover={{ y: -2 }}
               onClick={async () => {
-                await auth.loginGoogle();
-                onSuccess();
+                try {
+                  await auth.loginGoogle();
+                  onSuccess();
+                } catch (e) {
+                  // auth.error / auth.linkPrompt already reflect what
+                  // happened (see useAuth.js) — nothing else to do here.
+                }
               }}
               className="flex items-center justify-center gap-2"
               style={{
@@ -316,8 +350,13 @@ export default function LoginScreen({ auth, onSuccess, onSignup, onBack }) {
             <motion.button
               whileHover={{ y: -2 }}
               onClick={async () => {
-                await auth.loginGithub();
-                onSuccess();
+                try {
+                  await auth.loginGithub();
+                  onSuccess();
+                } catch (e) {
+                  // auth.error / auth.linkPrompt already reflect what
+                  // happened (see useAuth.js) — nothing else to do here.
+                }
               }}
               className="flex items-center justify-center gap-2"
               style={{

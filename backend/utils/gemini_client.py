@@ -20,9 +20,10 @@ rotation layer: a caller can pass gemini_key_pool=[...] to generate_json()
 to have extra keys tried, in order, before Gemini as a whole is
 considered failed and the chain moves on to groq/cerebras/openrouter.
 This is opt-in per call, NOT a global setting every feature shares —
-each of Assessment, Chat, and Topic Quiz passes its OWN pool
-(settings.GEMINI_API_KEYS_POOL_ASSESSMENT / _CHAT / _TOPIC_QUIZ), kept
-separate so one heavy feature's rotation can't eat another's headroom.
+only the diagnostic assessment currently passes one
+(settings.GEMINI_API_KEYS_POOL_ASSESSMENT), since it's the heaviest AI
+feature and giving every other feature the same pool would mean
+assessment is competing with everything else for its own headroom.
 See _gemini_key_candidates() below — and its docstring for why each
 pool key needs to be from a SEPARATE Google Cloud project to actually
 help (Gemini's free-tier quota is per-project, not per-key).
@@ -34,6 +35,7 @@ share one small HTTP helper instead of pulling in another SDK each.
 
 import json
 import logging
+import time
 
 import requests
 
@@ -180,10 +182,12 @@ def _gemini_key_candidates(override_key: str | None, key_pool: list[str] | None)
 
     key_pool is None/empty for every caller by default — it's an
     explicit opt-in (see generate_json()'s gemini_key_pool param), NOT
-    a global setting every feature automatically shares. Three callers
-    pass one today (assessment, chat, topic quiz — each its own pool);
-    flashcards, notes, mind maps, and slide decks all still get exactly
-    one key attempt before falling to groq/cerebras/openrouter, same as
+    a global setting every feature automatically shares. The diagnostic
+    assessment is the only current caller that passes one
+    (settings.GEMINI_API_KEYS_POOL_ASSESSMENT, from
+    agents/question_generation_agent.py) — chat, flashcards, notes,
+    mind maps, slide decks, and topic quizzes all still get exactly one
+    key attempt before falling to groq/cerebras/openrouter, same as
     before this rotation feature existed.
 
     IMPORTANT: rotating keys only helps if each key is from a SEPARATE
@@ -327,40 +331,66 @@ def generate_speech_audio(
     if not transcript.strip():
         return None
 
-    try:
-        from google.genai import types
+    from google.genai import types
 
-        client = _get_gemini_tts_client(api_key)
-        speaker_configs = [
-            types.SpeakerVoiceConfig(
-                speaker=name,
-                voice_config=types.VoiceConfig(
-                    prebuilt_voice_config=types.PrebuiltVoiceConfig(voice_name=speaker_voice_map[name])
-                ),
-            )
-            for name in speakers
-        ]
-        response = client.models.generate_content(
-            model=settings.GEMINI_TTS_MODEL,
-            contents=transcript,
-            config=types.GenerateContentConfig(
-                response_modalities=["AUDIO"],
-                speech_config=types.SpeechConfig(
-                    multi_speaker_voice_config=types.MultiSpeakerVoiceConfig(speaker_voice_configs=speaker_configs)
-                ),
+    client = _get_gemini_tts_client(api_key)
+    speaker_configs = [
+        types.SpeakerVoiceConfig(
+            speaker=name,
+            voice_config=types.VoiceConfig(
+                prebuilt_voice_config=types.PrebuiltVoiceConfig(voice_name=speaker_voice_map[name])
             ),
         )
-        for candidate in getattr(response, "candidates", None) or []:
-            parts = getattr(getattr(candidate, "content", None), "parts", None) or []
-            for part in parts:
-                inline_data = getattr(part, "inline_data", None)
-                if inline_data is not None and getattr(inline_data, "data", None):
-                    return _wrap_pcm_as_wav(inline_data.data)
-        logger.warning("generate_speech_audio: no inline audio data in Gemini TTS response (%r)", response)
-        return None
-    except Exception:
-        logger.exception("generate_speech_audio: Gemini TTS call failed")
-        return None
+        for name in speakers
+    ]
+    config = types.GenerateContentConfig(
+        response_modalities=["AUDIO"],
+        speech_config=types.SpeechConfig(
+            multi_speaker_voice_config=types.MultiSpeakerVoiceConfig(speaker_voice_configs=speaker_configs)
+        ),
+    )
+
+    # _gemini_tts_http_options() sets the SDK's own retry_options to a
+    # single attempt (a long-running TTS render shouldn't get the SDK's
+    # default aggressive retry-with-backoff on top of its already-long
+    # 100s timeout). That means a transient failure — a momentary
+    # rate-limit, a dropped connection — used to surface as an immediate
+    # 422 with no second chance. This loop adds a SMALL number of
+    # application-level retries around just the network call, short
+    # backoff, so a one-off hiccup doesn't fail the whole request; a
+    # genuinely persistent problem (bad key, real quota exhaustion) still
+    # ends up raising/returning None after the last attempt like before.
+    max_attempts = 3
+    last_exception = None
+    for attempt in range(1, max_attempts + 1):
+        try:
+            response = client.models.generate_content(
+                model=settings.GEMINI_TTS_MODEL,
+                contents=transcript,
+                config=config,
+            )
+            for candidate in getattr(response, "candidates", None) or []:
+                parts = getattr(getattr(candidate, "content", None), "parts", None) or []
+                for part in parts:
+                    inline_data = getattr(part, "inline_data", None)
+                    if inline_data is not None and getattr(inline_data, "data", None):
+                        return _wrap_pcm_as_wav(inline_data.data)
+            logger.warning(
+                "generate_speech_audio: no inline audio data in Gemini TTS response "
+                "(attempt %d/%d) (%r)", attempt, max_attempts, response,
+            )
+        except Exception as exc:
+            last_exception = exc
+            logger.warning(
+                "generate_speech_audio: Gemini TTS call failed (attempt %d/%d): %s",
+                attempt, max_attempts, exc,
+            )
+        if attempt < max_attempts:
+            time.sleep(2 * attempt)  # 2s, then 4s
+
+    if last_exception is not None:
+        logger.exception("generate_speech_audio: Gemini TTS call failed after retries", exc_info=last_exception)
+    return None
 
 
 # ---------------------------------------------------------------------
@@ -480,16 +510,14 @@ def generate_json(
     _generate_json_gemini_with_rotation() — if gemini_key_pool is given,
     it's walked as a fallback rotation before Gemini as a whole is
     considered failed and the chain moves to groq/cerebras/openrouter.
-    gemini_key_pool is None by default, so callers that don't pass one
-    behave exactly as before this feature existed (one Gemini key
-    attempt, then straight to the next provider). Three callers pass
-    their own pool today — each kept separate so one feature's rotation
-    can't eat another's headroom:
-      - agents/question_generation_agent.py -> GEMINI_API_KEYS_POOL_ASSESSMENT
-      - agents/chat_agent.py                -> GEMINI_API_KEYS_POOL_CHAT
-      - agents/topic_quiz_agent.py          -> GEMINI_API_KEYS_POOL_TOPIC_QUIZ
-    Every other feature (flashcards/notes/slidedeck/etc.) still passes
-    no pool at all.
+    gemini_key_pool is None by default, so most callers behave exactly
+    as before this feature existed (one Gemini key attempt, then
+    straight to the next provider). Only the diagnostic assessment
+    passes one currently (settings.GEMINI_API_KEYS_POOL_ASSESSMENT, via
+    agents/question_generation_agent.py) — deliberately NOT shared with
+    chat/flashcards/notes/etc., since assessment generation is the
+    heaviest AI feature and giving everything else access to the same
+    pool would mean it's competing with assessment for its own headroom.
 
     gemini_api_key: optional override, used ONLY when the current
     provider in the chain is "gemini" — lets one caller (e.g. Assessment

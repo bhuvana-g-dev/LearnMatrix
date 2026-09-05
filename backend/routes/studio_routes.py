@@ -25,7 +25,8 @@ module's POST endpoint directly for those two instead.
 from flask import Blueprint, request
 
 from firebase.firebase_config import get_firestore_client
-from services import studio_repository
+from services import studio_repository, audio_storage
+from services.audio_overview_service import audio_data_uri
 from utils.response_helper import success_response, error_response
 from utils.user_auth import require_owner
 
@@ -47,6 +48,24 @@ def get_studio_artifact_route(uid, session_id, artifact_id):
     artifact = studio_repository.get_artifact(db, uid, session_id, artifact_id)
     if artifact is None:
         return error_response("That item wasn't found — it may have been deleted.", status_code=404)
+
+    # Audio Overview artifacts only ever store {title, script} (+ an
+    # optional audioStoragePath — see routes/audio_overview_routes.py) in
+    # Firestore, never the audio itself. If a storage path is present,
+    # fetch the exact saved WAV and inline it as audioDataUri so the
+    # frontend can play it straight away with no TTS call at all. If
+    # there's no path (older artifact, or storage wasn't configured when
+    # it was generated) or the download fails, content is left as-is and
+    # the frontend's existing fallback re-synthesizes from the script.
+    content = artifact.get("content")
+    if artifact.get("type") == "audio" and isinstance(content, dict):
+        storage_path = content.get("audioStoragePath")
+        if storage_path:
+            wav_bytes = audio_storage.download_audio(storage_path)
+            if wav_bytes:
+                content = {**content, "audioDataUri": audio_data_uri(wav_bytes)}
+                artifact = {**artifact, "content": content}
+
     return success_response(data=artifact, message="Studio artifact fetched.")
 
 

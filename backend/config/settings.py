@@ -254,6 +254,21 @@ class Settings:
         k.strip() for k in os.getenv("GEMINI_API_KEYS_POOL_ASSESSMENT", "").split(",") if k.strip()
     ]
 
+    # Same rotation pattern as GEMINI_API_KEYS_POOL_ASSESSMENT above, but
+    # for the AI Study Assistant / Chat (agents/chat_agent.py) and the
+    # post-Topic Quiz generator (agents/topic_quiz_agent.py) respectively.
+    # Each pool is independent — a key fails/rate-limits within its own
+    # feature's rotation only, never shared across chat/topic_quiz/assessment,
+    # for the same "don't let one heavy feature starve another" reason
+    # described above. Optional: empty by default, so nothing breaks if
+    # only GEMINI_API_KEY_CHAT / GEMINI_API_KEY_TOPIC_QUIZ (single key) is set.
+    GEMINI_API_KEYS_POOL_CHAT: list[str] = [
+        k.strip() for k in os.getenv("GEMINI_API_KEYS_POOL_CHAT", "").split(",") if k.strip()
+    ]
+    GEMINI_API_KEYS_POOL_TOPIC_QUIZ: list[str] = [
+        k.strip() for k in os.getenv("GEMINI_API_KEYS_POOL_TOPIC_QUIZ", "").split(",") if k.strip()
+    ]
+
     GROQ_API_KEY: str = os.getenv("GROQ_API_KEY", "")
     # Groq retired llama-3.3-70b-versatile (see console.groq.com/docs/deprecations) —
     # requests to it now 404 with "model_not_found". openai/gpt-oss-120b is

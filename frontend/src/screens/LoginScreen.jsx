@@ -3,12 +3,23 @@ import { motion } from "framer-motion";
 import { Eye, EyeOff, Mail, Lock, Github, Check, ArrowLeft, Sparkles } from "lucide-react";
 import Logo from "../components/common/Logo";
 import GoogleIcon from "../components/common/GoogleIcon";
-import { COLORS, GRADIENTS, GLASS_CARD } from "../constants/theme";
+import { COLORS, GRADIENTS } from "../constants/theme";
 
 // Background video for the login screen — served from /public/videos, so
 // this path is stable regardless of build hashing. Muted + looped, purely
 // decorative (see the <video> element below for accessibility notes).
 const LOGIN_BG_VIDEO = "/videos/login-bg.mp4";
+
+// Translucent "glass on dark video" look for this screen only — the
+// standard GLASS_CARD (light/opaque) would hide the video, so inputs and
+// buttons here use a much lighter, darker-tinted glass instead, with white
+// text throughout instead of COLORS.textDark/textMid.
+const DARK_GLASS = {
+  background: "rgba(255,255,255,0.12)",
+  border: "1px solid rgba(255,255,255,0.28)",
+  backdropFilter: "blur(14px)",
+  WebkitBackdropFilter: "blur(14px)",
+};
 
 export default function LoginScreen({ auth, onSuccess, onSignup, onBack }) {
   const [email, setEmail] = useState("");
@@ -22,15 +33,15 @@ export default function LoginScreen({ auth, onSuccess, onSignup, onBack }) {
   const inputStyle = (name) => ({
     width: "100%",
     borderRadius: 16,
-    background: "rgba(255,255,255,0.55)",
+    background: "rgba(255,255,255,0.14)",
     border: `1.5px solid ${
-      focused === name ? COLORS.purple : "rgba(255,255,255,0.7)"
+      focused === name ? COLORS.purple : "rgba(255,255,255,0.35)"
     }`,
     boxShadow:
-      focused === name ? "0 0 0 4px rgba(192,132,252,0.25)" : "none",
+      focused === name ? "0 0 0 4px rgba(212,160,23,0.25)" : "none",
     padding: "13px 16px 13px 44px",
     fontSize: 14,
-    color: COLORS.textDark,
+    color: "#fff",
     outline: "none",
     transition: "all .25s ease",
   });
@@ -77,36 +88,67 @@ export default function LoginScreen({ auth, onSuccess, onSignup, onBack }) {
   };
 
   return (
-    <div style={{ position: "relative", minHeight: "100vh", width: "100%", overflow: "hidden", background: COLORS.sky }}>
-      {/* Background video — autoplay/muted/loop/playsInline so it plays
-          inline without controls on both desktop and mobile browsers. */}
+    // No overflow:hidden here — if the form column ever ends up taller
+    // than the viewport (small screen + browser chrome), the page simply
+    // scrolls instead of clipping content. The video/overlay below are
+    // `fixed`, so they still cover the full visible viewport at all
+    // times regardless of how tall this wrapper grows.
+    <div style={{ position: "relative", minHeight: "100vh", width: "100%", background: COLORS.sky }}>
+      {/* Background video — `fixed` + w-screen/h-screen (not w-full/h-full,
+          which would only match this wrapper's own box) so it always
+          covers the real viewport with no letterboxing, independent of
+          how tall the content below grows. */}
       <video
         autoPlay
         muted
         loop
         playsInline
         aria-hidden="true"
-        className="absolute inset-0 w-full h-full object-cover"
+        className="fixed inset-0 w-screen h-screen object-cover"
+        style={{ zIndex: 0 }}
         src={LOGIN_BG_VIDEO}
       />
 
-      {/* Dark navy overlay so the white hero copy and the glass card both
-          stay readable against whatever the video is showing. Slightly
-          heavier on the left (behind the text) and lighter toward the
-          card on the right, which already has its own blur/tint. */}
+      {/* Dark navy overlay so white text stays readable against whatever
+          the video is showing — lighter than before since the card itself
+          is now much more transparent and needs the video to read through. */}
       <div
-        className="absolute inset-0"
+        className="fixed inset-0"
         style={{
+          zIndex: 1,
           background:
-            "linear-gradient(115deg, rgba(13,27,61,0.72) 0%, rgba(13,27,61,0.45) 45%, rgba(13,27,61,0.25) 100%)",
+            "linear-gradient(115deg, rgba(13,27,61,0.6) 0%, rgba(13,27,61,0.38) 45%, rgba(13,27,61,0.32) 100%)",
         }}
       />
 
+      {/* Back to Home — top of the page, not tucked inside the form, so
+          it reads the same way as the reference design regardless of
+          how tall the form column is. */}
+      {onBack && (
+        <button
+          type="button"
+          onClick={onBack}
+          className="flex items-center gap-1.5 text-xs sm:text-sm font-semibold"
+          style={{
+            position: "absolute",
+            top: 24,
+            left: 24,
+            zIndex: 20,
+            color: "rgba(255,255,255,0.9)",
+            background: "none",
+            border: "none",
+            cursor: "pointer",
+          }}
+        >
+          <ArrowLeft size={14} /> Back to Home
+        </button>
+      )}
+
       <div
-        className="relative flex flex-col lg:flex-row items-center justify-center lg:justify-between gap-10 px-4 sm:px-10 lg:px-20 py-10"
+        className="relative flex flex-col lg:flex-row items-center justify-center lg:justify-between gap-10 px-4 sm:px-10 lg:px-20 py-20"
         style={{ minHeight: "100vh", zIndex: 10 }}
       >
-        {/* Brand copy — hidden on small screens so the login card gets
+        {/* Brand copy — hidden on small screens so the login form gets
             full attention there; shown alongside it from lg breakpoint up. */}
         <motion.div
           initial={{ opacity: 0, x: -24 }}
@@ -134,36 +176,30 @@ export default function LoginScreen({ auth, onSuccess, onSignup, onBack }) {
           </div>
         </motion.div>
 
+        {/* Form column — no big opaque card anymore: content sits
+            directly over the video, each control carrying its own
+            translucent "glass" background (DARK_GLASS) so the video
+            reads through clearly, matching the reference design. The
+            column keeps a fixed max-width and natural (not compressed)
+            height — see the wrapper comment above re: scrolling. */}
         <motion.div
           initial={{ opacity: 0, y: 40, scale: 0.96 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
           transition={{ duration: 0.6 }}
-          className="w-full max-w-md p-8 sm:p-10"
-          style={{ ...GLASS_CARD, borderRadius: 30 }}
+          className="w-full max-w-md"
         >
-          {onBack && (
-            <button
-              type="button"
-              onClick={onBack}
-              className="flex items-center gap-1.5 text-xs font-semibold mb-5"
-              style={{ color: COLORS.textMid, background: "none", border: "none", cursor: "pointer" }}
-            >
-              <ArrowLeft size={14} /> Back to Home
-            </button>
-          )}
-
           <Logo />
 
           <h1
             className="text-center text-2xl sm:text-3xl font-bold mt-5"
-            style={{ color: COLORS.textDark }}
+            style={{ color: "#fff" }}
           >
             Welcome Back
           </h1>
 
           <p
             className="text-center text-sm mt-2 mb-8"
-            style={{ color: COLORS.textMid }}
+            style={{ color: "rgba(255,255,255,0.75)" }}
           >
             Login to continue your learning journey
           </p>
@@ -179,7 +215,7 @@ export default function LoginScreen({ auth, onSuccess, onSignup, onBack }) {
                   left: 15,
                   top: "50%",
                   transform: "translateY(-50%)",
-                  color: COLORS.textLight,
+                  color: "rgba(255,255,255,0.7)",
                 }}
               />
 
@@ -199,6 +235,7 @@ export default function LoginScreen({ auth, onSuccess, onSignup, onBack }) {
                 onKeyDown={(e) =>
                   e.key === "Enter" && handleLogin()
                 }
+                className="placeholder-white/60"
                 style={inputStyle("email")}
               />
             </div>
@@ -212,7 +249,7 @@ export default function LoginScreen({ auth, onSuccess, onSignup, onBack }) {
                   left: 15,
                   top: "50%",
                   transform: "translateY(-50%)",
-                  color: COLORS.textLight,
+                  color: "rgba(255,255,255,0.7)",
                 }}
               />
 
@@ -226,6 +263,7 @@ export default function LoginScreen({ auth, onSuccess, onSignup, onBack }) {
                 onKeyDown={(e) =>
                   e.key === "Enter" && handleLogin()
                 }
+                className="placeholder-white/60"
                 style={{
                   ...inputStyle("pw"),
                   paddingRight: 44,
@@ -243,6 +281,7 @@ export default function LoginScreen({ auth, onSuccess, onSignup, onBack }) {
                   background: "none",
                   border: "none",
                   cursor: "pointer",
+                  color: "rgba(255,255,255,0.7)",
                 }}
               >
                 {showPw ? (
@@ -256,7 +295,7 @@ export default function LoginScreen({ auth, onSuccess, onSignup, onBack }) {
             <div className="flex items-center justify-between text-xs">
               <label
                 className="flex items-center gap-2"
-                style={{ color: COLORS.textMid }}
+                style={{ color: "rgba(255,255,255,0.85)" }}
               >
                 <span
                   onClick={() => setRemember(!remember)}
@@ -266,8 +305,8 @@ export default function LoginScreen({ auth, onSuccess, onSignup, onBack }) {
                     borderRadius: 5,
                     background: remember
                       ? GRADIENTS.purplePink
-                      : "#fff",
-                    border: "1px solid #ccc",
+                      : "rgba(255,255,255,0.15)",
+                    border: "1px solid rgba(255,255,255,0.5)",
                     display: "flex",
                     justifyContent: "center",
                     alignItems: "center",
@@ -287,7 +326,7 @@ export default function LoginScreen({ auth, onSuccess, onSignup, onBack }) {
                 onClick={handleForgotPassword}
                 disabled={resetStatus === "sending"}
                 style={{
-                  color: "#8B5CF6",
+                  color: "#F2C744",
                   fontWeight: 600,
                   background: "none",
                   border: "none",
@@ -303,7 +342,7 @@ export default function LoginScreen({ auth, onSuccess, onSignup, onBack }) {
             {resetMessage && (
               <p
                 className="text-xs -mt-1"
-                style={{ color: resetStatus === "sent" ? "#22C08E" : "#E4568A" }}
+                style={{ color: resetStatus === "sent" ? "#5EEAB5" : "#FF9EB2" }}
               >
                 {resetMessage}
               </p>
@@ -333,7 +372,7 @@ export default function LoginScreen({ auth, onSuccess, onSignup, onBack }) {
               <p
                 className="text-center text-sm"
                 style={{
-                  color: "#E4568A",
+                  color: "#FF9EB2",
                   marginTop: 8,
                 }}
               >
@@ -349,7 +388,7 @@ export default function LoginScreen({ auth, onSuccess, onSignup, onBack }) {
             {auth.linkPrompt?.existingMethods?.includes("google.com") && (
               <p
                 className="text-center text-xs"
-                style={{ color: COLORS.textMid, marginTop: 4 }}
+                style={{ color: "rgba(255,255,255,0.75)", marginTop: 4 }}
               >
                 Click <strong>Google</strong> below to sign in and connect GitHub to that account.
               </p>
@@ -362,12 +401,12 @@ export default function LoginScreen({ auth, onSuccess, onSignup, onBack }) {
               style={{
                 height: 1,
                 flex: 1,
-                background: COLORS.border,
+                background: "rgba(255,255,255,0.25)",
               }}
             />
             <span
               className="text-xs"
-              style={{ color: COLORS.textLight }}
+              style={{ color: "rgba(255,255,255,0.6)" }}
             >
               or continue with
             </span>
@@ -375,7 +414,7 @@ export default function LoginScreen({ auth, onSuccess, onSignup, onBack }) {
               style={{
                 height: 1,
                 flex: 1,
-                background: COLORS.border,
+                background: "rgba(255,255,255,0.25)",
               }}
             />
           </div>
@@ -397,6 +436,8 @@ export default function LoginScreen({ auth, onSuccess, onSignup, onBack }) {
               style={{
                 padding: "10px",
                 borderRadius: 9999,
+                color: "#fff",
+                ...DARK_GLASS,
               }}
             >
               <GoogleIcon />
@@ -418,6 +459,8 @@ export default function LoginScreen({ auth, onSuccess, onSignup, onBack }) {
               style={{
                 padding: "10px",
                 borderRadius: 9999,
+                color: "#fff",
+                ...DARK_GLASS,
               }}
             >
               <Github size={16} />
@@ -428,13 +471,13 @@ export default function LoginScreen({ auth, onSuccess, onSignup, onBack }) {
 
           <p
             className="text-center text-xs mt-7"
-            style={{ color: COLORS.textMid }}
+            style={{ color: "rgba(255,255,255,0.75)" }}
           >
             Don't have an account?{" "}
             <span
               onClick={onSignup}
               style={{
-                color: "#8B5CF6",
+                color: "#F2C744",
                 fontWeight: 700,
                 cursor: "pointer",
               }}

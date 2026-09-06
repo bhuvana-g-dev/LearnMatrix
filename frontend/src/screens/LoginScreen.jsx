@@ -1,10 +1,14 @@
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
-import { Eye, EyeOff, Mail, Lock, Github, Check, ArrowLeft } from "lucide-react";
-import PageShell from "../components/layout/PageShell";
+import { Eye, EyeOff, Mail, Lock, Github, Check, ArrowLeft, Sparkles } from "lucide-react";
 import Logo from "../components/common/Logo";
 import GoogleIcon from "../components/common/GoogleIcon";
 import { COLORS, GRADIENTS, GLASS_CARD } from "../constants/theme";
+
+// Background video for the login screen — served from /public/videos, so
+// this path is stable regardless of build hashing. Muted + looped, purely
+// decorative (see the <video> element below for accessibility notes).
+const LOGIN_BG_VIDEO = "/videos/login-bg.mp4";
 
 export default function LoginScreen({ auth, onSuccess, onSignup, onBack }) {
   const [email, setEmail] = useState("");
@@ -73,11 +77,63 @@ export default function LoginScreen({ auth, onSuccess, onSignup, onBack }) {
   };
 
   return (
-    <PageShell>
+    <div style={{ position: "relative", minHeight: "100vh", width: "100%", overflow: "hidden", background: COLORS.sky }}>
+      {/* Background video — autoplay/muted/loop/playsInline so it plays
+          inline without controls on both desktop and mobile browsers. */}
+      <video
+        autoPlay
+        muted
+        loop
+        playsInline
+        aria-hidden="true"
+        className="absolute inset-0 w-full h-full object-cover"
+        src={LOGIN_BG_VIDEO}
+      />
+
+      {/* Dark navy overlay so the white hero copy and the glass card both
+          stay readable against whatever the video is showing. Slightly
+          heavier on the left (behind the text) and lighter toward the
+          card on the right, which already has its own blur/tint. */}
       <div
-        className="flex items-center justify-center px-4 py-10"
-        style={{ minHeight: "100vh" }}
+        className="absolute inset-0"
+        style={{
+          background:
+            "linear-gradient(115deg, rgba(13,27,61,0.72) 0%, rgba(13,27,61,0.45) 45%, rgba(13,27,61,0.25) 100%)",
+        }}
+      />
+
+      <div
+        className="relative flex flex-col lg:flex-row items-center justify-center lg:justify-between gap-10 px-4 sm:px-10 lg:px-20 py-10"
+        style={{ minHeight: "100vh", zIndex: 10 }}
       >
+        {/* Brand copy — hidden on small screens so the login card gets
+            full attention there; shown alongside it from lg breakpoint up. */}
+        <motion.div
+          initial={{ opacity: 0, x: -24 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ duration: 0.6 }}
+          className="hidden lg:flex flex-col items-start max-w-md"
+        >
+          <Logo />
+          <h1 className="text-3xl sm:text-4xl font-bold mt-6" style={{ color: "#fff" }}>
+            Learn. Connect. Grow.
+          </h1>
+          <div
+            className="inline-flex items-center gap-2 text-xs font-semibold mt-5"
+            style={{
+              padding: "8px 18px",
+              borderRadius: 9999,
+              background: "rgba(255,255,255,0.16)",
+              color: "#fff",
+              backdropFilter: "blur(6px)",
+              WebkitBackdropFilter: "blur(6px)",
+              border: "1px solid rgba(255,255,255,0.25)",
+            }}
+          >
+            <Sparkles size={13} /> An AI Powered Adaptive Learning Platform
+          </div>
+        </motion.div>
+
         <motion.div
           initial={{ opacity: 0, y: 40, scale: 0.96 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -389,6 +445,6 @@ export default function LoginScreen({ auth, onSuccess, onSignup, onBack }) {
 
         </motion.div>
       </div>
-    </PageShell>
+    </div>
   );
 }

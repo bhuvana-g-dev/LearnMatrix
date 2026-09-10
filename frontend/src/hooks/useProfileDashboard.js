@@ -246,6 +246,7 @@ function computeWeekActivity(dates) {
     d.setDate(monday.getDate() + i);
     return {
       label,
+      dateLabel: d.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
       active: set.has(toDateStr(d)),
       isToday: toDateStr(d) === toDateStr(today),
       isFuture: d > today,

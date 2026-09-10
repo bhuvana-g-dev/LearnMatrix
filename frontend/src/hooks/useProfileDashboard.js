@@ -5,7 +5,7 @@ import { getUserProfile } from "../services/profileService";
 import { getAIInsights } from "../services/aiInsightsService";
 import { getCachedRoadmap, getCachedAssessmentResult, invalidateRoadmap } from "../services/userProgressCache";
 import { generateRoadmap } from "../services/aiAssessmentService";
-import { getActivity } from "../services/activityService";
+import { getActivity, pingActivity } from "../services/activityService";
 import { getRevisionSchedule } from "../services/revisionService";
 import { getCertificate } from "../services/certificateService";
 import { ROLES } from "../constants/roles";
@@ -159,6 +159,28 @@ export function useProfileDashboard() {
       mounted = false;
     };
   }, [authReady, uid, loadPrimary, loadSecondary]);
+
+  // App.jsx already pings once on login, but that POST and this hook's
+  // GET /api/activity/<uid> both fire the moment auth resolves — a race
+  // where the read can beat the write to Firestore. Result: the student
+  // is on the Profile page right now, today already counts, but the
+  // card still shows an empty flame for "Today" until a manual refresh.
+  // Pinging again here (idempotent — just re-marks today) and folding
+  // today straight into local state on success makes "today's flame"
+  // reflect reality immediately instead of waiting on a re-fetch that
+  // may or may not have won the race.
+  useEffect(() => {
+    if (!uid) return;
+    let active = true;
+    pingActivity(uid).then(() => {
+      if (!active) return;
+      const todayStr = toDateStr(new Date());
+      setActivityDates((prev) => (prev.includes(todayStr) ? prev : [...prev, todayStr]));
+    });
+    return () => {
+      active = false;
+    };
+  }, [uid]);
 
   // Re-pulls everything, not just `profile` — an edit (e.g. career
   // path) can affect the roadmap/stats cards too, so a save should

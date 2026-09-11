@@ -62,6 +62,7 @@ from routes.lesson_routes import lesson_bp
 from routes.generated_content_routes import generated_content_bp
 from routes.admin_lesson_routes import admin_lesson_bp
 from routes.audio_overview_routes import audio_overview_bp
+from routes.phone_otp_routes import phone_otp_bp
 
 
 def create_app() -> Flask:
@@ -109,6 +110,7 @@ def create_app() -> Flask:
     app.register_blueprint(generated_content_bp, url_prefix="/api")
     app.register_blueprint(admin_lesson_bp, url_prefix="/api")
     app.register_blueprint(audio_overview_bp, url_prefix="/api")
+    app.register_blueprint(phone_otp_bp, url_prefix="/api")
 
     # Without this, a request that trips MAX_CONTENT_LENGTH gets Flask's
     # default HTML 413 page instead of the {success, error} JSON envelope

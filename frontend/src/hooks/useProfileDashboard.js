@@ -65,9 +65,12 @@ async function selfHealMissingRoadmap(uid) {
  *                        mastered skills reach its total
  *
  * Nothing here is faked for a brand-new user — a field with no real
- * source yet (learning hours in minutes, achievements/badges) is simply
- * left out; the screen shows an honest empty state for those instead of
- * a placeholder number.
+ * source yet (learning hours in minutes) is simply left out; the
+ * screen shows an honest empty state for those instead of a
+ * placeholder number. `achievements` is likewise real, not a separate
+ * collection — it's derived live from roadmap.entries (module fully
+ * mastered = one badge), so an empty roadmap or one with no module
+ * grouping correctly shows no badges rather than invented ones.
  */
 export function useProfileDashboard() {
   // uid/authReady are driven by Firebase's own onAuthStateChanged
@@ -205,6 +208,27 @@ export function useProfileDashboard() {
 
   const nextRevision = revision.due?.[0] || revision.upcoming?.[0] || null;
 
+  // A "module" (e.g. "Frontend", "Backend" — roadmap_service.py's
+  // RoadmapEntry.module) counts as an achievement the moment EVERY
+  // skill tagged with that module has status "mastered". Derived live
+  // from the same roadmap.entries the Skills/Roadmap cards already
+  // read — no separate achievements collection, so this can't drift
+  // out of sync with what's actually mastered. Ungrouped roadmaps
+  // (role_categories wasn't available, so moduleOrder is []) simply
+  // produce no badges — same honest-empty-state rule as everywhere
+  // else in this dashboard, not a fabricated fallback.
+  const achievements = useMemo(() => {
+    if (!roadmap?.moduleOrder?.length || !roadmap.entries?.length) return [];
+    const byModule = {};
+    for (const entry of roadmap.entries) {
+      if (!entry.module) continue;
+      (byModule[entry.module] ||= []).push(entry);
+    }
+    return roadmap.moduleOrder
+      .filter((name) => byModule[name]?.length && byModule[name].every((e) => e.status === "mastered"))
+      .map((name) => ({ id: name, title: name, skillCount: byModule[name].length }));
+  }, [roadmap]);
+
   return {
     profile,
     aiInsights,
@@ -224,6 +248,7 @@ export function useProfileDashboard() {
     },
     weekActivity,
     nextRevision,
+    achievements,
   };
 }
 

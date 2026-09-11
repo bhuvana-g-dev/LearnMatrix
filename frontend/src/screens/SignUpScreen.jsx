@@ -22,6 +22,7 @@ import { COLORS, GRADIENTS, GLASS_CARD } from "../constants/theme";
 import { TN_COLLEGES } from "../constants/tnColleges";
 import { saveUserProfileDoc } from "../services/userProfileService";
 import { suggestEmailCorrection } from "../utils/emailTypoCheck";
+import { sendPhoneOtp, verifyPhoneOtp } from "../services/phoneOtpService";
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 const MOBILE_REGEX = /^[0-9]{10}$/;
@@ -191,6 +192,16 @@ export default function SignUpScreen({ auth, onLogin, onSuccess, onBack }) {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [mobile, setMobile] = useState("");
+  // Real SMS OTP via Fast2SMS (backend/services/phone_otp_service.py) —
+  // not just a 10-digit format check. No Firebase billing/Blaze plan
+  // needed; the server holds a short-lived code per mobile number and
+  // this just sends/checks it.
+  const [otpSent, setOtpSent] = useState(false);
+  const [otp, setOtp] = useState("");
+  const [phoneVerified, setPhoneVerified] = useState(false);
+  const [sendingOtp, setSendingOtp] = useState(false);
+  const [verifyingOtp, setVerifyingOtp] = useState(false);
+  const [otpError, setOtpError] = useState("");
   // Fixed to "college" — this was previously a picker with one choice
   // ("College Student"); removed the picker UI, kept the constant so the
   // college/department/academicYear conditional fields and the signup
@@ -229,6 +240,39 @@ export default function SignUpScreen({ auth, onLogin, onSuccess, onBack }) {
     }
   };
 
+  const handleSendOtp = async () => {
+    setOtpError("");
+    if (!MOBILE_REGEX.test(mobile.trim())) {
+      return setOtpError("Enter a valid 10-digit mobile number first.");
+    }
+    try {
+      setSendingOtp(true);
+      await sendPhoneOtp(mobile.trim());
+      setOtpSent(true);
+    } catch (err) {
+      console.error("OTP send failed:", err);
+      setOtpError(err.message);
+    } finally {
+      setSendingOtp(false);
+    }
+  };
+
+  const handleVerifyOtp = async () => {
+    setOtpError("");
+    if (!/^\d{6}$/.test(otp.trim())) {
+      return setOtpError("Enter the 6-digit code sent to your phone.");
+    }
+    try {
+      setVerifyingOtp(true);
+      await verifyPhoneOtp(mobile.trim(), otp.trim());
+      setPhoneVerified(true);
+    } catch (err) {
+      setOtpError(err.message);
+    } finally {
+      setVerifyingOtp(false);
+    }
+  };
+
   const handleSignup = async () => {
     setError("");
     setSuccessMessage("");
@@ -254,6 +298,7 @@ export default function SignUpScreen({ auth, onLogin, onSuccess, onBack }) {
     }
     if (password !== confirmPassword) return setError("Passwords do not match.");
     if (!MOBILE_REGEX.test(mobile.trim())) return setError("Please enter a valid 10-digit mobile number.");
+    if (!phoneVerified) return setError("Please verify your mobile number with the OTP sent to it.");
     if (userType === "college" && !college.trim()) return setError("Please select your college.");
     if (userType === "college" && !department.trim()) return setError("Please enter your department.");
     if (userType === "college" && !academicYear.trim()) return setError("Please enter your academic year.");
@@ -272,6 +317,7 @@ export default function SignUpScreen({ auth, onLogin, onSuccess, onBack }) {
       try {
         await saveUserProfileDoc(result.user.uid, {
           mobile: mobile.trim(),
+          phoneVerified: true,
           userType,
           college: userType === "college" ? college.trim() : "",
           department: userType === "college" ? department.trim() : "",
@@ -455,13 +501,89 @@ export default function SignUpScreen({ auth, onLogin, onSuccess, onBack }) {
               </span>
               <input
                 type="tel"
-                style={{ ...inputStyle, paddingLeft: 92 }}
+                style={{ ...inputStyle, paddingLeft: 92, paddingRight: phoneVerified ? 90 : 96 }}
                 placeholder="Mobile Number *"
                 value={mobile}
-                onChange={(e) => setMobile(e.target.value.replace(/\D/g, "").slice(0, 10))}
+                onChange={(e) => {
+                  setMobile(e.target.value.replace(/\D/g, "").slice(0, 10));
+                  // Editing the number after verifying invalidates that
+                  // verification — otherwise someone could verify one
+                  // number, then swap in a different, unverified one
+                  // right before submitting.
+                  if (phoneVerified || otpSent) {
+                    setPhoneVerified(false);
+                    setOtpSent(false);
+                    setOtp("");
+                    setOtpError("");
+                  }
+                }}
                 disabled={loading || !!successMessage}
               />
+              {phoneVerified ? (
+                <span
+                  className="text-xs font-semibold flex items-center gap-1"
+                  style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", color: "#22C08E" }}
+                >
+                  <CheckCircle2 size={14} /> Verified
+                </span>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleSendOtp}
+                  disabled={sendingOtp || loading || !!successMessage || !MOBILE_REGEX.test(mobile.trim())}
+                  className="text-xs font-semibold"
+                  style={{
+                    position: "absolute",
+                    right: 10,
+                    top: "50%",
+                    transform: "translateY(-50%)",
+                    color: "#8B5CF6",
+                    background: "none",
+                    border: "none",
+                    cursor: MOBILE_REGEX.test(mobile.trim()) ? "pointer" : "default",
+                    opacity: MOBILE_REGEX.test(mobile.trim()) ? 1 : 0.5,
+                  }}
+                >
+                  {sendingOtp ? "Sending..." : otpSent ? "Resend" : "Send OTP"}
+                </button>
+              )}
             </div>
+
+            {/* OTP entry — only while a code is pending and not yet verified */}
+            {otpSent && !phoneVerified && (
+              <div className="flex items-center gap-2">
+                <input
+                  type="tel"
+                  style={{ ...inputStyle, paddingLeft: 16, flex: 1 }}
+                  placeholder="Enter 6-digit OTP"
+                  value={otp}
+                  onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                  disabled={verifyingOtp || loading || !!successMessage}
+                />
+                <button
+                  type="button"
+                  onClick={handleVerifyOtp}
+                  disabled={verifyingOtp || otp.length !== 6 || loading || !!successMessage}
+                  className="text-sm font-semibold flex-shrink-0"
+                  style={{
+                    padding: "13px 18px",
+                    borderRadius: 16,
+                    border: "none",
+                    background: GRADIENTS.purplePink,
+                    color: "#fff",
+                    cursor: otp.length === 6 ? "pointer" : "default",
+                    opacity: otp.length === 6 ? 1 : 0.6,
+                  }}
+                >
+                  {verifyingOtp ? "Verifying..." : "Verify"}
+                </button>
+              </div>
+            )}
+            {otpError && (
+              <p className="text-xs" style={{ color: "red", marginTop: -8 }}>
+                {otpError}
+              </p>
+            )}
 
             {/* College fields — only for College Student */}
             {userType === "college" && (

@@ -36,6 +36,7 @@ export default function ProfileScreen({ onNavigate }) {
     stats,
     weekActivity,
     nextRevision,
+    achievements,
   } = useProfileDashboard();
 
   const [editOpen, setEditOpen] = useState(false);
@@ -96,7 +97,7 @@ export default function ProfileScreen({ onNavigate }) {
         </div>
 
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6 mb-6">
-          <AchievementsCard />
+          <AchievementsCard achievements={achievements} />
           <UpcomingRevisionsCard upcoming={revision.upcoming} />
           <NextRevisionCard
             nextRevision={nextRevision}

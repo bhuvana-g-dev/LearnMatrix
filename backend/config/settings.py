@@ -417,4 +417,15 @@ class Settings:
     LESSON_MAX_COUNT: int = int(os.getenv("LESSON_MAX_COUNT", 5))
 
 
+    # --- Fast2SMS (services/phone_otp_service.py) ---
+    # Real SMS OTP for signup phone verification — chosen over Firebase
+    # Phone Auth because it needs no billing account, just a free API
+    # key (Dashboard -> Dev API on fast2sms.com) and wallet balance
+    # (new accounts start with a small free credit). Missing key means
+    # send_phone_otp() raises a friendly error instead of a silent
+    # failure — same "degrade with a clear message" pattern as
+    # YOUTUBE_API_KEY/PEXELS_API_KEY above.
+    FAST2SMS_API_KEY: str = os.getenv("FAST2SMS_API_KEY", "")
+
+
 settings = Settings()

@@ -4,7 +4,15 @@ import { getActivityDirect } from "./directProfileReads";
 export async function pingActivity(uid) {
   if (!uid) return;
   try {
-    await apiClient.post(`/activity/ping/${uid}`);
+    // Server has no idea what "today" means for this student — UTC
+    // rolls its calendar day over at 5:30 AM IST, which would log
+    // late-night activity under the wrong date. Send the student's
+    // own local date string; the server just records what it's given.
+    const now = new Date();
+    const localDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(
+      now.getDate()
+    ).padStart(2, "0")}`;
+    await apiClient.post(`/activity/ping/${uid}`, { local_date: localDate });
   } catch {
     // Non-fatal — a missed streak ping shouldn't block anything else.
   }

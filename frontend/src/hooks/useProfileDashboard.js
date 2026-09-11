@@ -276,6 +276,15 @@ function computeWeekActivity(dates) {
   });
 }
 
+// NOT `d.toISOString().slice(0, 10)` — toISOString() converts to UTC
+// first. For any positive-offset timezone (IST +5:30 included), a
+// local-midnight Date shifts back into the previous UTC day, so every
+// grid cell's lookup key came out one day off (today's real ping
+// landed on tomorrow's cell instead). getFullYear/Month/Date read the
+// LOCAL calendar fields directly, no UTC conversion involved.
 function toDateStr(d) {
-  return d.toISOString().slice(0, 10);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
 }

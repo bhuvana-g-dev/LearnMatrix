@@ -56,7 +56,7 @@ def verify_user_token(id_token: str | None) -> dict:
     try:
         decoded = firebase_auth.verify_id_token(id_token)
     except Exception as exc:  # noqa: BLE001 — any verification failure means "not authenticated"
-        raise UserAuthError(f"Invalid or expired ID token: {exc}") from exc
+        raise UserAuthError(f"Invalid or expired ID token: {exc}", 401) from exc
 
     return decoded
 

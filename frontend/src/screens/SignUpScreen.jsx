@@ -1,677 +1,400 @@
-import { useState, useRef, useEffect } from "react";
-import { motion } from "framer-motion";
-import {
-  Mail,
-  Lock,
-  Eye,
-  EyeOff,
-  User,
-  CheckCircle2,
-  ArrowLeft,
-  Phone,
-  Camera,
-  GraduationCap,
-  Building2,
-  CalendarDays,
-  ChevronDown,
-  Search,
-} from "lucide-react";
-import PageShell from "../components/layout/PageShell";
-import Logo from "../components/common/Logo";
-import { COLORS, GRADIENTS, GLASS_CARD } from "../constants/theme";
-import { TN_COLLEGES } from "../constants/tnColleges";
-import { saveUserProfileDoc } from "../services/userProfileService";
-import { suggestEmailCorrection } from "../utils/emailTypoCheck";
-import { sendPhoneOtp, verifyPhoneOtp } from "../services/phoneOtpService";
-
-const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
-const MOBILE_REGEX = /^[0-9]{10}$/;
-
-// Firebase throws a technical error like "Firebase: The email address is
-// already in use by another account. (auth/email-already-in-use)." — this
-// maps the codes we actually see on signup to a friendly message instead.
-function getSignupErrorMessage(err) {
-  switch (err?.code) {
-    case "auth/email-already-in-use":
-      return "This email is already registered. Try another email, or log in instead.";
-    case "auth/invalid-email":
-      return "Please enter a valid email address.";
-    case "auth/weak-password":
-      return "That password is too weak. Please choose a stronger one.";
-    case "auth/network-request-failed":
-      return "Network error — please check your connection and try again.";
-    default:
-      return err?.message || "Something went wrong. Please try again.";
-  }
-}
-
-// At least 8 characters, one uppercase, one lowercase, one number, and
-// one special character.
-const STRONG_PASSWORD_REGEX =
-  /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]).{8,}$/;
-
-
-// Firestore documents cap out at 1MB, so we keep the base64 photo small
-// by resizing it down before storing it.
-function resizeImageToBase64(file, maxSize = 300) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onerror = () => reject(new Error("Couldn't read that file."));
-    reader.onload = () => {
-      const img = new Image();
-      img.onerror = () => reject(new Error("Couldn't read that image."));
-      img.onload = () => {
-        const scale = Math.min(1, maxSize / Math.max(img.width, img.height));
-        const canvas = document.createElement("canvas");
-        canvas.width = img.width * scale;
-        canvas.height = img.height * scale;
-        canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
-        resolve(canvas.toDataURL("image/jpeg", 0.8));
-      };
-      img.src = reader.result;
-    };
-    reader.readAsDataURL(file);
-  });
-}
-
-// Searchable, scrollable college dropdown — click to open, type to
-// filter, click a row to pick it.
-function CollegeDropdown({ value, onChange, disabled }) {
-  const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState("");
-  const boxRef = useRef(null);
-
-  useEffect(() => {
-    const handleClickOutside = (e) => {
-      if (boxRef.current && !boxRef.current.contains(e.target)) setOpen(false);
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
-
-  const filtered = TN_COLLEGES.filter((c) =>
-    c.toLowerCase().includes(query.toLowerCase())
-  );
-
   return (
-    <div style={{ position: "relative" }} ref={boxRef}>
-      <Building2 size={17} style={{ position: "absolute", left: 15, top: "50%", transform: "translateY(-50%)", zIndex: 1 }} />
-      <button
-        type="button"
-        disabled={disabled}
-        onClick={() => setOpen((o) => !o)}
-        className="w-full text-left"
-        style={{
-          width: "100%",
-          borderRadius: 16,
-          background: "rgba(255,255,255,0.55)",
-          border: "1px solid rgba(255,255,255,0.7)",
-          padding: "13px 40px 13px 44px",
-          fontSize: 14,
-          color: value ? COLORS.textDark : COLORS.textLight,
-          cursor: disabled ? "default" : "pointer",
-        }}
-      >
-        {value || "Select your college *"}
-      </button>
-      <ChevronDown
-        size={16}
-        style={{ position: "absolute", right: 15, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }}
-      />
-
-      {open && (
+    <PageShell>
+      <div className="flex" style={{ minHeight: "100vh" }}>
+        {/* Left — brand panel (hidden below lg, matches PageShell's navy/gold) */}
         <div
+          className="hidden lg:flex flex-col justify-between flex-shrink-0"
           style={{
-            position: "absolute",
-            top: "calc(100% + 6px)",
-            left: 0,
-            right: 0,
-            zIndex: 30,
-            background: "#fff",
-            borderRadius: 16,
-            border: `1px solid ${COLORS.border}`,
-            boxShadow: "0 12px 32px rgba(13,27,61,0.18)",
+            width: "40%",
+            padding: "52px 44px",
+            background: `linear-gradient(160deg, ${COLORS.sky} 0%, #16264f 60%, ${COLORS.sky} 100%)`,
+            position: "relative",
             overflow: "hidden",
           }}
         >
-          <div style={{ position: "relative", padding: 8, borderBottom: `1px solid ${COLORS.border}` }}>
-            <Search size={14} style={{ position: "absolute", left: 20, top: "50%", transform: "translateY(-50%)" }} />
-            <input
-              autoFocus
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search college..."
-              style={{
-                width: "100%",
-                border: "none",
-                outline: "none",
-                padding: "8px 8px 8px 28px",
-                fontSize: 13,
-                background: "transparent",
-              }}
-            />
+          <div
+            style={{
+              position: "absolute",
+              top: -90,
+              right: -70,
+              width: 260,
+              height: 260,
+              borderRadius: "50%",
+              background: `radial-gradient(circle, ${COLORS.purple}30, transparent 70%)`,
+              pointerEvents: "none",
+            }}
+          />
+          <div
+            style={{
+              position: "absolute",
+              bottom: -110,
+              left: -60,
+              width: 300,
+              height: 300,
+              borderRadius: "50%",
+              background: `radial-gradient(circle, ${COLORS.pink}22, transparent 70%)`,
+              pointerEvents: "none",
+            }}
+          />
+
+          <div style={{ position: "relative", zIndex: 1 }}>
+            <Logo />
+            <h2 className="text-[34px] font-bold mt-10 leading-tight" style={{ color: "#fff" }}>
+              Your Learning Journey
+              <br />
+              <span style={{ color: COLORS.pink }}>Starts Here!</span>
+            </h2>
+            <p className="text-sm mt-4" style={{ color: "rgba(255,255,255,0.68)", maxWidth: 320, lineHeight: 1.6 }}>
+              Create your account and get access to personalized learning paths, an AI study assistant, quizzes, and more.
+            </p>
           </div>
-          <div style={{ maxHeight: 220, overflowY: "auto" }}>
-            {filtered.length === 0 && (
-              <p className="text-xs px-4 py-3" style={{ color: COLORS.textLight }}>
-                No matches — try "Other / Not Listed".
-              </p>
-            )}
-            {filtered.map((c) => (
-              <button
-                key={c}
-                type="button"
-                onClick={() => {
-                  onChange(c);
-                  setOpen(false);
-                  setQuery("");
-                }}
-                className="w-full text-left text-sm px-4 py-2.5"
-                style={{
-                  background: c === value ? "rgba(212,160,23,0.12)" : "transparent",
-                  border: "none",
-                  cursor: "pointer",
-                  color: COLORS.textDark,
-                }}
-              >
-                {c}
-              </button>
+
+          <div style={{ position: "relative", zIndex: 1 }} className="space-y-5">
+            {[
+              { Icon: GraduationCap, title: "Learn Smarter", sub: "Personalized learning paths" },
+              { Icon: Target, title: "Practice Better", sub: "Quizzes & interactive content" },
+              { Icon: TrendingUp, title: "Track Progress", sub: "See your growth in real time" },
+              { Icon: Award, title: "Achieve Goals", sub: "Build your dream career" },
+            ].map(({ Icon, title, sub }) => (
+              <div key={title} className="flex items-center gap-3">
+                <div
+                  className="flex items-center justify-center flex-shrink-0"
+                  style={{ width: 40, height: 40, borderRadius: 12, background: "rgba(255,255,255,0.1)" }}
+                >
+                  <Icon size={18} color={COLORS.pink} />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold" style={{ color: "#fff" }}>{title}</p>
+                  <p className="text-xs" style={{ color: "rgba(255,255,255,0.55)" }}>{sub}</p>
+                </div>
+              </div>
             ))}
           </div>
-        </div>
-      )}
-    </div>
-  );
-}
 
-export default function SignUpScreen({ auth, onLogin, onSuccess, onBack }) {
-  const [firstName, setFirstName] = useState("");
-  const [lastName, setLastName] = useState("");
-  const [email, setEmail] = useState("");
-  const [confirmEmail, setConfirmEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
-  const [mobile, setMobile] = useState("");
-  // Real SMS OTP via Fast2SMS (backend/services/phone_otp_service.py) —
-  // not just a 10-digit format check. No Firebase billing/Blaze plan
-  // needed; the server holds a short-lived code per mobile number and
-  // this just sends/checks it.
-  const [otpSent, setOtpSent] = useState(false);
-  const [otp, setOtp] = useState("");
-  const [phoneVerified, setPhoneVerified] = useState(false);
-  const [sendingOtp, setSendingOtp] = useState(false);
-  const [verifyingOtp, setVerifyingOtp] = useState(false);
-  const [otpError, setOtpError] = useState("");
-  // Fixed to "college" — this was previously a picker with one choice
-  // ("College Student"); removed the picker UI, kept the constant so the
-  // college/department/academicYear conditional fields and the signup
-  // payload below don't need to change.
-  const userType = "college";
-  const [college, setCollege] = useState("");
-  const [department, setDepartment] = useState("");
-  const [academicYear, setAcademicYear] = useState("");
-  const [avatarUrl, setAvatarUrl] = useState(null);
-  const [agreed, setAgreed] = useState(false);
-  const [showPw, setShowPw] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-  const [successMessage, setSuccessMessage] = useState("");
-  // Live "did you mean...?" nudge for typo'd domains (gmial.com etc.) —
-  // purely a suggestion, doesn't block submission on its own.
-  const emailSuggestion = suggestEmailCorrection(email);
-
-  const inputStyle = {
-    width: "100%",
-    borderRadius: 16,
-    background: "rgba(255,255,255,0.55)",
-    border: "1px solid rgba(255,255,255,0.7)",
-    padding: "13px 16px 13px 44px",
-    fontSize: 14,
-    outline: "none",
-  };
-
-  const handlePhotoChange = async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    try {
-      setAvatarUrl(await resizeImageToBase64(file));
-    } catch (err) {
-      setError(err.message);
-    }
-  };
-
-  const handleSendOtp = async () => {
-    setOtpError("");
-    if (!MOBILE_REGEX.test(mobile.trim())) {
-      return setOtpError("Enter a valid 10-digit mobile number first.");
-    }
-    try {
-      setSendingOtp(true);
-      await sendPhoneOtp(mobile.trim());
-      setOtpSent(true);
-    } catch (err) {
-      console.error("OTP send failed:", err);
-      setOtpError(err.message);
-    } finally {
-      setSendingOtp(false);
-    }
-  };
-
-  const handleVerifyOtp = async () => {
-    setOtpError("");
-    if (!/^\d{6}$/.test(otp.trim())) {
-      return setOtpError("Enter the 6-digit code sent to your phone.");
-    }
-    try {
-      setVerifyingOtp(true);
-      await verifyPhoneOtp(mobile.trim(), otp.trim());
-      setPhoneVerified(true);
-    } catch (err) {
-      setOtpError(err.message);
-    } finally {
-      setVerifyingOtp(false);
-    }
-  };
-
-  const handleSignup = async () => {
-    setError("");
-    setSuccessMessage("");
-
-    if (!firstName.trim()) return setError("Please enter your first name.");
-    if (!lastName.trim()) return setError("Please enter your last name.");
-    if (!email.trim()) return setError("Please enter your email.");
-    if (!EMAIL_REGEX.test(email.trim())) {
-      return setError("Please enter a valid email address (e.g. name@example.com).");
-    }
-    if (emailSuggestion) {
-      return setError(
-        `That email looks mistyped. Did you mean ${emailSuggestion}?`
-      );
-    }
-    if (email.trim() !== confirmEmail.trim()) {
-      return setError("Email addresses don't match. Please check and re-enter.");
-    }
-    if (!STRONG_PASSWORD_REGEX.test(password)) {
-      return setError(
-        "Password must be at least 8 characters and include an uppercase letter, a lowercase letter, a number, and a special character."
-      );
-    }
-    if (password !== confirmPassword) return setError("Passwords do not match.");
-    if (!MOBILE_REGEX.test(mobile.trim())) return setError("Please enter a valid 10-digit mobile number.");
-    if (!phoneVerified) return setError("Please verify your mobile number with the OTP sent to it.");
-    if (userType === "college" && !college.trim()) return setError("Please select your college.");
-    if (userType === "college" && !department.trim()) return setError("Please enter your department.");
-    if (userType === "college" && !academicYear.trim()) return setError("Please enter your academic year.");
-    if (!agreed) return setError("Please agree to the Privacy Policy and Terms of Use.");
-
-    const fullName = `${firstName.trim()} ${lastName.trim()}`.trim();
-
-    try {
-      setLoading(true);
-      const result = await auth.signup(fullName, email.trim(), password);
-
-      // Save everything else (mobile, user type, college/department/year,
-      // photo) onto the same Firestore doc profileService.js reads later —
-      // this is what lets ProfileScreen skip the separate "Complete Your
-      // Profile" step entirely for anyone who signs up through this form.
-      try {
-        await saveUserProfileDoc(result.user.uid, {
-          mobile: mobile.trim(),
-          phoneVerified: true,
-          userType,
-          college: userType === "college" ? college.trim() : "",
-          department: userType === "college" ? department.trim() : "",
-          academicYear: userType === "college" ? academicYear.trim() : "",
-          avatarUrl: avatarUrl || null,
-        });
-      } catch {
-        // Non-fatal — CompleteProfileScreen will catch it on next login
-        // if this write fails for some reason.
-      }
-
-      setSuccessMessage(
-        `Account created! We've sent a verification link to ${email.trim()} — click it to unlock the app.`
-      );
-      setTimeout(() => {
-        (onSuccess || onLogin)?.();
-      }, 1600);
-    } catch (err) {
-      setError(getSignupErrorMessage(err));
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <PageShell>
-      <div className="flex items-center justify-center px-4 py-10" style={{ minHeight: "100vh" }}>
-        <div className="w-full max-w-lg p-8" style={{ ...GLASS_CARD, borderRadius: 28 }}>
-          {onBack && (
-            <button
-              type="button"
-              onClick={onBack}
-              className="flex items-center gap-1.5 text-xs font-semibold mb-5"
-              style={{ color: COLORS.textMid, background: "none", border: "none", cursor: "pointer" }}
-            >
-              <ArrowLeft size={14} /> Back to Home
-            </button>
-          )}
-
-          <Logo />
-
-          <h1 className="text-center text-2xl sm:text-3xl font-bold mt-5" style={{ color: COLORS.textDark }}>
-            Create Account
-          </h1>
-          <p className="text-center text-sm mb-7" style={{ color: COLORS.textMid }}>
-            Start your LearnMatrix journey
+          <p className="text-xs" style={{ color: "rgba(255,255,255,0.4)", position: "relative", zIndex: 1 }}>
+            © {new Date().getFullYear()} LearnMatrix
           </p>
+        </div>
 
-          <div className="flex justify-center mb-6">
-            <label style={{ cursor: "pointer" }}>
-              <div
-                className="w-20 h-20 rounded-full flex items-center justify-center overflow-hidden"
-                style={{
-                  background: avatarUrl ? "transparent" : GRADIENTS.purplePink,
-                  boxShadow: "0 8px 20px rgba(192,132,252,0.4)",
-                }}
-              >
-                {avatarUrl ? (
-                  <img src={avatarUrl} alt="Preview" className="w-full h-full object-cover" />
-                ) : (
-                  <Camera size={22} color="#fff" />
-                )}
-              </div>
-              <input type="file" accept="image/*" onChange={handlePhotoChange} style={{ display: "none" }} disabled={loading} />
-            </label>
-          </div>
-
-          <div className="space-y-4">
-            {/* First / Last name */}
-            <div className="grid grid-cols-2 gap-3">
-              <div style={{ position: "relative" }}>
-                <User size={17} style={{ position: "absolute", left: 15, top: "50%", transform: "translateY(-50%)" }} />
-                <input
-                  style={inputStyle}
-                  placeholder="First Name *"
-                  value={firstName}
-                  onChange={(e) => setFirstName(e.target.value)}
-                  disabled={loading || !!successMessage}
-                />
-              </div>
-              <input
-                style={{ ...inputStyle, paddingLeft: 16 }}
-                placeholder="Last Name *"
-                value={lastName}
-                onChange={(e) => setLastName(e.target.value)}
-                disabled={loading || !!successMessage}
-              />
-            </div>
-
-            {/* Email */}
-            <div style={{ position: "relative" }}>
-              <Mail size={17} style={{ position: "absolute", left: 15, top: "50%", transform: "translateY(-50%)" }} />
-              <input
-                type="email"
-                style={inputStyle}
-                placeholder="Email *"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                disabled={loading || !!successMessage}
-              />
-            </div>
-            {emailSuggestion && (
+        {/* Right — form panel (unchanged content, just moved into the split layout) */}
+        <div className="flex-1 flex items-center justify-center px-4 py-10 overflow-y-auto" style={{ minHeight: "100vh" }}>
+          <div className="w-full max-w-lg p-8" style={{ ...GLASS_CARD, borderRadius: 28 }}>
+            {onBack && (
               <button
                 type="button"
-                onClick={() => setEmail(emailSuggestion)}
-                className="text-xs font-semibold"
-                style={{
-                  color: "#8B5CF6",
-                  background: "none",
-                  border: "none",
-                  cursor: "pointer",
-                  marginTop: -8,
-                  display: "block",
-                }}
+                onClick={onBack}
+                className="flex items-center gap-1.5 text-xs font-semibold mb-5"
+                style={{ color: COLORS.textMid, background: "none", border: "none", cursor: "pointer" }}
               >
-                Did you mean {emailSuggestion}? Tap to fix
+                <ArrowLeft size={14} /> Back to Home
               </button>
             )}
 
-            {/* Confirm Email — catches a typo in the person's own
-                username (e.g. selvameenakshi@gmail.com instead of
-                selvameenakshik@gmail.com) that no domain check can catch,
-                since re-typing it from scratch rarely repeats the exact
-                same slip twice. */}
-            <div style={{ position: "relative" }}>
-              <Mail size={17} style={{ position: "absolute", left: 15, top: "50%", transform: "translateY(-50%)" }} />
-              <input
-                type="email"
-                style={inputStyle}
-                placeholder="Confirm Email *"
-                value={confirmEmail}
-                onChange={(e) => setConfirmEmail(e.target.value)}
-                onPaste={(e) => e.preventDefault()}
-                disabled={loading || !!successMessage}
-              />
-            </div>
-            {confirmEmail && email.trim() !== confirmEmail.trim() && (
-              <p className="text-xs" style={{ color: "#E4568A", marginTop: -8 }}>
-                Emails don't match yet.
-              </p>
-            )}
+            <Logo />
 
-            {/* Password / Confirm */}
-            <div className="grid grid-cols-2 gap-3">
-              <div style={{ position: "relative" }}>
-                <Lock size={17} style={{ position: "absolute", left: 15, top: "50%", transform: "translateY(-50%)" }} />
+            <h1 className="text-center text-2xl sm:text-3xl font-bold mt-5" style={{ color: COLORS.textDark }}>
+              Create Account
+            </h1>
+            <p className="text-center text-sm mb-7" style={{ color: COLORS.textMid }}>
+              Start your LearnMatrix journey
+            </p>
+
+            <div className="flex justify-center mb-6">
+              <label style={{ cursor: "pointer" }}>
+                <div
+                  className="w-20 h-20 rounded-full flex items-center justify-center overflow-hidden"
+                  style={{
+                    background: avatarUrl ? "transparent" : GRADIENTS.purplePink,
+                    boxShadow: "0 8px 20px rgba(192,132,252,0.4)",
+                  }}
+                >
+                  {avatarUrl ? (
+                    <img src={avatarUrl} alt="Preview" className="w-full h-full object-cover" />
+                  ) : (
+                    <Camera size={22} color="#fff" />
+                  )}
+                </div>
+                <input type="file" accept="image/*" onChange={handlePhotoChange} style={{ display: "none" }} disabled={loading} />
+              </label>
+            </div>
+
+            <div className="space-y-4">
+              {/* First / Last name */}
+              <div className="grid grid-cols-2 gap-3">
+                <div style={{ position: "relative" }}>
+                  <User size={17} style={{ position: "absolute", left: 15, top: "50%", transform: "translateY(-50%)" }} />
+                  <input
+                    style={inputStyle}
+                    placeholder="First Name *"
+                    value={firstName}
+                    onChange={(e) => setFirstName(e.target.value)}
+                    disabled={loading || !!successMessage}
+                  />
+                </div>
                 <input
-                  type={showPw ? "text" : "password"}
-                  style={{ ...inputStyle, paddingRight: 36 }}
-                  placeholder="Password *"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  style={{ ...inputStyle, paddingLeft: 16 }}
+                  placeholder="Last Name *"
+                  value={lastName}
+                  onChange={(e) => setLastName(e.target.value)}
                   disabled={loading || !!successMessage}
                 />
-                <button
-                  onClick={() => setShowPw(!showPw)}
-                  type="button"
-                  style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", border: "none", background: "none", cursor: "pointer" }}
-                >
-                  {showPw ? <EyeOff size={16} /> : <Eye size={16} />}
-                </button>
               </div>
-              <input
-                type="password"
-                style={{ ...inputStyle, paddingLeft: 16 }}
-                placeholder="Confirm Password *"
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                disabled={loading || !!successMessage}
-              />
-            </div>
 
-            {/* Mobile */}
-            <div style={{ position: "relative" }}>
-              <Phone size={17} style={{ position: "absolute", left: 15, top: "50%", transform: "translateY(-50%)" }} />
-              <span
-                className="text-sm font-medium"
-                style={{ position: "absolute", left: 40, top: "50%", transform: "translateY(-50%)", color: COLORS.textMid }}
-              >
-                🇮🇳 +91
-              </span>
-              <input
-                type="tel"
-                style={{ ...inputStyle, paddingLeft: 92, paddingRight: phoneVerified ? 90 : 96 }}
-                placeholder="Mobile Number *"
-                value={mobile}
-                onChange={(e) => {
-                  setMobile(e.target.value.replace(/\D/g, "").slice(0, 10));
-                  // Editing the number after verifying invalidates that
-                  // verification — otherwise someone could verify one
-                  // number, then swap in a different, unverified one
-                  // right before submitting.
-                  if (phoneVerified || otpSent) {
-                    setPhoneVerified(false);
-                    setOtpSent(false);
-                    setOtp("");
-                    setOtpError("");
-                  }
-                }}
-                disabled={loading || !!successMessage}
-              />
-              {phoneVerified ? (
-                <span
-                  className="text-xs font-semibold flex items-center gap-1"
-                  style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", color: "#22C08E" }}
-                >
-                  <CheckCircle2 size={14} /> Verified
-                </span>
-              ) : (
+              {/* Email */}
+              <div style={{ position: "relative" }}>
+                <Mail size={17} style={{ position: "absolute", left: 15, top: "50%", transform: "translateY(-50%)" }} />
+                <input
+                  type="email"
+                  style={inputStyle}
+                  placeholder="Email *"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  disabled={loading || !!successMessage}
+                />
+              </div>
+              {emailSuggestion && (
                 <button
                   type="button"
-                  onClick={handleSendOtp}
-                  disabled={sendingOtp || loading || !!successMessage || !MOBILE_REGEX.test(mobile.trim())}
+                  onClick={() => setEmail(emailSuggestion)}
                   className="text-xs font-semibold"
                   style={{
-                    position: "absolute",
-                    right: 10,
-                    top: "50%",
-                    transform: "translateY(-50%)",
                     color: "#8B5CF6",
                     background: "none",
                     border: "none",
-                    cursor: MOBILE_REGEX.test(mobile.trim()) ? "pointer" : "default",
-                    opacity: MOBILE_REGEX.test(mobile.trim()) ? 1 : 0.5,
+                    cursor: "pointer",
+                    marginTop: -8,
+                    display: "block",
                   }}
                 >
-                  {sendingOtp ? "Sending..." : otpSent ? "Resend" : "Send OTP"}
+                  Did you mean {emailSuggestion}? Tap to fix
                 </button>
               )}
-            </div>
 
-            {/* OTP entry — only while a code is pending and not yet verified */}
-            {otpSent && !phoneVerified && (
-              <div className="flex items-center gap-2">
+              {/* Confirm Email */}
+              <div style={{ position: "relative" }}>
+                <Mail size={17} style={{ position: "absolute", left: 15, top: "50%", transform: "translateY(-50%)" }} />
+                <input
+                  type="email"
+                  style={inputStyle}
+                  placeholder="Confirm Email *"
+                  value={confirmEmail}
+                  onChange={(e) => setConfirmEmail(e.target.value)}
+                  onPaste={(e) => e.preventDefault()}
+                  disabled={loading || !!successMessage}
+                />
+              </div>
+              {confirmEmail && email.trim() !== confirmEmail.trim() && (
+                <p className="text-xs" style={{ color: "#E4568A", marginTop: -8 }}>
+                  Emails don't match yet.
+                </p>
+              )}
+
+              {/* Password / Confirm */}
+              <div className="grid grid-cols-2 gap-3">
+                <div style={{ position: "relative" }}>
+                  <Lock size={17} style={{ position: "absolute", left: 15, top: "50%", transform: "translateY(-50%)" }} />
+                  <input
+                    type={showPw ? "text" : "password"}
+                    style={{ ...inputStyle, paddingRight: 36 }}
+                    placeholder="Password *"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    disabled={loading || !!successMessage}
+                  />
+                  <button
+                    onClick={() => setShowPw(!showPw)}
+                    type="button"
+                    style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", border: "none", background: "none", cursor: "pointer" }}
+                  >
+                    {showPw ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                </div>
+                <input
+                  type="password"
+                  style={{ ...inputStyle, paddingLeft: 16 }}
+                  placeholder="Confirm Password *"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  disabled={loading || !!successMessage}
+                />
+              </div>
+
+              {/* Mobile */}
+              <div style={{ position: "relative" }}>
+                <Phone size={17} style={{ position: "absolute", left: 15, top: "50%", transform: "translateY(-50%)" }} />
+                <span
+                  className="text-sm font-medium"
+                  style={{ position: "absolute", left: 40, top: "50%", transform: "translateY(-50%)", color: COLORS.textMid }}
+                >
+                  🇮🇳 +91
+                </span>
                 <input
                   type="tel"
-                  style={{ ...inputStyle, paddingLeft: 16, flex: 1 }}
-                  placeholder="Enter 6-digit OTP"
-                  value={otp}
-                  onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
-                  disabled={verifyingOtp || loading || !!successMessage}
-                />
-                <button
-                  type="button"
-                  onClick={handleVerifyOtp}
-                  disabled={verifyingOtp || otp.length !== 6 || loading || !!successMessage}
-                  className="text-sm font-semibold flex-shrink-0"
-                  style={{
-                    padding: "13px 18px",
-                    borderRadius: 16,
-                    border: "none",
-                    background: GRADIENTS.purplePink,
-                    color: "#fff",
-                    cursor: otp.length === 6 ? "pointer" : "default",
-                    opacity: otp.length === 6 ? 1 : 0.6,
+                  style={{ ...inputStyle, paddingLeft: 92, paddingRight: phoneVerified ? 90 : 96 }}
+                  placeholder="Mobile Number *"
+                  value={mobile}
+                  onChange={(e) => {
+                    setMobile(e.target.value.replace(/\D/g, "").slice(0, 10));
+                    if (phoneVerified || otpSent) {
+                      setPhoneVerified(false);
+                      setOtpSent(false);
+                      setOtp("");
+                      setOtpError("");
+                    }
                   }}
+                  disabled={loading || !!successMessage}
+                />
+                {phoneVerified ? (
+                  <span
+                    className="text-xs font-semibold flex items-center gap-1"
+                    style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", color: "#22C08E" }}
+                  >
+                    <CheckCircle2 size={14} /> Verified
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleSendOtp}
+                    disabled={sendingOtp || loading || !!successMessage || !MOBILE_REGEX.test(mobile.trim())}
+                    className="text-xs font-semibold"
+                    style={{
+                      position: "absolute",
+                      right: 10,
+                      top: "50%",
+                      transform: "translateY(-50%)",
+                      color: "#8B5CF6",
+                      background: "none",
+                      border: "none",
+                      cursor: MOBILE_REGEX.test(mobile.trim()) ? "pointer" : "default",
+                      opacity: MOBILE_REGEX.test(mobile.trim()) ? 1 : 0.5,
+                    }}
+                  >
+                    {sendingOtp ? "Sending..." : otpSent ? "Resend" : "Send OTP"}
+                  </button>
+                )}
+              </div>
+
+              {otpSent && !phoneVerified && (
+                <div className="flex items-center gap-2">
+                  <input
+                    type="tel"
+                    style={{ ...inputStyle, paddingLeft: 16, flex: 1 }}
+                    placeholder="Enter 6-digit OTP"
+                    value={otp}
+                    onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                    disabled={verifyingOtp || loading || !!successMessage}
+                  />
+                  <button
+                    type="button"
+                    onClick={handleVerifyOtp}
+                    disabled={verifyingOtp || otp.length !== 6 || loading || !!successMessage}
+                    className="text-sm font-semibold flex-shrink-0"
+                    style={{
+                      padding: "13px 18px",
+                      borderRadius: 16,
+                      border: "none",
+                      background: GRADIENTS.purplePink,
+                      color: "#fff",
+                      cursor: otp.length === 6 ? "pointer" : "default",
+                      opacity: otp.length === 6 ? 1 : 0.6,
+                    }}
+                  >
+                    {verifyingOtp ? "Verifying..." : "Verify"}
+                  </button>
+                </div>
+              )}
+              {otpError && (
+                <p className="text-xs" style={{ color: "red", marginTop: -8 }}>
+                  {otpError}
+                </p>
+              )}
+
+              {userType === "college" && (
+                <>
+                  <CollegeDropdown value={college} onChange={setCollege} disabled={loading || !!successMessage} />
+
+                  <div style={{ position: "relative" }}>
+                    <GraduationCap size={17} style={{ position: "absolute", left: 15, top: "50%", transform: "translateY(-50%)" }} />
+                    <input
+                      style={inputStyle}
+                      placeholder="Department (e.g. B.Sc. Computer Science) *"
+                      value={department}
+                      onChange={(e) => setDepartment(e.target.value)}
+                      disabled={loading || !!successMessage}
+                    />
+                  </div>
+
+                  <div style={{ position: "relative" }}>
+                    <CalendarDays size={17} style={{ position: "absolute", left: 15, top: "50%", transform: "translateY(-50%)" }} />
+                    <input
+                      style={inputStyle}
+                      placeholder="Academic Year (e.g. Final Year (2027)) *"
+                      value={academicYear}
+                      onChange={(e) => setAcademicYear(e.target.value)}
+                      disabled={loading || !!successMessage}
+                    />
+                  </div>
+                </>
+              )}
+
+              <label className="flex items-start gap-2 text-xs" style={{ color: COLORS.textMid, cursor: "pointer" }}>
+                <input
+                  type="checkbox"
+                  checked={agreed}
+                  onChange={(e) => setAgreed(e.target.checked)}
+                  disabled={loading || !!successMessage}
+                  style={{ marginTop: 2 }}
+                />
+                <span>
+                  All your information is collected, stored, and processed as per our data
+                  processing guidelines. By signing up, you agree to our Privacy Policy and
+                  Terms of Use.
+                </span>
+              </label>
+
+              {error && (
+                <p className="text-center text-sm" style={{ color: "red" }}>
+                  {error}
+                </p>
+              )}
+
+              {successMessage && (
+                <div
+                  className="flex items-start gap-2 text-sm p-3"
+                  style={{ borderRadius: 14, background: "rgba(34,192,142,0.12)", color: "#22C08E" }}
                 >
-                  {verifyingOtp ? "Verifying..." : "Verify"}
-                </button>
-              </div>
-            )}
-            {otpError && (
-              <p className="text-xs" style={{ color: "red", marginTop: -8 }}>
-                {otpError}
-              </p>
-            )}
-
-            {/* College fields — only for College Student */}
-            {userType === "college" && (
-              <>
-                <CollegeDropdown value={college} onChange={setCollege} disabled={loading || !!successMessage} />
-
-                <div style={{ position: "relative" }}>
-                  <GraduationCap size={17} style={{ position: "absolute", left: 15, top: "50%", transform: "translateY(-50%)" }} />
-                  <input
-                    style={inputStyle}
-                    placeholder="Department (e.g. B.Sc. Computer Science) *"
-                    value={department}
-                    onChange={(e) => setDepartment(e.target.value)}
-                    disabled={loading || !!successMessage}
-                  />
+                  <CheckCircle2 size={16} className="flex-shrink-0 mt-0.5" />
+                  <span>{successMessage}</span>
                 </div>
+              )}
 
-                <div style={{ position: "relative" }}>
-                  <CalendarDays size={17} style={{ position: "absolute", left: 15, top: "50%", transform: "translateY(-50%)" }} />
-                  <input
-                    style={inputStyle}
-                    placeholder="Academic Year (e.g. Final Year (2027)) *"
-                    value={academicYear}
-                    onChange={(e) => setAcademicYear(e.target.value)}
-                    disabled={loading || !!successMessage}
-                  />
-                </div>
-              </>
-            )}
-
-            {/* Terms */}
-            <label className="flex items-start gap-2 text-xs" style={{ color: COLORS.textMid, cursor: "pointer" }}>
-              <input
-                type="checkbox"
-                checked={agreed}
-                onChange={(e) => setAgreed(e.target.checked)}
+              <motion.button
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={handleSignup}
                 disabled={loading || !!successMessage}
-                style={{ marginTop: 2 }}
-              />
-              <span>
-                All your information is collected, stored, and processed as per our data
-                processing guidelines. By signing up, you agree to our Privacy Policy and
-                Terms of Use.
-              </span>
-            </label>
-
-            {error && (
-              <p className="text-center text-sm" style={{ color: "red" }}>
-                {error}
-              </p>
-            )}
-
-            {successMessage && (
-              <div
-                className="flex items-start gap-2 text-sm p-3"
-                style={{ borderRadius: 14, background: "rgba(34,192,142,0.12)", color: "#22C08E" }}
+                className="w-full"
+                style={{
+                  padding: "14px",
+                  borderRadius: 9999,
+                  border: "none",
+                  background: GRADIENTS.purplePink,
+                  color: "#fff",
+                  fontWeight: 700,
+                  cursor: loading || successMessage ? "default" : "pointer",
+                  opacity: loading || successMessage ? 0.8 : 1,
+                }}
               >
-                <CheckCircle2 size={16} className="flex-shrink-0 mt-0.5" />
-                <span>{successMessage}</span>
-              </div>
-            )}
+                {successMessage ? "Redirecting..." : loading ? "Creating Account..." : "Continue"}
+              </motion.button>
 
-            <motion.button
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-              onClick={handleSignup}
-              disabled={loading || !!successMessage}
-              className="w-full"
-              style={{
-                padding: "14px",
-                borderRadius: 9999,
-                border: "none",
-                background: GRADIENTS.purplePink,
-                color: "#fff",
-                fontWeight: 700,
-                cursor: loading || successMessage ? "default" : "pointer",
-                opacity: loading || successMessage ? 0.8 : 1,
-              }}
-            >
-              {successMessage ? "Redirecting..." : loading ? "Creating Account..." : "Continue"}
-            </motion.button>
-
-            <p className="text-center text-sm mt-4">
-              Already have an account?{" "}
-              <span onClick={onLogin} style={{ color: "#8B5CF6", cursor: "pointer", fontWeight: 700 }}>
-                Login
-              </span>
-            </p>
+              <p className="text-center text-sm mt-4">
+                Already have an account?{" "}
+                <span onClick={onLogin} style={{ color: "#8B5CF6", cursor: "pointer", fontWeight: 700 }}>
+                  Login
+                </span>
+              </p>
+            </div>
           </div>
         </div>
       </div>

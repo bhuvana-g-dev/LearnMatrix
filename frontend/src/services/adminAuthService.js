@@ -1,6 +1,6 @@
 import { onAuthStateChanged, signInWithEmailAndPassword, signOut } from "firebase/auth";
 import { adminAuth as firebaseAuth } from "../firebase";
-import apiClient from "../api/axiosClient";
+import apiClient from "../api/adminApiClient";
 import { ENDPOINTS } from "../api/endpoints";
 
 const AUTH_TOKEN_KEY = "lm_auth_token";

@@ -10,6 +10,7 @@ should never need to change shape when that happens, only this file.
 """
 
 import concurrent.futures
+import time
 
 from agents.question_generation_agent import (
     QuestionGenerationAgent,
@@ -18,7 +19,8 @@ from agents.question_generation_agent import (
 from config.settings import settings
 from firebase.firebase_config import get_firestore_client
 from services.difficulty_engine import compute_difficulty, DifficultyDecision
-from services.assessment_planner import build_diagnostic_plan
+from services.assessment_planner import build_diagnostic_plan, SkillPlan
+from services import question_bank_service
 from services.evaluation_service import evaluate_diagnostic_assessment
 
 
@@ -137,6 +139,15 @@ def generate_diagnostic_assessment(
     the output and any error message stay deterministic regardless of
     which thread happened to finish first.
 
+    Question bank: each difficulty chunk is generated on its own (see
+    _generate_skill_questions). A chunk that passes validation is saved to
+    the bank (write-through); a chunk that still fails after every provider
+    and retry is filled from the bank instead, if the bank can cover it
+    completely. Only when the bank can't either does the original failure
+    surface as before. The result's "source" is "ai" / "bank" / "mixed",
+    and "fallbackChunks" lists which (skill, difficulty) chunks came from
+    the bank; each question also carries its own Source ("AI" / "Bank").
+
     Raises AIAssessmentError with a partial-failure message identifying
     which specific skill (and which difficulty chunk within it) failed,
     rather than a generic "something broke".
@@ -148,45 +159,123 @@ def generate_diagnostic_assessment(
     with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = [
             executor.submit(
-                agent.run_chunked,
-                topics=[skill_plan.skill],
-                skill=skill_plan.skill,
-                difficulty_counts=skill_plan.difficulty_counts,
-                open_ended_counts=skill_plan.open_ended_counts,
-                open_ended_type=skill_plan.open_ended_type,
-                learning_objective=learning_objective or (f"for the {role} role" if role else ""),
+                _generate_skill_questions,
+                agent,
+                skill_plan,
+                learning_objective or (f"for the {role} role" if role else ""),
             )
             for skill_plan in plan
         ]
         concurrent.futures.wait(futures)
 
     all_questions: list[dict] = []
+    fallback_chunks: list[dict] = []
     for skill_plan, future in zip(plan, futures):
         try:
-            questions = future.result()
+            questions, fallback_difficulties = future.result()
         except QuestionGenerationError as exc:
             raise AIAssessmentError(
                 f"Diagnostic assessment generation failed on skill "
                 f"'{skill_plan.skill}': {exc}"
             ) from exc
 
-        # CRITICAL: each run_chunked() call numbers its own questions
-        # "AI-1".."AI-15" independently — across multiple skills these
-        # collide (every skill would have an "AI-1"). Since evaluation
-        # matches answers by TempID, colliding IDs silently corrupt
-        # scoring (a later skill's answer overwrites an earlier skill's
-        # under the same key). Re-namespace by skill right here, once,
-        # so every ID in the aggregated set is globally unique.
+        # CRITICAL: each skill numbers its own questions "AI-1".."AI-15"
+        # independently — across multiple skills these collide (every skill
+        # would have an "AI-1"). Since evaluation matches answers by
+        # TempID, colliding IDs silently corrupt scoring (a later skill's
+        # answer overwrites an earlier skill's under the same key).
+        # Re-namespace by skill right here, once, so every ID in the
+        # aggregated set is globally unique.
         for q in questions:
             q["TempID"] = f"{skill_plan.skill}::{q['TempID']}"
 
         all_questions.extend(questions)
+        fallback_chunks.extend(
+            {"skill": skill_plan.skill, "difficulty": d} for d in fallback_difficulties
+        )
+
+    bank_count = sum(1 for q in all_questions if q.get("Source") == "Bank")
+    if bank_count == 0:
+        source = "ai"
+    elif bank_count == len(all_questions):
+        source = "bank"
+    else:
+        source = "mixed"
 
     return {
         "skills": skills,
         "totalQuestions": len(all_questions),
         "questions": all_questions,
+        "source": source,
+        "fallbackChunks": fallback_chunks,
     }
+
+
+def _generate_skill_questions(
+    agent: QuestionGenerationAgent, skill_plan: SkillPlan, learning_objective: str
+) -> tuple[list[dict], list[str]]:
+    """
+    One skill's full question set, generated chunk by chunk (one Gemini
+    call per difficulty — same chunking as QuestionGenerationAgent.
+    run_chunked, but driven from here so a failed chunk can be swapped for
+    bank questions without redoing the chunks that worked).
+
+    Per chunk: try AI -> on success, write it through to the bank; on
+    QuestionGenerationError, try the bank; if the bank can't fully cover
+    the chunk either, raise the original AI error (plus a note) so the
+    failure message stays specific.
+
+    Returns (questions numbered "AI-1".."AI-n" in difficulty order,
+    difficulties that were served from the bank). The agent itself stays
+    Firestore-free — all bank I/O lives in question_bank_service.
+    """
+    questions: list[dict] = []
+    fallback_difficulties: list[str] = []
+    difficulties = [d for d, n in skill_plan.difficulty_counts.items() if n > 0]
+
+    for idx, difficulty in enumerate(difficulties):
+        total = skill_plan.difficulty_counts[difficulty]
+        open_count = min(skill_plan.open_ended_counts.get(difficulty, 0), total)
+        mcq_count = total - open_count
+
+        try:
+            chunk = agent.run_chunked(
+                topics=[skill_plan.skill],
+                skill=skill_plan.skill,
+                difficulty_counts={difficulty: total},
+                open_ended_counts={difficulty: open_count},
+                open_ended_type=skill_plan.open_ended_type,
+                learning_objective=learning_objective,
+            )
+        except QuestionGenerationError as ai_exc:
+            chunk = question_bank_service.fetch_fallback_chunk(
+                skill=skill_plan.skill,
+                difficulty=difficulty,
+                mcq_count=mcq_count,
+                open_count=open_count,
+                open_ended_type=skill_plan.open_ended_type,
+            )
+            if chunk is None:
+                raise QuestionGenerationError(
+                    f"{ai_exc} (question bank could not cover {difficulty} for "
+                    f"'{skill_plan.skill}' either)"
+                ) from ai_exc
+            fallback_difficulties.append(difficulty)
+        else:
+            # Validated AI output -> bank (async, never raises).
+            question_bank_service.save_generated_questions(chunk)
+
+        questions.extend(chunk)
+
+        # Same spacing run_chunked used between its own chunks — protects
+        # one skill's key/quota from bursting.
+        if idx < len(difficulties) - 1:
+            time.sleep(settings.AI_CHUNK_DELAY_SECONDS)
+
+    for i, q in enumerate(questions, start=1):
+        q["TempID"] = f"AI-{i}"
+
+    return questions, fallback_difficulties
 
 
 def evaluate_assessment(questions: list[dict], answers: dict[str, str]) -> dict:

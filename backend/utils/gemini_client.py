@@ -227,6 +227,18 @@ def _generate_json_gemini_with_rotation(
         attempts_log.append("gemini: no API key set, skipped")
         raise GeminiClientError("gemini: no API key set")
 
+       # Only 429 (rate-limit / RESOURCE_EXHAUSTED) is a per-project problem
+    # a different key can plausibly route around. 504 DEADLINE_EXCEEDED,
+    # 503 UNAVAILABLE, and anything else are Google's infra being slow or
+    # down right now — every key in the pool sits behind the same
+    # degraded backend, so trying 8 more of them just pays the same
+    # ~20s timeout 8 more times before groq/cerebras/openrouter ever get
+    # a turn. Fail over to the next provider after ONE such failure
+    # instead of exhausting the whole pool.
+    def _is_quota_error(exc: Exception) -> bool:
+        text = str(exc)
+        return "429" in text or "RESOURCE_EXHAUSTED" in text
+
     last_exc: Exception | None = None
     for i, key in enumerate(candidates):
         try:
@@ -238,10 +250,15 @@ def _generate_json_gemini_with_rotation(
             last_exc = exc
             logger.warning("gemini key #%d/%d failed: %s", i + 1, len(candidates), exc)
             attempts_log.append(f"gemini (key #{i + 1}/{len(candidates)}): {exc}")
+            if not _is_quota_error(exc):
+                logger.warning(
+                    "gemini key #%d/%d failed with a non-quota error — skipping remaining "
+                    "%d key(s), likely to fail the same way", i + 1, len(candidates), len(candidates) - i - 1
+                )
+                break
             continue
 
     raise GeminiClientError(f"gemini: all {len(candidates)} key(s) failed, last error: {last_exc}")
-
 
 # ---------------------------------------------------------------------
 # Gemini image generation (services/image_service.py's generate_ai_image)

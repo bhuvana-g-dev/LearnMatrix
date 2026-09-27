@@ -8,7 +8,7 @@ import { COLORS, GRADIENTS, GLASS_CARD } from "../constants/theme";
 import { ROLES } from "../constants/roles";
 import RoleSelectionScreen from "./RoleSelectionScreen";
 import { getCachedAssessmentResult, getCachedRoadmap } from "../services/userProgressCache";
-import { getActivity } from "../services/activityService";
+import { getActivity, pingActivity } from "../services/activityService";
 
 const PACE_STYLES = {
   "Fast-Track": { icon: Zap, color: "#D4A017" },
@@ -62,10 +62,24 @@ export default function CareerStatusScreen({
     setChecking(true);
     setCheckError(false);
     try {
+      // BUG FIX (empty "This Week's Activity" widget): App.jsx also
+      // fires pingActivity() on auth, but that write and this screen's
+      // getActivity() read were two unsynchronized calls racing on the
+      // same mount — the read could (and often did) land before the
+      // write, so today's day never showed as active until some later,
+      // unrelated re-render. Awaiting the ping HERE, right before the
+      // read, guarantees today's date is committed before we ask for
+      // the list back. It's chained onto the read (not run in parallel
+      // with it) so assessment/roadmap below still load at full speed;
+      // only the activity value itself waits the extra beat.
+      const activityPromise = pingActivity(uid)
+        .catch(() => {}) // ping is best-effort — a failed write shouldn't block the read that follows
+        .then(() => getActivity(uid).catch(() => [])); // streak is a nice-to-have, never block the page on it
+
       const [assessment, savedRoadmap, dates] = await Promise.all([
         getCachedAssessmentResult(uid),
         getCachedRoadmap(uid),
-        getActivity(uid).catch(() => []), // streak is a nice-to-have, never block the page on it
+        activityPromise,
       ]);
       if (assessment) {
         setHasAssessment(true);

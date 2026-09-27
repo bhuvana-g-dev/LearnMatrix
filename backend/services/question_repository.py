@@ -13,6 +13,8 @@ Firestore document layout:
         QuestionID, Skill, Topic, Difficulty, QuestionType, Question,
         OptionA, OptionB, OptionC, OptionD, CorrectAnswer, Explanation,
         Status, CreatedAt, UpdatedAt
+        (AI-generated rows written by services/question_bank_service.py
+        additionally carry Source="AI" and QuestionHash; Excel rows don't.)
 
 Every function here takes `db` (a Firestore client) as a parameter rather
 than fetching it internally. That's a deliberate dependency-injection
@@ -22,10 +24,15 @@ the functions trivially unit-testable with a fake client.
 """
 
 from firebase_admin import firestore
+from google.api_core.exceptions import AlreadyExists
 
 from config.settings import settings
 
 SERVER_TIMESTAMP = firestore.SERVER_TIMESTAMP
+
+# Marks rows written by services/question_bank_service.py's write-through
+# of validated AI output. Excel-managed rows never carry this field.
+AI_SOURCE = "AI"
 
 
 def _collection(db):
@@ -61,6 +68,24 @@ def list_active_questions_by_topic(db, skill: str, topic: str) -> list[dict]:
         .where("Status", "==", settings.STATUS_ACTIVE)
         .where("Skill", "==", skill)
         .where("Topic", "==", topic)
+    )
+    return [doc.to_dict() for doc in query.stream()]
+
+
+def list_active_for_fallback(
+    db, skill: str, difficulty: str, question_type: str, limit: int
+) -> list[dict]:
+    """Active questions for one Skill + Difficulty + QuestionType — the
+    pool services/question_bank_service.py samples from when AI generation
+    fails for a diagnostic-assessment chunk. Equality-only filters, so no
+    composite index is needed. `limit` caps reads per fallback."""
+    query = (
+        _collection(db)
+        .where("Status", "==", settings.STATUS_ACTIVE)
+        .where("Skill", "==", skill)
+        .where("Difficulty", "==", difficulty)
+        .where("QuestionType", "==", question_type)
+        .limit(limit)
     )
     return [doc.to_dict() for doc in query.stream()]
 
@@ -123,12 +148,16 @@ def question_exists(db, question_id: str) -> bool:
 
 def get_existing_ids_for_skill(db, skill: str) -> set[str]:
     """
-    All QuestionIDs currently in Firestore for a given Skill, regardless of
-    Status. Used by the upload script to detect which rows disappeared from
-    the Excel file (candidates for soft delete).
+    All Excel-managed QuestionIDs currently in Firestore for a given Skill,
+    regardless of Status. Used by the upload script to detect which rows
+    disappeared from the Excel file (candidates for soft delete).
+
+    AI-written rows (Source == "AI") are deliberately excluded: they never
+    come from Excel, so without this filter every Excel upload would
+    soft-delete the whole AI-populated bank for that skill.
     """
     docs = _collection(db).where("Skill", "==", skill).stream()
-    return {doc.id for doc in docs}
+    return {doc.id for doc in docs if (doc.to_dict() or {}).get("Source") != AI_SOURCE}
 
 
 def upsert_question(db, question_dict: dict) -> str:
@@ -157,6 +186,32 @@ def upsert_question(db, question_dict: dict) -> str:
     fields["CreatedAt"] = SERVER_TIMESTAMP
     doc_ref.set(fields)
     return "created"
+
+
+def create_question_if_absent(db, question_id: str, fields: dict) -> bool:
+    """
+    Create a question document ONLY if its ID isn't taken. Returns True if
+    created, False if it already existed (in any Status).
+
+    Used for the AI write-through with a deterministic, hash-derived ID:
+    the existence check is atomic inside Firestore's create(), so
+    duplicates are dropped with no read first. An existing document is
+    never touched — including one an admin soft-deleted (Inactive), so a
+    retired AI question is not resurrected the next time the model
+    generates it.
+    """
+    doc_ref = _collection(db).document(question_id)
+    payload = {
+        **fields,
+        "QuestionID": question_id,
+        "CreatedAt": SERVER_TIMESTAMP,
+        "UpdatedAt": SERVER_TIMESTAMP,
+    }
+    try:
+        doc_ref.create(payload)
+    except AlreadyExists:
+        return False
+    return True
 
 
 def set_status(db, question_id: str, status: str) -> None:

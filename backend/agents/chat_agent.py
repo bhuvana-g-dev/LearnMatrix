@@ -80,7 +80,7 @@ class ChatAgent(BaseAgent):
                 )
                 self._validate(raw)
                 return raw
-            except (GeminiClientError, ChatAgentError) as exc:
+            except Exception as exc:  # noqa: BLE001 - any failure -> clean ChatAgentError below
                 last_error = exc
                 is_last_attempt = attempt == settings.AI_GENERATION_MAX_RETRIES
                 if not is_last_attempt:

@@ -407,6 +407,8 @@ def generate_speech_audio(
 
     if last_exception is not None:
         logger.exception("generate_speech_audio: Gemini TTS call failed after retries", exc_info=last_exception)
+        # Surface the real reason (404 model, 429 quota, 403 key...) instead of a bare None.
+        raise GeminiClientError(f"TTS model '{settings.GEMINI_TTS_MODEL}' failed: {last_exception}")
     return None
 
 

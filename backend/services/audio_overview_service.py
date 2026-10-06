@@ -27,7 +27,7 @@ import base64
 
 from agents.audio_overview_agent import AudioOverviewAgent, AudioOverviewAgentError
 from config.settings import settings
-from utils.gemini_client import generate_speech_audio
+from utils.gemini_client import generate_speech_audio, GeminiClientError
 
 # Average spoken pace for a natural back-and-forth conversation — used
 # only as a fallback duration estimate for the frontend progress bar
@@ -108,7 +108,10 @@ def synthesize_audio_for_script(script: list[dict]) -> str:
     pays the script-writing LLM cost twice for the same episode."""
     if not script:
         raise AudioOverviewServiceError("No script to synthesize.")
-    wav_bytes = generate_speech_audio(script, _speaker_voice_map())
+    try:
+        wav_bytes = generate_speech_audio(script, _speaker_voice_map())
+    except GeminiClientError as exc:
+        raise AudioOverviewServiceError(f"Couldn't generate the podcast audio. Reason: {str(exc)[:400]}") from exc
     if not wav_bytes:
         raise AudioOverviewServiceError(
             "Couldn't generate the podcast audio right now — the speech model may be "

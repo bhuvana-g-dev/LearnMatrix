@@ -263,6 +263,15 @@ class Settings:
         k.strip() for k in os.getenv("GEMINI_API_KEYS_POOL_ASSESSMENT", "").split(",") if k.strip()
     ]
 
+    # Optional rotation pools for chat and topic quiz (same idea as the
+    # assessment pool above). Empty by default -> single-key behaviour.
+    GEMINI_API_KEYS_POOL_CHAT: list[str] = [
+        k.strip() for k in os.getenv("GEMINI_API_KEYS_POOL_CHAT", "").split(",") if k.strip()
+    ]
+    GEMINI_API_KEYS_POOL_TOPIC_QUIZ: list[str] = [
+        k.strip() for k in os.getenv("GEMINI_API_KEYS_POOL_TOPIC_QUIZ", "").split(",") if k.strip()
+    ]
+
     GROQ_API_KEY: str = os.getenv("GROQ_API_KEY", "")
     # Groq retired llama-3.3-70b-versatile (see console.groq.com/docs/deprecations) —
     # requests to it now 404 with "model_not_found". openai/gpt-oss-120b is
